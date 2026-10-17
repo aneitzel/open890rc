@@ -4,6 +4,7 @@ Web remote control for the Kenwood TS-890S. One Go program (a single binary, the
 web interface is built in) talks to the transceiver over the LAN (KNS) and gives
 every browser in the network the full control.
 
+Go is a language optimized for high performance, networking and scaling.
 It runs happily on a Raspberry Pi next to the radio.
 
 ![Open890RC in the browser](docs/browser.png)
