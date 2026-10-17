@@ -10,8 +10,16 @@ It runs happily on a Raspberry Pi next to the radio.
 ![Open890RC in the browser](docs/browser.png)
 
 <p>
-  <img src="docs/iphone1.png" width="260" alt="Open890RC on a phone">
+  <img src="docs/iphone1.png" width="260" alt="Open890RC on a phone, analog meter">
   <img src="docs/iphone2.png" width="260" alt="Open890RC on a phone">
+  <img src="docs/iphone3.png" width="260" alt="Open890RC on a phone, spectrum and keypad">
+</p>
+
+Server settings and the RX audio delay window:
+
+<p>
+  <img src="docs/server_settings.png" height="420" alt="Server settings: connection to the TS-890">
+  <img src="docs/audio_delay.png" height="420" alt="RX audio delay window">
 </p>
 
 > **Disclaimer.** Open890RC is an unofficial, independent project. It is not
