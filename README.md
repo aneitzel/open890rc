@@ -7,6 +7,8 @@ every browser in the network the full control.
 Go is a language optimized for high performance, networking and scaling. It runs
 happily on a Raspberry Pi next to the radio.
 
+![How Open890RC fits together: TS-890S, computer running the web server, browsers on laptop and phone](docs/overview.svg)
+
 ![Open890RC in the browser](docs/browser.png)
 
 <p>
