@@ -15,7 +15,7 @@ happily on a Raspberry Pi next to the radio.
   <img src="docs/iphone3.png" width="260" alt="Open890RC on a phone, spectrum and keypad">
 </p>
 
-Server settings, RX audio delay window and audio settings (all at the same scale):
+Examples for Config & Settings:
 
 <p>
   <img src="docs/server_settings.png" width="256" align="top" alt="Server settings: connection to the TS-890">
