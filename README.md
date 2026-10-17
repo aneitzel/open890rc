@@ -4,8 +4,8 @@ Web remote control for the Kenwood TS-890S. One Go program (a single binary, the
 web interface is built in) talks to the transceiver over the LAN (KNS) and gives
 every browser in the network the full control.
 
-Go is a language optimized for high performance, networking and scaling.
-It runs happily on a Raspberry Pi next to the radio.
+Go is a language optimized for high performance, networking and scaling. It runs
+happily on a Raspberry Pi next to the radio.
 
 ![Open890RC in the browser](docs/browser.png)
 
@@ -22,22 +22,17 @@ Server settings and the RX audio delay window:
   <img src="docs/audio_delay.png" width="234" align="top" alt="RX audio delay window">
 </p>
 
-> **Disclaimer.** Open890RC is an unofficial, independent project. It is not
-> made, endorsed or supported by Kenwood or JVCKENWOOD. Kenwood, TS-890 and all
-> other product names, logos and trademarks belong to their respective owners
-> and are used only to identify the equipment this software works with. Use it
-> at your own risk; no warranty of any kind.
-
 ## Features
 
 - Frequency (digit wheel, direct entry, click/drag on the waterfall), mode, bands, VFO A/B
 - AGC, ATT, preamp, antenna, NR, NB1/NB2 with their settings, beat canceller, RX/TX equalizer,
   speech processor, antenna tuner
+- AI based noise reduction based on RMnoise project
 - Audio filters: width/shift, hi/lo cut, APF (CW), live graph of the passband
 - S meter, power, SWR and ALC, as bars or as an analog needle instrument
 - Band scope: spectrum and waterfall with max hold, smoothing and level controls
 - RX audio in the browser (raw PCM or Opus), TX audio from the browser microphone
-- Several browsers at the same time, one radio session
+- Multiclient (several browsers at the same time sharing one radio session)
 - Optional SPE Expert 1.5K amplifier control over a serial port (on/off, standby/operate, power level, tune)
 - Login for users outside the local network, admin and PA rights per user
 - Interface languages: English, German, Italian, Spanish (chosen per browser)
@@ -106,6 +101,20 @@ GOOS=windows GOARCH=amd64 go build -o open890rc.exe ./cmd/open890rc
 GOOS=darwin  GOARCH=arm64 go build -o open890rc-mac ./cmd/open890rc
 ```
 
+## Use it as an app on the iPhone
+
+Open Open890RC from the Home Screen like a normal app, without the Safari address bar:
+
+1. Open `https://<address-of-the-computer>:8080` in **Safari** (not in another browser app).
+   Install and trust the HTTPS certificate first, see [HTTPS](#https).
+2. Tap the **Share** button (square with arrow) in the toolbar.
+3. Scroll down and choose **Add to Home Screen**.
+4. Keep the name or change it, switch **Open as Web App** on, then tap **Add**.
+5. Start Open890RC from the new icon on the Home Screen.
+
+Audio keeps playing when the screen is locked. Media buttons (headset, lock screen, CarPlay) are connected:
+play/pause, and the skip buttons tune the frequency up or down by 1 kHz.
+
 ## Users and access
 
 Browsers in the local network need no login and count as administrators.
@@ -120,6 +129,12 @@ inside the local network.
 Open890RC is released under the [MIT License](LICENSE). The licenses of the
 third-party components it uses are collected in [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES).
 The Digital-7 font is the only part with a non-commercial restriction.
+
+> **Disclaimer.** Open890RC is an unofficial, independent project. It is not
+> made, endorsed or supported by Kenwood or JVCKENWOOD. Kenwood, TS-890 and all
+> other product names, logos and trademarks belong to their respective owners
+> and are used only to identify the equipment this software works with. Use it
+> at your own risk; no warranty of any kind.
 
 ## Credits
 

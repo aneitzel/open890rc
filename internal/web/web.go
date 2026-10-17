@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log"
 	"net"
+	"mime"
 	"net/http"
 	"sort"
 	"strings"
@@ -24,6 +25,12 @@ import (
 	"open890rc/internal/hub"
 	"open890rc/internal/state"
 )
+
+func init() {
+	// The Home Screen web app manifest (static/manifest.webmanifest) would
+	// otherwise be served as text/plain.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
 
 //go:embed static
 var staticFiles embed.FS

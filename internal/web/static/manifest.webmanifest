@@ -1,0 +1,14 @@
+{
+  "name": "Open890RC",
+  "short_name": "Open890RC",
+  "description": "Web remote control for the Kenwood TS-890S",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080a0d",
+  "theme_color": "#080a0d",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
