@@ -8,10 +8,13 @@ woken up again remotely with a Wake-on-LAN magic packet.
 Go is a language optimized for high performance, networking and scaling. It runs
 happily on a Raspberry Pi next to the radio or your shack PC (Mac, Linux, Windows).
 
-We recommend connecting the TS-890 to the Pi/PC running the Open890RC server with
-a cable. This ensures the fastest UDP/VoIP audio and reliable Wake-on-LAN.
+Open890RC expands the TS-890 with new features like AI based noise cancellation and seamless
+integration of an SPE amplifier. Test it out!
 
 ![How Open890RC fits together: TS-890S, computer running the web server, browsers on laptop and phone](docs/overview.svg)
+
+We recommend connecting the TS-890 to the Pi/PC running the Open890RC server with
+a cable. This ensures the fastest UDP/VoIP audio and reliable Wake-on-LAN.
 
 ![Open890RC in the browser](docs/browser.png)
 
@@ -21,7 +24,7 @@ a cable. This ensures the fastest UDP/VoIP audio and reliable Wake-on-LAN.
   <img src="docs/iphone3.png" width="260" alt="Open890RC on a phone, spectrum and keypad">
 </p>
 
-Examples for Config & Settings:
+Examples for Server Settings & Browser config:
 
 <p>
   <img src="docs/server_settings.png" width="230" align="top" alt="Server settings: connection to the TS-890">
@@ -35,15 +38,15 @@ Examples for Config & Settings:
 - Frequency (digit wheel, direct entry, click/drag on the waterfall), mode, bands, VFO A/B
 - AGC, ATT, preamp, antenna, NR, NB1/NB2 with their settings, beat canceller, RX/TX equalizer,
   speech processor, antenna tuner
-- AI based noise reduction based on RNNoise project
+- AI based noise reduction based on RNNoise project (the AI NR step of the NR button)
 - Audio filters: width/shift, hi/lo cut, APF (CW), live graph of the passband
 - S meter, power, SWR and ALC, as bars or as an analog needle instrument
 - Band scope: spectrum and waterfall with max hold, smoothing and level controls
 - RX audio in the browser (raw PCM or Opus), TX audio from the browser microphone
 - Multiclient (several browsers at the same time sharing one radio session)
-- Optional SPE Expert 1.5K amplifier control over a serial port (on/off, standby/operate, power level, tune)
 - Login for users outside the local network, admin and PA rights per user
 - Interface languages: English, German, Italian, Spanish (chosen per browser)
+- Optional SPE Expert 1.5K amplifier control over a serial port (on/off, standby/operate, power level, tune)
 
 ## What you need
 
