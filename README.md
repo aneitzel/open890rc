@@ -15,11 +15,12 @@ happily on a Raspberry Pi next to the radio.
   <img src="docs/iphone3.png" width="260" alt="Open890RC on a phone, spectrum and keypad">
 </p>
 
-Server settings and the RX audio delay window:
+Server settings, RX audio delay window and audio settings (all at the same scale):
 
 <p>
-  <img src="docs/server_settings.png" width="320" align="top" alt="Server settings: connection to the TS-890">
-  <img src="docs/audio_delay.png" width="234" align="top" alt="RX audio delay window">
+  <img src="docs/server_settings.png" width="256" align="top" alt="Server settings: connection to the TS-890">
+  <img src="docs/audio_delay.png" width="187" align="top" alt="RX audio delay window">
+  <img src="docs/voip_settings.png" width="307" align="top" alt="Settings: RX audio">
 </p>
 
 ## Features
@@ -27,7 +28,7 @@ Server settings and the RX audio delay window:
 - Frequency (digit wheel, direct entry, click/drag on the waterfall), mode, bands, VFO A/B
 - AGC, ATT, preamp, antenna, NR, NB1/NB2 with their settings, beat canceller, RX/TX equalizer,
   speech processor, antenna tuner
-- AI based noise reduction based on RMnoise project
+- AI based noise reduction based on RNNoise project
 - Audio filters: width/shift, hi/lo cut, APF (CW), live graph of the passband
 - S meter, power, SWR and ALC, as bars or as an analog needle instrument
 - Band scope: spectrum and waterfall with max hold, smoothing and level controls
