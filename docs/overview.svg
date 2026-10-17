@@ -39,17 +39,22 @@
   <rect class="card" x="470" y="110" width="430" height="290" rx="20" style="stroke:#0f8a86;stroke-width:3"/>
   <text x="685" y="148" text-anchor="middle" class="title">Open890RC webserver</text>
 
-  <!-- one PC symbol -->
-  <rect class="ink" x="625" y="170" width="120" height="78" rx="7"/>
-  <rect x="633" y="178" width="104" height="62" rx="3" fill="#e3f1f6"/>
-  <path class="ink" d="M670 248 H700 L706 266 H664 Z" style="fill:#e6ecf3"/>
-  <rect class="ink" x="650" y="266" width="70" height="7" rx="3.5" style="fill:#e6ecf3"/>
+  <!-- Raspberry Pi symbol -->
+  <rect x="617" y="170" width="136" height="88" rx="9" fill="#fff6e8" stroke="#c76a00" stroke-width="2.8"/>
+  <g fill="#ffffff" stroke="#c76a00" stroke-width="1.6"><circle cx="627" cy="180" r="3.4"/><circle cx="743" cy="180" r="3.4"/><circle cx="627" cy="248" r="3.4"/><circle cx="743" cy="248" r="3.4"/></g>
+  <rect x="640" y="177" width="86" height="12" rx="2" fill="#2b3a4c"/>
+  <g fill="#d9a441"><circle cx="646" cy="181.5" r="1.6"/><circle cx="654" cy="181.5" r="1.6"/><circle cx="662" cy="181.5" r="1.6"/><circle cx="670" cy="181.5" r="1.6"/><circle cx="678" cy="181.5" r="1.6"/><circle cx="686" cy="181.5" r="1.6"/><circle cx="694" cy="181.5" r="1.6"/><circle cx="702" cy="181.5" r="1.6"/><circle cx="710" cy="181.5" r="1.6"/><circle cx="718" cy="181.5" r="1.6"/>
+  <circle cx="646" cy="185" r="1.6"/><circle cx="654" cy="185" r="1.6"/><circle cx="662" cy="185" r="1.6"/><circle cx="670" cy="185" r="1.6"/><circle cx="678" cy="185" r="1.6"/><circle cx="686" cy="185" r="1.6"/><circle cx="694" cy="185" r="1.6"/><circle cx="702" cy="185" r="1.6"/><circle cx="710" cy="185" r="1.6"/><circle cx="718" cy="185" r="1.6"/></g>
+  <rect x="640" y="203" width="38" height="34" rx="4" fill="#e6ecf3" stroke="#2b3a4c" stroke-width="2"/>
+  <rect x="686" y="208" width="22" height="24" rx="3" fill="#e6ecf3" stroke="#2b3a4c" stroke-width="2"/>
+  <rect x="722" y="197" width="36" height="26" rx="3" fill="#e6ecf3" stroke="#2b3a4c" stroke-width="2"/>
+  <rect x="722" y="228" width="36" height="22" rx="3" fill="#e6ecf3" stroke="#2b3a4c" stroke-width="2"/>
   <text x="685" y="298" text-anchor="middle" class="small" style="font-size:16px">PC, Mini PC or <tspan style="font-weight:700;fill:#a85a00">simply a Raspberry Pi</tspan></text>
 
   <!-- what runs there -->
   <rect x="490" y="326" width="390" height="56" rx="14" fill="#e4f4f2" stroke="#9bd3cf" stroke-width="1.5"/>
   <text x="685" y="352" text-anchor="middle" class="tag" style="fill:#0b6f6b;font-size:18px">open890rc</text>
-  <text x="685" y="372" text-anchor="middle" class="small">one program, nothing to install</text>
+  <text x="685" y="372" text-anchor="middle" class="small">providing a central web interface to all clients</text>
 
   <!-- ===== serial link + amplifier ===== -->
   <line class="line" x1="685" y1="402" x2="685" y2="450" stroke="#6b7788" stroke-width="4" marker-start="url(#aG)" marker-end="url(#aG)"/>

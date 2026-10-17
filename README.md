@@ -2,7 +2,8 @@
 
 Web remote control for the Kenwood TS-890S. One Go program (a single binary, the
 web interface is built in) talks to the transceiver over the LAN (KNS) and gives
-every browser in the network the full control.
+every browser in the network the full control. TS890 can be powered OFF and will
+wake up via WakeOnLan magic packet if remote used.
 
 Go is a language optimized for high performance, networking and scaling. It runs
 happily on a Raspberry Pi next to the radio.
@@ -27,6 +28,7 @@ Examples for Config & Settings:
 
 ## Features
 
+- TS890 power OFF/ON (via WakeOnLAN) 
 - Frequency (digit wheel, direct entry, click/drag on the waterfall), mode, bands, VFO A/B
 - AGC, ATT, preamp, antenna, NR, NB1/NB2 with their settings, beat canceller, RX/TX equalizer,
   speech processor, antenna tuner
