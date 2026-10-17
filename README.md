@@ -1,10 +1,10 @@
 # Open890RC
 
-Web remote control for the Kenwood TS-890S. One small Go program (a single
-binary, the web interface is built in) talks to the transceiver over the LAN
-(KNS) and gives every browser in the network the full control surface: frequency,
-mode, filters, meters, spectrum and waterfall, RX and TX audio. It runs happily
-on a Raspberry Pi next to the radio.
+Web remote control for the Kenwood TS-890S. One Go program (a single binary, the
+web interface is built in) talks to the transceiver over the LAN (KNS) and gives
+every browser in the network the full control.
+
+It runs happily on a Raspberry Pi next to the radio.
 
 ![Open890RC in the browser](docs/browser.png)
 
@@ -22,11 +22,12 @@ on a Raspberry Pi next to the radio.
 ## Features
 
 - Frequency (digit wheel, direct entry, click/drag on the waterfall), mode, bands, VFO A/B
-- AGC, ATT, preamp, antenna, NR, NB1/NB2 with their settings, beat canceller, RX/TX equalizer, speech processor, antenna tuner
+- AGC, ATT, preamp, antenna, NR, NB1/NB2 with their settings, beat canceller, RX/TX equalizer,
+  speech processor, antenna tuner
 - Audio filters: width/shift, hi/lo cut, APF (CW), live graph of the passband
 - S meter, power, SWR and ALC, as bars or as an analog needle instrument
 - Band scope: spectrum and waterfall with max hold, smoothing and level controls
-- RX audio in the browser (raw PCM or Opus), TX audio from the browser microphone, recording
+- RX audio in the browser (raw PCM or Opus), TX audio from the browser microphone
 - Several browsers at the same time, one radio session
 - Optional SPE Expert 1.5K amplifier control over a serial port (on/off, standby/operate, power level, tune)
 - Login for users outside the local network, admin and PA rights per user
@@ -37,7 +38,7 @@ on a Raspberry Pi next to the radio.
 - A TS-890S with KNS enabled and a KNS account set up on the radio.
   If the account is a KNS *administrator*, tick "KNS Admin" in the settings,
   otherwise the login is refused.
-- A computer that stays on in the same network (a Raspberry Pi is ideal).
+- A computer that stays on in the same network (a Raspberry Pi4 is ideal).
   No other software is needed.
 
 ## Quick start
@@ -127,4 +128,4 @@ The Digital-7 font is the only part with a non-commercial restriction.
 - The font *Digital-7* by Sizenko Alexander ([styleseven.com](http://www.styleseven.com/)),
   free for non-commercial use, for the frequency display.
 
-73 de HB9INA
+73 de André HB9INA
