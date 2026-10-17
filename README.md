@@ -18,8 +18,8 @@ It runs happily on a Raspberry Pi next to the radio.
 Server settings and the RX audio delay window:
 
 <p>
-  <img src="docs/server_settings.png" height="420" alt="Server settings: connection to the TS-890">
-  <img src="docs/audio_delay.png" height="420" alt="RX audio delay window">
+  <img src="docs/server_settings.png" width="320" align="top" alt="Server settings: connection to the TS-890">
+  <img src="docs/audio_delay.png" width="234" align="top" alt="RX audio delay window">
 </p>
 
 > **Disclaimer.** Open890RC is an unofficial, independent project. It is not
