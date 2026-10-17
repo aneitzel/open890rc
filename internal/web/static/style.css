@@ -1,0 +1,3928 @@
+/* Digital-7 (mono) by Sizenko Alexander / style-7.com — freeware, home use, credit given here. */
+@font-face {
+  font-family: "Digital-7 Mono";
+  src: url("fonts/digital-7-mono.ttf") format("truetype");
+}
+
+:root {
+  /* Hardware-key look (after the radio's own CLR key): light top edge fading to
+     dark grey, near-black outline, light lettering. */
+  --key-face: linear-gradient(#6a7174 0%, #50565a 32%, #3d4145 70%, #2e3336 100%);
+  --key-text: #c9ccce;
+  color-scheme: dark;
+  --bg: #080a0d;
+  --panel: #101419;
+  --accent: #ff9d00;
+  --text-dim: #7a8590;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* No double-tap zoom on iOS; pinch-zoom stays available. */
+html, body, button, input, label {
+  touch-action: manipulation;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  font-family: system-ui, sans-serif;
+  color: var(--text-dim);
+}
+
+main {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 2.5rem 1rem;
+  text-align: center;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+/* Panel only as tall as its content (no empty area under the waterfall): the
+   bottom padding is smaller than the top one, and on a phone the panel sticks
+   to the top instead of being stretched/centred over the viewport height. */
+main {
+  padding-bottom: 0;
+}
+@media (max-width: 480px) {
+  body {
+    align-items: flex-start;
+  }
+}
+
+.top-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  min-height: 1.4rem;
+}
+
+/* Manual PTT: a bordered "TX" indicator lamp doubling as a button, styled
+   after open890's own TX indicator (dark until active, red border/glow with
+   red text once transmitting). */
+/* AF/SQL/RFG sliders on the left, one big TX button spanning the three rows.
+   Phone only: margin-top pushes the whole slider block down a bit (previously
+   just the inherited 0.5rem .controls flex gap, 8px, which the 2026-10-12
+   "damit zwischen wasserfall und den buttons gleich viel platz ist" request
+   found too lopsided against the ~74px below down to the waterfall). Went
+   4rem (matched that gap almost exactly, 72px vs ~73.6px) → judged too big
+   → 2rem → still too big → 1rem; each step a plain halving per live
+   feedback rather than re-deriving a target from the space below. Reset to
+   0 on desktop (its own rule below already centers this block vertically a
+   different way). */
+.slider-tx-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.75rem;
+  align-items: stretch;
+  margin-top: 1rem;
+}
+/* The column wrapper only groups the markup; its rows are grid items. */
+.slider-col {
+  display: contents;
+}
+.slider-col .ctrl-row {
+  grid-column: 1;
+}
+/* TX spans the AF/SQL/RFG rows only; PWR sits below it. */
+.slider-tx-block .tx-button {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  margin-top: 0.45rem; /* top edge down to about the AF slider's centre line */
+  width: 4.2rem;
+  font-size: 1.4rem;
+  padding: 0;
+}
+
+.tx-button {
+  background: var(--bg);
+  border: 2px solid #4a2020;
+  border-radius: 6px;
+  color: #7a4040;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.7rem;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.tx-button.active {
+  border-color: #ff2020;
+  color: #ff3030;
+  box-shadow: 0 0 8px 1px rgba(255, 0, 0, 0.7), inset 0 0 6px rgba(255, 0, 0, 0.3);
+}
+
+/* TX button, audio filter info (BW/Shift), and the busy/RX indicator LED
+   share one row now instead of the TX button/LED having their own row
+   above the frequency display: busy LED on the left, TX on the right,
+   filter info in between. Both .filter-info-row and .ctrl-row are direct
+   children of the same flex column, so they start at the same x — no
+   margin needed for the busy LED to land over the AT LABEL (not the AT
+   button itself, which is further right past the 2.5rem label + 0.75rem
+   gap; the operator wants it over the label, to the button's left). TX
+   mirrors that flush-right position for symmetry. */
+/* Grid instead of flex space-between: flex anchored the busy LED/TX flush
+   to the row's own edges, which sat right at the panel's edge and looked
+   too far out — a 3-column grid (1fr auto 1fr) gives each side its own
+   region to center within, so the busy LED sits centered between the left
+   edge and the filter info text (TX mirrors it on the right), instead of
+   flush against either edge. */
+.filter-info-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  margin-top: 0.25rem;
+  padding: 0 1rem; /* busy LED and TX a bit further inwards */
+}
+
+.filter-info-row > * {
+  justify-self: center;
+}
+.filter-info-row > .busy-indicator {
+  justify-self: start;
+}
+
+/* Busy/TX indicator, open890 style: an LED bar that's dark when idle, green
+   when the squelch opens (RX busy), and red while transmitting. Faintly
+   tinted (not fully transparent) when idle so the LED shape itself stays
+   visible as an "unlit" indicator instead of disappearing into the panel.
+   Half the original width — it sat alone in its own row up top before, but
+   now shares the tighter space between the SWR meter and the frequency
+   digits. */
+.busy-indicator {
+  width: 2.75rem;
+  height: 0.5rem;
+  border-radius: 4px;
+  background: rgba(157, 255, 0, 0.12);
+  transition: background-color 0.1s;
+}
+
+.busy-indicator.busy {
+  /* dimmer than the original rgb(157,255,0) — that read as too glaring/neon;
+     a little brighter again with a soft glow (Nutzer-Wunsch 2026-10-11) */
+  background: rgb(128, 218, 72);
+  box-shadow: 0 0 6px rgba(128, 218, 72, 0.7);
+}
+
+.busy-indicator.tx {
+  background: rgb(240, 28, 28);
+  box-shadow: 0 0 7px rgba(240, 28, 28, 0.8);
+}
+
+/* Phone default: the desktop duplicate (see the 800px+ media query) stays
+   out of the DOM flow entirely. Without this it was an unstyled visible div
+   inserted as a 4th item into .status-row's 3-explicit-column phone grid,
+   wrapping .status-row-right (PCM/Mobil/Reset) onto a second row — a real
+   regression found live, 2026-10-08. */
+.busy-indicator-desktop {
+  display: none;
+}
+
+/* Same deal: phone uses the original #status-info only (absolute-positioned
+   over the meter, see .status-message's own rule) — this echo stays out of
+   the DOM flow entirely until the 800px+ media query turns it on.
+   ".status-message.status-message-desktop", not bare ".status-message-
+   desktop": same source-order trap as .brand-logo/.brand-row elsewhere in
+   this file — the shared base .status-message rule (further down, also
+   display:flex) has equal specificity and, coming later, won on phone,
+   showing this echo doubled over the real #status-info (Nutzer-Report,
+   2026-10-09, screenshot: the message visible both under the status row
+   AND over the meter). The extra class qualifier (still matches — this
+   element always carries both classes) outranks it regardless of order. */
+.status-message.status-message-desktop {
+  display: none;
+}
+
+.audio-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--key-face);
+  border: none;
+  color: var(--key-text);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  /* Explicit instead of left to content: a button that shares its .btn-group
+     with a taller sibling (e.g. #audio-button next to #audio-settings-button's
+     16px gear-fill icon) gets stretched to 26px by the flex row's default
+     align-items (normal = stretch); one sitting ALONE in its own .btn-group
+     (e.g. #record-button) has no taller sibling to stretch against and used
+     to settle at its own smaller content height (24px) instead — the two
+     looked visibly different sizes for a reason that had nothing to do with
+     either button's own design (2026-10-14, Nutzer-Frage "ist der REC Button
+     kleiner als TON?"). 26px matches what every grouped .audio-btn already
+     rendered at before this rule existed. */
+  height: 26px;
+}
+
+.reset-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.reset-icon path,
+.reset-icon polyline {
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.audio-reset-row {
+  display: flex;
+  align-items: center;
+  font-size: 0.75rem; /* same as the other overlay labels */
+  color: var(--text-dim);
+  margin: 0 0 0.75rem;
+}
+/* VOIP auto sync (2026-10-16): right of the VoIP reset button; wraps below it on a narrow panel. */
+.audio-reset-row {
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+}
+.audio-sync {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+.audio-sync .overlay-checkbox {
+  margin: 0;
+}
+.audio-reset-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+/* Codec select on its own row below (Nutzer-Wunsch, 2026-10-16), not
+   sharing the reset row any more — a prior attempt put it in that same row
+   (first flush right, then the whole row centered to keep both groups
+   together), but it kept reading as if it belonged to the reset button.
+   "Codec:" label kept inline rather than stacked above (.overlay-panel
+   label's usual style) since the select doesn't need the full panel width. */
+.audio-codec-row {
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin: 1rem 0 0.75rem;
+}
+
+.audio-btn:hover {
+  filter: brightness(1.15);
+}
+
+/* REC while RX audio is off (2026-10-12): recording silence makes no sense. */
+.audio-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
+}
+.audio-btn:disabled:hover {
+  filter: none;
+}
+
+.audio-btn.active {
+  background: var(--accent);
+  color: var(--panel);
+}
+
+#audio-button.active,
+.audio-btn.power-on {
+  background: rgb(110, 190, 60); /* same green as the busy indicator */
+  color: var(--panel);
+}
+
+.audio-btn.power-off {
+  background: #7a2820;
+  color: #e8a49c;
+  animation: power-glimmer 2.4s ease-in-out infinite;
+}
+
+/* Gently pulsing and glowing a bit more (Nutzer-Wunsch 2026-10-11). */
+@keyframes power-glimmer {
+  0%,
+  100% {
+    box-shadow: 0 0 4px rgba(216, 58, 46, 0.45);
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 14px 2px rgba(240, 70, 55, 0.95);
+    transform: scale(1.07);
+    filter: brightness(1.25);
+  }
+}
+
+
+.audio-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.audio-icon polygon {
+  fill: currentColor;
+}
+
+.audio-icon .wave {
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+}
+
+
+.gear-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+.gear-icon circle,
+.gear-icon path {
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+/* Solid cog (toothed wheel with a hole) for the settings button. */
+.gear-icon.gear-fill {
+  width: 16px;
+  height: 16px;
+}
+.gear-icon.gear-fill path {
+  fill: currentColor;
+  stroke: none;
+  fill-rule: evenodd;
+}
+
+
+.gear-icon-label {
+  margin-left: 0.4em;
+  vertical-align: middle;
+}
+
+/* Record button (2026-10-12 user request): dim red dot idle, bright and
+   blinking while recording — the label swaps from "REC" to the running
+   mm:ss in app.js, this only handles the dot's own look. Same 14px as
+   .audio-icon/.gear-icon (2026-10-14: was 12px, which made the whole
+   button render 2px shorter than its .audio-btn siblings — REC was the
+   only one with a smaller icon, not an intentional size difference). */
+.record-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.record-icon circle {
+  fill: #7a2820;
+}
+.audio-btn.recording .record-icon circle {
+  fill: #ff3b30;
+  animation: record-blink 1s steps(1, end) infinite;
+}
+@keyframes record-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.25;
+  }
+}
+.audio-btn.recording #record-label {
+  /* Fixed-width digits so the button doesn't change width every second as
+     the seconds count up (mm:ss, e.g. "1:05" vs "12:59"). */
+  font-variant-numeric: tabular-nums;
+  min-width: 2.6em;
+  display: inline-block;
+  text-align: left;
+}
+
+/* kb/s and ms readouts sit in the top-center of the status row with fixed
+   widths, so their position doesn't jump as the values change. */
+.status-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  white-space: nowrap;
+  justify-self: center;
+  min-width: 0;
+  font-size: 0.75rem;
+}
+
+.audio-bitrate,
+.audio-latency {
+  color: var(--text-dim);
+  font-size: inherit;
+  font-family: inherit;
+  text-align: right;
+}
+
+.audio-bitrate {
+  width: 3.1rem;
+  /* A button like .audio-latency: click for the per-source breakdown. */
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.audio-bitrate:empty {
+  cursor: default;
+  text-decoration: none;
+}
+
+.audio-latency {
+  width: 2.7rem;
+  text-align: right;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.audio-latency:empty {
+  cursor: default;
+  text-decoration: none;
+}
+
+.latency-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-bottom: 0.8rem;
+}
+
+.latency-table td {
+  padding: 0.2rem 0;
+}
+
+.latency-table td:last-child {
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.latency-table .latency-sum td {
+  border-top: 1px solid #444;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+
+.waterfall-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.scope-level-slider {
+  max-width: 110px;
+}
+
+.scope-auto-label {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* Max Hold: desktop only (2026-10-12 user request, "Desktop: Spectrum
+   Fenster max hold Funktion"). */
+.max-hold-group {
+  display: none;
+}
+
+/* Horizontal/vertical smoothing strength (2026-10-14 follow-up to the
+   Smooth checkbox: "regelbar machen... zwei kleine Regler" — a dropdown
+   turned out to fit the already-tight desktop toolbar row better than two
+   more drag sliders, same reasoning as the existing scope-span-select
+   right next to it). Desktop only, same convention as Max Hold above — on
+   phone there's no room and the plain on/off Smooth checkbox is enough. */
+.scope-smooth-tuning {
+  display: none;
+}
+.smooth-tune-select {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+.smooth-tune-select select {
+  padding: 0.2rem 0.3rem;
+  font-size: 0.7rem;
+}
+
+/* Disabled while Auto drives floor/ceiling itself — dimmed to signal the
+   handles are only a readout right now, not draggable. */
+
+.scope-level-slider input[type="range"]:disabled::-webkit-slider-thumb {
+  filter: grayscale(1) brightness(0.6);
+}
+
+
+.scope-level-slider input[type="range"]:disabled::-moz-range-thumb {
+  filter: grayscale(1) brightness(0.6);
+}
+
+.scope-span-select {
+  background: #333;
+  border: none;
+  color: var(--text-dim);
+  padding: 0.25rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Backing resolution matches BandScopeLineBytes (640, one bin per pixel
+   column) regardless of displayed size — the browser downscales, which
+   looks fine for this and keeps the bin-to-pixel mapping exact rather than
+   needing our own resampling. Heights are fixed CSS sizes independent of
+   that horizontal scaling. Three stacked canvases: the instantaneous
+   spectrum trace on top (redrawn each line, not scrolling), the scrolling
+   waterfall right below it (same data, same x-axis), and a transparent
+   overlay spanning BOTH for the VFO marker line and click-to-tune — kept
+   separate from the other two so drawing the marker/handling clicks never
+   interferes with either one's own drawing. */
+.waterfall-wrap {
+  position: relative;
+  margin-top: 0.4rem;
+  /* border-radius alone doesn't clip a canvas's own drawn bitmap content
+     (only its background/border), so without this the waterfall's square
+     pixel data would bleed past the rounded corners below. */
+  overflow: hidden;
+  border-radius: 14px;
+}
+
+.spectrum-canvas,
+.waterfall-canvas,
+.waterfall-overlay {
+  display: block;
+  width: 100%;
+}
+
+.spectrum-canvas,
+.waterfall-canvas {
+  background: #000;
+}
+
+.spectrum-canvas {
+  height: 70px;
+}
+
+.waterfall-canvas {
+  /* Phone only — shortened on 2026-10-12 user request ("kann man wasserfall
+     in der mobilansicht kürzen"); desktop keeps its own taller 266px
+     override further down (untouched). Backing resolution (the canvas'
+     width/height HTML attributes, still 176) is left alone on purpose: the
+     draw code already scales against the actual rendered CSS height via
+     getBoundingClientRect, so this only changes how much of it is visible,
+     not pixel density. */
+  height: 128px;
+}
+
+.waterfall-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Phone only (see .waterfall-canvas above): 70 (spectrum) + 128. */
+  height: 198px;
+  cursor: pointer;
+  /* Horizontal drags move the VFO line; vertical swipes still scroll the page. */
+  touch-action: pan-y;
+}
+
+/* Shown instead of the canvases while the scope rate cycle button is set to
+   "Off" — the WS feed is closed at that point (see waterfall.js), this is
+   just the empty-state hint. */
+.waterfall-off-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  pointer-events: none;
+}
+
+/* Same trap as .overlay-panel label[hidden] elsewhere in this file: the
+   `[hidden]` UA rule and this class rule have equal specificity, so without
+   this the class's `display:flex` (being an author rule vs. a user-agent
+   default) wins and the hint shows even while `hidden` is set. */
+.waterfall-off-hint[hidden] {
+  display: none;
+}
+
+.s-meter-svg {
+  margin-bottom: 2px;
+}
+
+/* No longer a tap target (removed on operator request, 2026-10-08 — see
+   app.js's own comment on meterTxToggle: the TX button alone is enough).
+   The red glow while transmitting (mirroring .tx-button.active) was removed
+   too on operator request, 2026-10-09 — "wird nicht benötigt"; .active is
+   still toggled on this element (app.js), just has nothing to show for it
+   now, in case a future use for it comes up. */
+.meter-tx-toggle {
+  border-radius: 6px;
+}
+
+.swr-meter-svg {
+  margin-bottom: 1rem;
+}
+
+.freq {
+  font-family: "Digital-7 Mono", monospace;
+  /* Fixed size per operator request (2026-09-28) rather than clamp()'d —
+     see .ctrl-row/.status-row flex-wrap elsewhere in this file for the fix
+     that keeps main from overflowing the viewport at a fixed size in the
+     first place, and main{} above for the reduced side padding that made
+     more room for this to grow into. Bumped from 4.6rem to 4.8rem
+     (2026-09-28) — measured directly in a local 375px-wide browser test
+     (iPhone SE/8, this project's own minimum target): 4.6rem is the exact
+     safe ceiling there (main lands precisely at the viewport width, zero
+     overflow), 4.8rem overflows it by ~6px. Same tradeoff the operator
+     already explicitly accepted once before for the previous 4.6rem fixed
+     value — kept at 4.8rem on the assumption the same call applies again,
+     but flagged back to them since it's a real (if small) regression of
+     the "grey area too wide" bug on the narrowest target device. */
+  font-size: 4.8rem;
+  /* LCD look: slightly cool off-white instead of pure white, only a faint
+     glow (a lit LCD doesn't radiate), and unlit "ghost" segments behind every
+     digit (see .digit::before). */
+  color: #dbe6ec;
+  text-shadow: 0 0 5px rgba(170, 205, 228, 0.35);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.freq.radio-off {
+  color: var(--text-dim);
+  text-shadow: none;
+}
+.freq.radio-off .digit {
+  pointer-events: none;
+}
+
+.freq .digit {
+  display: inline-block;
+  cursor: ns-resize;
+  border-radius: 4px;
+  transition: background 0.1s;
+  position: relative;
+  z-index: 0; /* own stacking context: the ghost segments sit behind the digit */
+}
+
+/* Unlit segments of an LCD digit ("8" in a 7-segment font = all segments). */
+.freq .digit::before {
+  content: "8";
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: -1;
+  color: rgba(165, 195, 215, 0.075);
+  text-shadow: none;
+  pointer-events: none;
+}
+
+.freq .digit:hover {
+  background: rgba(190, 215, 235, 0.1);
+}
+
+/* Desktop-only small/unobtrusive readout of the inactive VFO's frequency,
+   between the main digits and the band/mode/filter dropdowns (2026-10-12
+   user request) — hidden on phone like the other desktop-only VFO bits
+   (.vfo-ab-desktop etc.), shown via the matching rule in the desktop media
+   query below. */
+.vfo-other-freq {
+  display: none;
+}
+
+.selectors-row {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+/* The audio (DSP) passband's width/shift — a different, continuously
+   adjustable filter from the roofing filter (FIL 1/2/3) selected above,
+   resolved from a mode-dependent lookup table since the radio only reports
+   a raw passband index, never a direct Hz value. */
+.audio-filter-info {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  min-height: 1em;
+}
+
+.band-select,
+.mode-select,
+.filter-select {
+  position: relative;
+  display: inline-block;
+}
+
+.mode-button {
+  font: inherit;
+  font-size: 1.5rem;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.1rem 1.3rem 0.1rem 0.3rem;
+  border-radius: 4px;
+  position: relative;
+}
+
+.mode-button::after {
+  content: "";
+  position: absolute;
+  right: 0.3rem;
+  top: 50%;
+  translate: 0 -25%;
+  border: 0.3rem solid transparent;
+  border-top-color: var(--accent);
+}
+
+.mode-button:hover {
+  background: rgba(255, 157, 0, 0.15);
+}
+
+.mode-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  min-width: 100%;
+  white-space: nowrap;
+}
+
+.mode-menu[hidden] {
+  display: none;
+}
+
+.mode-menu li {
+  padding: 0.35rem 1rem;
+  font-size: 1rem;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mode-menu li:hover {
+  background: rgba(255, 157, 0, 0.15);
+  color: var(--accent);
+}
+
+.mode-menu li.current {
+  color: var(--accent);
+}
+
+/* Meter colors match open890's S/SWR meter (same protocol, same raw 0-70
+   needle scale), so the two UIs read the same way at a glance. */
+.meter-svg {
+  width: 100%;
+  height: 35px;
+  display: block;
+}
+
+/* Analog needle-gauge replacement for the S/PO bar above, desktop-only (see
+   the 800px+ media query) — hidden here, on phone the bar stays as it was
+   (Nutzer-Wunsch, 2026-10-08: "kann man in der desktopansicht das smeter
+   anders darstellen... analoges", reference screenshot of a classic
+   ham-radio multi-scale meter face). SWR stays the digital bar below,
+   unchanged — not reskinned. Mostly thin gold tracks/ticks, same as the
+   reference's own S/PO/IC/SWR/etc. rows: only the S scale's +20/+40/+60dB
+   zone gets the thicker gold-to-red gradient band the reference has there
+   too (first version used a thick coloured band for BOTH zones, which the
+   reference doesn't — "sieht gar nicht nach der Vorlage aus"). */
+.meter-analog {
+  display: none;
+}
+/* PWR/SWR meter-mode buttons (desktop only, see the min-width block): dark
+   recessed key with a slit that glows amber when active. */
+.meter-mode-row {
+  display: none;
+}
+.meter-mode-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 3.1rem;
+  box-sizing: border-box;
+  gap: 0.22rem;
+  padding: 0.24rem 0 0.22rem;
+  background: linear-gradient(#2a2a2d, #19191b);
+  border: 1px solid #3a3a3e;
+  border-radius: 4px;
+  color: #bdb8a4;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.meter-mode-btn .mm-slit {
+  /* Small round LED instead of the elongated slit (2026-10-12 user request:
+     "bei diesen Tasten die LED drauf klein und rund"). */
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b3b3e;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+.meter-mode-btn.active .mm-slit {
+  background: #ffb020;
+  box-shadow: 0 0 6px #ffb020;
+}
+.meter-mode-btn.active {
+  color: #ffd27a;
+}
+
+/* Static dial rebuilt from open890rc_smeter.bmp (colours sampled from it). */
+.m-yellow .ln {
+  fill: none;
+  stroke: #fcf30a;
+  stroke-width: 3.6;
+}
+.m-yellow .t {
+  fill: none;
+  stroke: #fcf30a;
+  stroke-width: 2.2;
+}
+.m-yellow .fill {
+  fill: #fcf30a;
+}
+.m-yellow .alc {
+  fill: #f0c010;
+}
+.m-orange .band {
+  fill: none;
+  stroke: url(#analog-band-gradient);
+  stroke-width: 10.5;
+}
+.m-orange .t {
+  fill: none;
+  stroke: #ff6a10;
+  stroke-width: 2.4;
+}
+.m-text .lb,
+.m-text .lo {
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 700;
+}
+.m-text .lb {
+  fill: #fcf30a;
+}
+.m-text .lo {
+  fill: #ff7010;
+  font-size: 19.5px;
+}
+.m-text .sS {
+  font-size: 30px;
+}
+.m-text .sd {
+  font-size: 16.5px;
+}
+.m-text .sn {
+  font-size: 16px;
+}
+.m-text .sl {
+  font-size: 19.5px;
+}
+.analog-alc-led {
+  fill: #3a1515;
+  stroke: #1c0a0a;
+  stroke-width: 0.8px;
+}
+.analog-alc-led.on {
+  fill: #ff2b1c;
+  filter: drop-shadow(0 0 3px #ff2b1c);
+}
+.analog-needle-shadow {
+  stroke: #000;
+  stroke-opacity: 0.75;
+  stroke-width: 4.2px;
+  stroke-linecap: round;
+}
+.analog-needle {
+  stroke: #ff7a1a;
+  stroke-width: 4.2px; /* a little finer than the previous 5.2px (2026-10-12 user request); viewBox units: ~0.44 screen px each at the 130px gauge height */
+  stroke-linecap: round;
+  /* No CSS transition here, deliberately — the spring-damper simulation in
+     app.js (animateAnalogNeedle) already recomputes this line's endpoint
+     every animation frame with real physics; a CSS easing on top would just
+     blur/delay that precise motion, including the overshoot. */
+}
+.analog-dbm {
+  font-size: 26px;
+  font-family: sans-serif;
+  font-weight: 600;
+  fill: #d8c9a0;
+}
+.meter-bg {
+  fill: #5a5a5a;
+}
+
+/* S-meter peak-hold marker: a thin line at the highest recent reading,
+   held for a moment (see updateSMeterPeak in app.js) while the bar itself
+   keeps tracking the live value underneath. Same colors as the meter's own
+   fill (cyan below S9, red above) so it reads as part of the same bar. */
+.meter-peak {
+  fill: #00cdee;
+}
+
+.meter-peak.high {
+  fill: #cc0000;
+}
+
+.meter-fill.low {
+  fill: #00cdee;
+}
+
+.meter-fill.high {
+  fill: #cc0000;
+}
+
+.leg-line {
+  stroke-width: 1px;
+}
+
+.leg-line.low {
+  stroke: white;
+}
+
+.leg-line.high {
+  stroke: red;
+}
+
+.pip {
+  stroke-width: 1px;
+}
+
+.pip.low {
+  stroke: white;
+}
+
+.pip.high {
+  stroke: red;
+}
+
+.leg-text {
+  font-size: 9px;
+  font-family: sans-serif;
+  fill: white;
+}
+
+.leg-text.low {
+  fill: white;
+}
+
+.leg-text.high {
+  fill: red;
+}
+
+.leg-text.inf {
+  font-size: 16px;
+  font-family: monospace;
+}
+
+.controls {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Purely structural wrapper around ctrl-row-1+ctrl-row-2 (desktop combines
+   them into one flowing button row — see the 800px+ media query); on phone
+   it just needs to reproduce .controls' own column/gap so inserting this
+   extra DOM level changes nothing visually. */
+.ctrl-row-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.ctrl-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  row-gap: 0.4rem;
+}
+
+/* AT/TUNE/AGC/ANT/ATT and NR/NB/BC/PRE rows only (not the AF/SQL/RFG/PWR/
+   PROC slider rows, which need their slider left-to-right, not centered) —
+   Nutzer-Wunsch, 2026-09-28: mittig ausrichten, etwas mehr Luft zwischen
+   den Buttons. */
+.ctrl-row-buttons {
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.ctrl-label {
+  width: 2.5rem;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+
+.btn-group {
+  display: flex;
+  gap: 4px;
+  user-select: none;
+}
+
+/* A .btn-group that only exists on desktop (e.g. TX Monitor, 2026-10-14
+   Nutzer-Wunsch "desktop: ... button") — same hide/show convention as
+   .rit-knob-wrap, overridden back to flex in the desktop media query. */
+.desktop-only-group {
+  display: none;
+}
+
+.btn-group button {
+  background: var(--key-face);
+  border: none;
+  color: var(--key-text);
+  padding: 0.25rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.btn-group button:hover {
+  filter: brightness(1.15);
+}
+
+.btn-group button.active {
+  background: var(--accent);
+  color: var(--panel);
+}
+
+/* PA power and OPERATE light green like the radio power button. */
+#pa-power-button.active,
+#pa-oper-button.active {
+  background: rgb(110, 190, 60);
+  color: var(--panel);
+}
+
+
+/* Both PROC states render the same "PROC" text (see procCycle in app.js), so
+   this is redundant for width stability by itself — kept anyway as an
+   explicit guarantee (Nutzer-Wunsch, 2026-09-29: the gap to the slider next
+   to it shifted on click) against any future label change or sub-pixel font
+   rendering difference doing the same thing again. */
+#proc-button {
+  min-width: 3rem;
+}
+
+/* Nutzer-Wunsch, 2026-09-29: PROC soll in einer festen Spalte unter dem
+   TX-Indikator sitzen, unabhängig davon wie breit der Text VOR ihm gerade
+   ist (MIC-Label und der Zahlenwert links vom Button ändern ständig ihre
+   Länge). Aus dem normalen Fluss genommen (position:absolute) statt einfach
+   ein weiteres Flex-Kind zu bleiben — dadurch kann nichts davor seine
+   Position mehr beeinflussen. right/Breite direkt im Browser gegen den
+   tatsächlich gerenderten TX-Button vermessen (bei 375px, dem Referenzwert
+   dieses Projekts): TX sitzt dort mit seiner rechten Kante ~24px vom rechten
+   Rand der Zeile entfernt, PROC übernimmt denselben Wert. Bei deutlich
+   breiteren (Desktop-)Fenstern wandert TX wegen seiner eigenen Grid-basierten
+   Zentrierung (.filter-info-row, 1fr/auto/1fr) weiter nach links, PROC bleibt
+   dann nicht mehr exakt darunter — bewusster Kompromiss zugunsten des
+   iPhone-Zielwerts, auf dem dieses Tool primär läuft (wie auch die 4.8rem-
+   Frequenzgrösse oben schon fixiert wurde). padding-right auf der Zeile
+   reserviert den Platz, den der jetzt absolut positionierte Button sonst vom
+   Slider "stehlen" würde. */
+.mic-proc-row {
+  /* .controls gap 0.5rem -> net -0.3rem pulls this (and the waterfall
+     below, which just follows in normal flow) up a bit closer to PWR
+     (2026-10-12 user request: "den Wasserfall mit PROC button etwas nach
+     oben rutschen") — tighter than the 0.35rem this used to match to the
+     slider rows' own internal gap above. Desktop keeps the original
+     -0.15rem (its own rule below resets it), since this phone-only nudge
+     wasn't asked for there. */
+  margin-top: -0.3rem;
+  position: relative;
+  padding-right: 4.75rem;
+  /* PROC is absolutely positioned (below) and the CFG button is gone (a long
+     press on PROC opens its settings, 2026-10-11): the row keeps the height of a
+     button by itself. */
+  min-height: 1.75rem;
+  justify-content: flex-end;
+}
+
+#proc-button {
+  position: absolute;
+  top: 50%;
+  right: 0.6rem; /* centered under the 4.2rem wide TX button */
+  transform: translateY(-50%);
+}
+
+/* Native range inputs instead of a hand-rolled div slider: touch dragging
+   (drag-to-follow-finger on mobile) just works, where the old mousemove-
+   based version only ever tracked an actual mouse. accent-color alone gives
+   a filled track + round thumb in every current browser, no vendor-prefixed
+   ::-webkit-slider-thumb/::-moz-range-thumb rules needed. */
+.slider {
+  flex: 1;
+  /* A flex item's default min-width is "auto" (its content/intrinsic size,
+     not 0) — for a native <input type=range> that's wide enough that at the
+     narrow end of the desktop range (800px window) the label+slider no
+     longer fit on one line and the row wraps to two, found live 2026-10-08
+     chasing a report of "two stages of change" while resizing the window
+     (there is no second breakpoint — flex-wrap turning on/off at a width
+     that isn't a round number just looks like one). min-width:0 lets the
+     slider shrink to fit instead of forcing the wrap; harmless on phone,
+     where flex:1 already has far more room than it needs. */
+  min-width: 0;
+  max-width: 255px;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 20px;
+  --knob: 26px;
+  --knob-h: 18px;
+  --track: 12px;
+}
+
+/* Settings / filter dialogs: same fader at half size. */
+.overlay .slider {
+  --knob: 12px;
+  --knob-h: 12px;
+  --track: 6px;
+  height: 14px;
+}
+
+/* Mixer-fader look (horizontal): dark recessed groove, brushed-metal cap with
+   an orange centre line. The waterfall level slider has its own rules. */
+.slider::-webkit-slider-runnable-track {
+  height: var(--track);
+  border-radius: 4px;
+  background-color: #141417;
+  background-image:
+    repeating-linear-gradient(to right, rgba(232, 129, 42, 0.7) 0 var(--tw, 1px), transparent var(--tw, 1px) var(--tick, 20px)),
+    repeating-linear-gradient(to right, rgba(255, 255, 255, 0.3) 0 var(--tw, 1px), transparent var(--tw, 1px) var(--tick, 20px)),
+    linear-gradient(#0d0d0f, #1c1c20);
+  background-size: var(--pw, 0px) 100%, 100% 100%, 100% 100%;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.slider::-moz-range-track {
+  height: var(--track);
+  border-radius: 4px;
+  background-color: #141417;
+  background-image:
+    repeating-linear-gradient(to right, rgba(232, 129, 42, 0.7) 0 var(--tw, 1px), transparent var(--tw, 1px) var(--tick, 20px)),
+    repeating-linear-gradient(to right, rgba(255, 255, 255, 0.3) 0 var(--tw, 1px), transparent var(--tw, 1px) var(--tick, 20px)),
+    linear-gradient(#0d0d0f, #1c1c20);
+  background-size: var(--pw, 0px) 100%, 100% 100%, 100% 100%;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--knob);
+  height: var(--knob-h);
+  margin-top: calc((var(--track) - var(--knob-h)) / 2);
+  border-radius: 2px;
+  border: none;
+  background:
+    linear-gradient(to right, transparent calc(50% - 1px), #e8812a calc(50% - 1px), #e8812a calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 35%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.4) 100%),
+    linear-gradient(to right, #35373a 0%, #5a5c60 10%, #46484b 22%, #6c6e72 36%, #4e5053 50%, #65676b 64%, #434549 78%, #5a5c60 90%, #2e3033 100%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -1px 0 rgba(0, 0, 0, 0.6), inset 1px 0 0 rgba(0, 0, 0, 0.5), inset -1px 0 0 rgba(0, 0, 0, 0.5);
+}
+
+.slider::-moz-range-thumb {
+  width: var(--knob);
+  height: var(--knob-h);
+  box-sizing: border-box;
+  border-radius: 2px;
+  border: none;
+  background:
+    linear-gradient(to right, transparent calc(50% - 1px), #e8812a calc(50% - 1px), #e8812a calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 35%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.4) 100%),
+    linear-gradient(to right, #35373a 0%, #5a5c60 10%, #46484b 22%, #6c6e72 36%, #4e5053 50%, #65676b 64%, #434549 78%, #5a5c60 90%, #2e3033 100%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 -1px 0 rgba(0, 0, 0, 0.6), inset 1px 0 0 rgba(0, 0, 0, 0.5), inset -1px 0 0 rgba(0, 0, 0, 0.5);}
+
+/* Dialog sliders: same round aluminium knob as the waterfall level slider. */
+.overlay .slider::-webkit-slider-thumb {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, transparent 60%),
+    conic-gradient(#e9e9e9, #a8a8a8, #f4f4f4, #8c8c8c, #dcdcdc, #b4b4b4, #f6f6f6, #939393, #e2e2e2, #a2a2a2, #f0f0f0, #8e8e8e, #e9e9e9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.overlay .slider::-moz-range-thumb {
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, transparent 60%),
+    conic-gradient(#e9e9e9, #a8a8a8, #f4f4f4, #8c8c8c, #dcdcdc, #b4b4b4, #f6f6f6, #939393, #e2e2e2, #a2a2a2, #f0f0f0, #8e8e8e, #e9e9e9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.ctrl-max {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* Top bar (moved here from the bottom to make room for a taller waterfall):
+   setup gear, connection status, then PCM/Mobil audio buttons. Gear pushed
+   to the left edge and the rest to the right (space-between, Nutzer-Wunsch
+   2026-09-28 — everything used to huddle together in the center, "zu weit
+   innen") via a single wrapper (.status-row-right) around everything but
+   the gear, so space-between only pulls those TWO things apart instead of
+   spreading every individual item evenly across the row. */
+.status-row {
+  margin-top: -1.875rem; /* effective gap above the first row: 2.5rem - 1.875rem = 0.625rem */
+  /* Gap down to .status-message, matched to that element's own
+     margin-bottom (also 0.5rem) so the message row sits with equal space
+     above and below (Nutzer-Wunsch, 2026-09-28 — was 1.75rem above vs
+     0.5rem below, a visibly lopsided gap). */
+  margin-bottom: 0.5rem;
+  /* Measured live (2026-09-28): this row's box is already pixel-identical
+     in width/position to .status-message and the meter below it (all three
+     are plain full-width children of main) — but flush-to-the-edge buttons
+     LOOK more spread out than the meter, whose own tick labels sit ~12px
+     inset from the meter's box edge (an artifact of the SVG's internal
+     viewBox coordinates, not a real margin). This padding pulls the
+     buttons in to roughly that same visual inset — a middle ground between
+     the old fully-centered layout ("zu weit innen") and the previous
+     edge-to-edge space-between ("zu weit auseinander"). Padding (not
+     margin) keeps the row's own box exactly as wide as .status-message/the
+     meter, only the buttons inside shift in.
+  */
+  padding: 0 0.75rem;
+  /* Three columns so the kb/s + ms readout (.status-center) stays at a fixed
+     spot between: gear/power left, PCM/Mobil/Reset right, the readout
+     centered in the leftover space between the two groups. */
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.status-row > .btn-group:first-child {
+  justify-self: start;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.status-row-right {
+  justify-self: end;
+  width: max-content;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  row-gap: 0.3rem;
+}
+
+/* Sits between the top row and the meter, only for disconnect/error
+   messages now (the kb/s readout took over the "verbunden" spot next to
+   the gear icon — connected is the normal/expected state and doesn't need
+   a running text label for it). Always reserves the same fixed-height row
+   (same width as the meter below it, both being plain block children of
+   main) instead of collapsing to zero height when empty — a message
+   appearing used to suddenly widen the gap to the meter by a whole text
+   line, a visible jump (Nutzer-Report, 2026-09-28). A faint background tint
+   keeps the reserved strip nearly invisible against the page background
+   while empty, without it looking like a stray empty box. */
+.status-message {
+  position: absolute;
+  /* Only as wide as the text (centered), so short messages leave the SWR
+     scale visible on both sides. */
+  left: 50%;
+  width: max-content;
+  max-width: 100%;
+  padding: 0.35rem 0.9rem;
+  box-sizing: border-box;
+  /* Centered on the border between the S meter and the SWR meter (both are
+     35px high, stacked), i.e. in the middle of the two. */
+  top: 35px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 1rem;
+  border-radius: 4px;
+  background: rgba(24, 29, 35, 0.94);
+  cursor: default;
+}
+
+/* No message: the SWR scale underneath is visible (and usable) as before. */
+.status-message:empty {
+  display: none;
+}
+
+/* Meters + the status message laid over the SWR scale (the message only shows
+   when there is something to say; the SWR scale is only live during TX anyway).
+   flow-root keeps the SWR svg's bottom margin inside the block, so the message's
+   bottom offset lines up with the svg. */
+.meter-block {
+  position: relative;
+  display: flow-root;
+}
+.meter-block > [inert],
+.meter-mode-row[inert] {
+  opacity: 0.4;
+}
+
+/* Setup overlay: opened by the gear icon, lets the browser (re)configure
+   which radio to dial instead of that being fixed at server startup. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.overlay[hidden] {
+  display: none;
+}
+
+.overlay-panel {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 280px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  text-align: left;
+}
+
+.overlay-panel h2 {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  color: var(--accent);
+  text-align: center;
+}
+
+.overlay-panel label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 0.75rem;
+}
+
+/* Jitter buffer slider: only 4 discrete steps (min=0 max=3), the full-width
+   stretch every other overlay slider gets left it needlessly long for how
+   little travel it actually has (2026-10-12 user request: "auf halbe
+   Breite des Overlays"). Matches the VoIP Audio Input/Output sliders'
+   own effective width exactly (Nutzer-Wunsch, 2026-10-14: "Länge des
+   Jitter Reglers anpassen auf die gleiche wie die darüber") — each of
+   those is one flex:1 child of a two-column .slider-pair with a 0.75rem
+   gap, i.e. (100% - gap)/2 of the row, not a flat 50%. */
+#jitter-level-slider {
+  width: calc((100% - 0.75rem) / 2);
+}
+
+/* Without this, the rule above (a class + element selector) outranks the
+   browser's own bare [hidden] rule and silently cancels it — a row set
+   hidden via JS would still render as a flex row. */
+.overlay-panel label[hidden] {
+  display: none;
+}
+
+.overlay-panel input[type="text"],
+.overlay-panel input[type="password"],
+.overlay-panel input[type="number"] {
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: var(--accent);
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.overlay-panel select {
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: var(--accent);
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-size: 0.9rem; /* same as the other overlay fields */
+}
+
+.overlay-panel input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.overlay-checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+  margin-bottom: 1.5rem; /* extra breathing room before the next field (Browser Mic Gain) */
+}
+
+.overlay-checkbox input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.overlay-status {
+  min-height: 1.2rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 0.5rem;
+}
+
+.overlay-status.error {
+  color: #ff5a5a;
+}
+
+/* Dual-handle slider for AM/FM's independent lo-cut/hi-cut (no single
+   "width" value there — see cat.AudioLoHiCut). Built from two overlaid
+   native range inputs sharing one visual track: each input's own track and
+   fill are hidden (transparent), only its thumb stays interactive
+   (pointer-events re-enabled just on the thumb pseudo-elements) so dragging
+   one handle doesn't accidentally grab the other's track. A separate fill
+   div draws the highlighted band between the two current values. */
+.dual-slider {
+  position: relative;
+  flex: 1;
+  max-width: 255px;
+  height: 20px;
+}
+
+.dual-slider-track,
+.dual-slider-fill {
+  position: absolute;
+  top: 50%;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.dual-slider-track {
+  left: 0;
+  right: 0;
+  background: linear-gradient(#0d0d0f, #1c1c20);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.dual-slider-fill {
+  background: rgba(232, 129, 42, 0.7);
+}
+
+.dual-slider input[type="range"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.dual-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+
+.dual-slider input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+
+.dual-slider input[type="range"]::-webkit-slider-thumb {
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, transparent 60%),
+    conic-gradient(#e9e9e9, #a8a8a8, #f4f4f4, #8c8c8c, #dcdcdc, #b4b4b4, #f6f6f6, #939393, #e2e2e2, #a2a2a2, #f0f0f0, #8e8e8e, #e9e9e9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.dual-slider input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, transparent 60%),
+    conic-gradient(#e9e9e9, #a8a8a8, #f4f4f4, #8c8c8c, #dcdcdc, #b4b4b4, #f6f6f6, #939393, #e2e2e2, #a2a2a2, #f0f0f0, #8e8e8e, #e9e9e9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+
+.overlay-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* Server Einstellungen (Abbrechen/OK): Abbrechen at the far left, OK at the
+   far right (Nutzer-Wunsch, 2026-10-14) — every OTHER .overlay-actions row
+   in the app has just one button (e.g. "Schliessen") and must stay
+   right-aligned via the shared rule above, so this is scoped to just this
+   one dialog's row rather than changing .overlay-actions itself (space-
+   between with a single child would pin it to the LEFT instead, a
+   regression for all those other dialogs). */
+#connect-actions {
+  justify-content: space-between;
+}
+
+.overlay-actions button {
+  background: var(--key-face);
+  border: none;
+  color: var(--key-text);
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.overlay-actions button:hover {
+  filter: brightness(1.15);
+}
+
+.overlay-actions button.primary {
+  background: var(--accent);
+  color: var(--panel);
+}
+
+/* Moved from the bottom action row up to right under the heading (Nutzer-
+   Wunsch, 2026-09-28) — "Trennen" is a separate, less frequent kind of
+   action from confirming/cancelling the form, not a peer of Abbrechen/
+   Verbinden, and crowding it into that row overflowed the narrow (240px)
+   panel on mobile widths. Full-width so it doesn't look like a stray
+   half-sized button floating under the title. */
+.overlay-panel > button.conn-toggle {
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+  background: transparent;
+  color: #d9534f;
+  border: 1px solid #d9534f55;
+  border-radius: 4px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.overlay-panel > button.danger:hover {
+  background: #d9534f22;
+}
+/* "Verbinde ..." state of the same button */
+.overlay-panel > button.conn-toggle.connect-action {
+  color: rgb(110, 190, 60);
+  border-color: rgba(110, 190, 60, 0.35);
+}
+.overlay-panel > button.conn-toggle.connect-action:hover {
+  background: rgba(110, 190, 60, 0.13);
+}
+
+/* Same trap as .overlay-panel label[hidden] elsewhere in this file: an
+   author rule setting display (block, above) always outranks the browser's
+   own [hidden] default, regardless of selector specificity — so JS setting
+   the hidden attribute silently did nothing and the button stayed visible
+   even while not connected (live-reported, 2026-09-28). */
+.overlay-panel > button.danger[hidden] {
+  display: none;
+}
+
+.amp-actions { display: flex; justify-content: flex-start; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+.overlay-panel .amp-actions label { margin-bottom: 0; }
+
+.field-pair { display: flex; gap: 0.5rem; }
+.field-pair label { flex: 1; min-width: 0; }
+.field-pair input { width: 100%; min-width: 0; box-sizing: border-box; padding: 0.4rem 0.35rem; font-size: 0.8rem; }
+/* Checkboxes must not be stretched like text inputs (box far away from its text). */
+.field-pair input[type="checkbox"] { width: auto; flex: none; padding: 0; }
+
+/* Two sliders side by side (Nutzer-Wunsch, 2026-10-14: "beide Regler auf
+   einer Zeile ... der Platz reicht") — same idea as .field-pair but without
+   its text-input-specific padding/font-size, which a range input doesn't
+   need. .overlay-panel label is already flex-direction:column internally
+   (title above slider), so each label here just needs to share the row. */
+.slider-pair { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; }
+.slider-pair label { flex: 1; min-width: 0; margin-bottom: 0; }
+
+/* Extra breathing room above the TX-relay-mithören slider (2026-10-15 user
+   request) — without this it sat right under the trim slider-pair above,
+   whose own bottom margin matches every other control row's normal spacing,
+   same idea as #mic-limiter-row below. */
+#tx-relay-volume-row {
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12); /* divider, like Settings > Benutzer */
+}
+/* Half-width, not the full overlay (Nutzer-Wunsch, 2026-10-16) — same
+   formula as #jitter-level-slider above, for the same reason: a slider with
+   little travel doesn't need the full row. */
+#tx-relay-volume-row .level-slider {
+  width: calc((100% - 0.75rem) / 2);
+}
+
+/* Single-handle slider in the same flat-track/fill/round-knob look as the
+   waterfall's Floor/Ceiling .dual-slider (Nutzer-Wunsch, 2026-10-14: "im
+   gleichen optischen Style wie der Regler am Wasserfall") — same three-
+   layer structure (a decorative track + fill div pair, pointer-events:none,
+   with one native <input type=range> overlaid just for its thumb), only
+   with a SINGLE input/fill instead of the dual-slider's two handles. Used
+   for the VoIP Audio Input/Output and Jitter Buffer sliders; JS sets
+   .level-slider-fill's width to the current value's percentage of max
+   (left edge always 0, unlike the dual-slider's floating left/right pair).
+   The value/thumb styling is copied from .dual-slider's own rules further
+   down rather than shared via one class list, so each stays easy to follow
+   on its own — the small duplication is cheaper than untangling two
+   different structures (single fill vs. floating left/right pair) that
+   would otherwise need to share one selector. */
+.level-slider {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+}
+.level-slider-track,
+.level-slider-fill {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 6px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  pointer-events: none;
+}
+.level-slider-track {
+  right: 0;
+  background: linear-gradient(#0d0d0f, #1c1c20);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.level-slider-fill {
+  /* Muted on purpose (2026-10-14 follow-up: "den orangenen hintergrund
+     etwas dezenter machen") — the original 0.7 alpha was too strong next
+     to the dark track. */
+  background: rgba(232, 129, 42, 0.45);
+}
+.level-slider input[type="range"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.level-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 20px;
+  background: transparent;
+}
+.level-slider input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+.level-slider input[type="range"]::-webkit-slider-thumb {
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, transparent 60%),
+    conic-gradient(#e9e9e9, #a8a8a8, #f4f4f4, #8c8c8c, #dcdcdc, #b4b4b4, #f6f6f6, #939393, #e2e2e2, #a2a2a2, #f0f0f0, #8e8e8e, #e9e9e9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+  margin-top: 4px;
+}
+.level-slider input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 12px;
+  height: 12px;
+  border: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.35) 0%, transparent 60%),
+    conic-gradient(#e9e9e9, #a8a8a8, #f4f4f4, #8c8c8c, #dcdcdc, #b4b4b4, #f6f6f6, #939393, #e2e2e2, #a2a2a2, #f0f0f0, #8e8e8e, #e9e9e9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  cursor: pointer;
+}
+.level-slider input[type="range"]:disabled {
+  cursor: default;
+}
+
+/* Admin-only VoIP controls (##KN3 level, ##KN4 jitter buffer): shown to
+   everyone (not hidden — Nutzer-Wunsch, 2026-10-14, replacing jitter-row's
+   earlier "hidden unless admin" with the same dimmed-but-visible treatment
+   as the new level sliders) but dimmed and undraggable without a KNS admin
+   login, same 0.4 opacity convention as #pa-row button:disabled. */
+#voip-level-row label:has(input:disabled),
+#jitter-row:has(input:disabled) {
+  opacity: 0.4;
+}
+
+/* TX Mic Limiter's threshold/ratio/attack: a testweise-Regler (Nutzer-Wunsch,
+   2026-10-14 — the fixed values weren't audibly catching mic peaks, make
+   them live-adjustable to find better ones) in the same dashed-border
+   "not part of the final UI, just for diagnosing" convention this project
+   used for the earlier TX-Dämpfung/Testton controls. Dimmed (not hidden,
+   same convention as the admin-gated VoIP sliders above) while the limiter
+   itself is off, since the values are meaningless without it. */
+.mic-limiter-tuning {
+  border: 1px dashed var(--text-dim);
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem 0.1rem;
+  margin-bottom: 0.75rem;
+}
+.mic-limiter-tuning:has(input:disabled) {
+  opacity: 0.4;
+}
+.amp-actions button {
+  background: var(--key-face);
+  border: none;
+  color: var(--key-text);
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.amp-actions button:hover { filter: brightness(1.15); }
+#pa-row button:disabled { opacity: 0.4; }
+#pa-row button.tx-active { box-shadow: 0 0 6px 1px rgba(255, 60, 60, 0.8); }
+
+/* PA TUNE while a tune run is active: fast blinking in the "active" colours. */
+#pa-tune-button.tuning { animation: pa-tune-blink 0.3s steps(1) infinite; }
+@keyframes pa-tune-blink {
+  0%   { background: var(--accent); color: var(--panel); }
+  50%  { background: #333; color: var(--text-dim); }
+}
+
+/* Same [hidden] trap as elsewhere: .ctrl-row's display:flex would win over it. */
+#pa-row[hidden] { display: none; }
+
+/* RIT/XIT knobs — desktop only (2026-10-13 user request), hidden here on
+   phone; sit under the Filter dropdown on desktop (app.js relocates them
+   into #eq-row there, see relocateRitXitKnobsForLayout). Each wrap stacks
+   its knob over a small name label (Nutzer-Wunsch: "sonst weiss man nicht
+   wofür der Knopf ist") — the live Hz value stays on the filter-info line
+   instead (see filterInfoText), not repeated here. */
+.rit-knob-wrap {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+.rit-knob-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+.rit-knob-wrap.active .rit-knob-label {
+  color: var(--accent);
+}
+.rit-knob {
+  /* Same height as the buttons it sits next to (NR OFF etc., Nutzer-Wunsch
+     2026-10-13) — measured live: those render at 28.453px with this app's
+     16px/rem base, which 1.78rem matches to a fraction of a pixel. */
+  width: 1.78rem;
+  height: 1.78rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: grab;
+  touch-action: none; /* dragging adjusts the offset, not the page */
+  -webkit-tap-highlight-color: transparent;
+}
+.rit-knob:active {
+  cursor: grabbing;
+}
+.rit-knob-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+.rit-knob-rotating {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
+/* Snaps back to the neutral (12 o'clock) position on release — see app.js:
+   a free-spinning encoder has no absolute position to hold, the rotation
+   during a drag only communicates "how much", like a jog wheel. */
+.rit-knob-rotating.rit-knob-returning {
+  transition: transform 0.25s ease-out;
+}
+.rit-knob-activering {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.rit-knob-wrap.active .rit-knob-activering {
+  opacity: 1;
+  filter: drop-shadow(0 0 4px var(--accent));
+}
+
+/* Compact number field with its caption behind it (PA TOT timer). */
+.overlay-panel label.amp-timeout-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+.overlay-panel label.amp-timeout-row input {
+  width: 3.6rem;
+  text-align: right;
+}
+
+/* Controls disabled while there is no radio connection (see setControlsDisabled in app.js).
+   Descendant selector, not main > [inert]: setControlsDisabled marks the real
+   button/slider boxes inert via collectDimTargets, which can sit a level
+   deeper than main's direct children once a display:contents wrapper
+   (.controls on desktop) is resolved through. */
+main [inert] {
+  opacity: 0.4;
+}
+
+/* PA warnings/alarms in the accent color as well. */
+.status-message.pa-warning {
+  color: var(--accent);
+}
+
+/* Radio off is no error: the plain status-line look, no red (Nutzer-Wunsch 2026-10-11). */
+
+/* Blinking status line, used while waiting for the radio to power on. */
+.status-message.blink {
+  animation: status-blink 1s ease-in-out infinite;
+}
+
+@keyframes status-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* Phones: make room so kb/s + ms stay centered between the left (gear/power)
+   and right (PCM/Mobil/Reset) groups instead of overlapping the latter. */
+@media (max-width: 400px) {
+  .status-row {
+    padding: 0 0.2rem;
+  }
+
+  .status-row-right {
+    gap: 0.3rem;
+  }
+
+  .status-center {
+    font-size: 0.7rem;
+  }
+
+  .audio-bitrate {
+    width: 2.8rem;
+  }
+
+  .audio-latency {
+    width: 2.4rem;
+  }
+}
+
+/* Desktop layout (Nutzer-Wunsch, 2026-10-07/08): a genuinely different, wide
+   arrangement instead of just stretching the phone's narrow column.
+   Deliberately reuses every existing element as-is (same ids/classes, same
+   JS wiring) via CSS Grid — only repositions them, nothing is duplicated,
+   no wrapper divs needed since every one of main's top-level sections is
+   already a direct child of main.
+   .status-row/.meter-block/#freq stay DIRECT children (not grouped into a
+   wrapper) specifically because setControlsDisabled (app.js) keys its
+   "stays usable while disconnected" exclusion off exactly those three
+   selectors via `main > *` — a wrapper would break that silently.
+   Shape designed by the operator with a throwaway grid-paint tool (10x16
+   cells, exported as grid-template-areas) — translated here onto fewer
+   named rows/columns where nothing else subdivides that space (e.g. the
+   3-cell-tall "freq" area became a single auto row; auto height already
+   follows #freq's own large font, no fixed row-height needed). Meter spans
+   the combined height of the freq+selectors rows, matching the export. */
+@media (min-width: 800px) {
+  main {
+    display: grid;
+    /* minmax(0, Nfr), not bare Nfr: without the 0 minimum, a column won't
+       shrink below its content's natural min-width — found live, 2026-10-08,
+       via #freq specifically (its font-size is a fixed 4.8rem, deliberately
+       NOT responsive on phone per operator request — see that rule's own
+       comment) forcing the "freq" column wider than its fair 3fr share at
+       narrower desktop widths, squeezing/overlapping the meter column next
+       to it and, since .slider-tx-block's TX button shares that same
+       freq+selectors row-span and stretches to fill it, pulling TX visibly
+       taller too ("langgezogen", same report). */
+    grid-template-columns: minmax(0, 3.4fr) minmax(0, 3.2fr) minmax(0, 0.8fr) minmax(0, 2.6fr);
+    grid-template-rows: auto auto auto auto auto auto auto auto auto auto 1fr auto;
+    grid-template-areas:
+      "status     status     status  status"
+      "brand      brand      brand   brand"
+      "meter      freq       sliders sliders"
+      "meter      otherfreq  sliders sliders"
+      "meter      selectors  sliders sliders"
+      "meter      filterinfo .       ."
+      "metercontrols eqmid   controlsx controlsx"
+      "metercontrols eqmid   buttons buttons"
+      "metercontrols eqmid   pa      pa"
+      "wfrow      wfrow      wfrow   wfrow"
+      "wf         wf         wf      wf"
+      "wfscale    wfscale    wfscale wfscale";
+    row-gap: 0.5rem;
+    /* Nutzer-Wunsch, 2026-10-09: "der hintergrundbereich... soll eine
+       maximale breite von 1200px haben" (was 1600px). */
+    max-width: 1200px;
+    width: 100%;
+    /* 3-value shorthand, bottom omitted (defaults to 0): the base rule's
+       own "no empty area under the waterfall" padding-bottom:0 (this
+       file's very first main rule) got silently reintroduced at 1.5rem by
+       this shorthand's 4-value form, which sets all sides — same
+       specificity, this block just comes later. Found live, 2026-10-09:
+       phone's waterfall reaches the panel's bottom edge, desktop's didn't
+       ("soll aber auch im desktop unten abschliessen"). Top padding halved
+       again, 2026-10-09: "Platz zwischen der ersten Zeile... und der
+       Oberkante... ist zu gross, um die Hälfte reduzieren". */
+    padding: 0.75rem 2rem 0;
+  }
+  /* kB/s and ms readout right in front of the AUDIO button, with some space
+     (Nutzer-Wunsch 2026-10-11), instead of the row's middle where the status
+     message sits. */
+  .status-center {
+    justify-self: end;
+    margin-right: 1.2rem;
+  }
+  .status-row {
+    grid-area: status;
+    /* gear + power flush with the KENWOOD logo's left edge (drop the 0.75rem inset) */
+    padding-left: 0;
+    padding-right: 0; /* top-right keys flush with the TS-890 lettering's right edge */
+    /* The busy LED (formerly a 4th column here) moved to its own thin row
+       directly above the frequency digits (Nutzer-Wunsch, 2026-10-08 —
+       "mittig über der Frequenzanzeige"), so this row is back to the same
+       3-column layout as phone.
+       margin-top DOES need a desktop override, though: the base rule's
+       -1.875rem is tuned against phone main's 2.5rem padding-top (net
+       0.625rem gap, see that rule's own comment) — desktop main's padding
+       is only 1.5rem, so the same negative margin pulled the row 0.375rem
+       ABOVE main's own padding box, visibly poking past the panel's
+       rounded top edge (Nutzer-Report, 2026-10-08, screenshot). 0 here
+       just leaves the full 1.5rem padding as the gap. */
+    margin-top: 0;
+  }
+  /* ~3x its natural width (Nutzer-Wunsch, 2026-10-08) — desktop only, a
+     global rule here overflowed the phone status row badly (found live,
+     2026-10-08, screenshot). The icon itself keeps its own fixed 14x14 size
+     (.gear-icon) and just gets centred in the extra room instead of
+     stretching with the button. */
+  /* 2x natural width (Nutzer-Korrektur, 2026-10-09 — 3x "etwas kleiner
+     machen", 2x reicht aus; natural width measured live at 29.19px). */
+  #power-button {
+    width: 3.65rem;
+    justify-content: center;
+  }
+  /* Original hidden on desktop — the echo below replaces it visually,
+     positioned up with the status row instead of over the meter. */
+  #status-info {
+    display: none;
+  }
+  /* Shares .status-row's own grid area now, not a dedicated row below it —
+     "auf Höhe des Einschaltknopfes", same row as the gear/power/PCM
+     buttons, not a separate line underneath (Nutzer-Report, 2026-10-09:
+     "bisher sehe ich sie immer darunter"). Both this and .status-row have
+     grid-area:status, so they occupy the same cell; align-self/justify-
+     self:center positions this one independent of .status-row's own
+     internal 3-column layout (gear | kb/s+ms | PCM group), floating over
+     it rather than squeezing into one of those columns.
+     ".status-message.status-message-desktop:not(:empty)", not bare
+     ".status-message-desktop": needs to beat BOTH the shared base
+     .status-message rule (source-order trap, same as .brand-logo/
+     .brand-row elsewhere in this file) AND the phone-hide rule above —
+     :not(:empty) also means this doesn't fight .status-message:empty's
+     own display:none when there's nothing to show, so the row just quietly
+     has nothing in it rather than an empty flex box with no size cues. */
+  .status-message.status-message-desktop:not(:empty) {
+    grid-area: status;
+    /* Cancel the base rule's absolute-overlay-on-the-meter positioning
+       (that one is tuned for .meter-block as its containing block, which
+       this element — a direct child of main now — no longer has). */
+    position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+    justify-self: center;
+    align-self: center;
+    width: max-content;
+    max-width: 100%;
+    display: flex;
+  }
+  /* Used to sit in its own thin row between .brand-row and #freq, centred
+     in the same column as #freq below it. Moved up onto .brand-row's own
+     row instead (2026-10-12 user request: "auf gleiche Höhe wie das
+     Kenwood LOGO") — explicit grid-row/grid-column (not grid-area, since a
+     named area can't share a cell already claimed by "brand") places it
+     directly over .brand-row's own empty middle space (logo on the left,
+     "TS-890" lettering on the right, nothing in between), so it now lines
+     up with the logo's height without overlapping either. The row that
+     used to hold it is gone from grid-template-areas entirely, not just
+     emptied, so the layout doesn't keep a gap where it used to be. */
+  .busy-indicator-desktop {
+    display: block;
+    grid-row: 2;
+    grid-column: 2;
+    justify-self: center;
+    align-self: center;
+  }
+  /* Date + time: same cell as the LED (centred), pushed to the cell's right edge
+     so it sits over the Hz digits of the frequency display. */
+  .clock-desktop {
+    display: block;
+    grid-row: 2;
+    grid-column: 2;
+    justify-self: end;
+    align-self: center;
+  }
+  /* The original instance stays in the DOM (phone needs it there) but is
+     now redundant on desktop since the one above replaces it visually —
+     without this it showed in both places at once. */
+  .filter-info-row .busy-indicator {
+    display: none;
+  }
+  /* display:none removes #busy-indicator from grid participation entirely
+     (unlike visibility:hidden, which would still reserve its cell) — with
+     it gone, #audio-filter-info was the only remaining item in
+     .filter-info-row's inherited 1fr/auto/1fr columns and auto-placed into
+     the FIRST cell instead of its intended centre one, landing visibly
+     left of the frequency digits above it instead of centred under them
+     (Nutzer-Report, 2026-10-08, screenshot). Pin it to the middle column
+     explicitly instead of relying on auto-placement. */
+  #audio-filter-info {
+    grid-column: 2;
+  }
+  .meter-block {
+    grid-area: meter;
+  }
+  /* S bar stays replaced by the analog gauge. SWR went through a few
+     rounds: digital bar kept ("wir müssen wohl für SWR das digitale
+     darunter belassen") → removed once the gauge grew its own SWR row +
+     TX-only second needle ("das balken smeter im desktop kann dann weg")
+     → that row/needle removed again and the digital bar brought BACK,
+     2026-10-09 ("die SWR Anzeigefunktion im Meter rausnehmen und dafür SWR
+     unter dem Meter als Balken anzeigen, genauso wie in der mobilansicht
+     mit diesen vielen Strichen") — so .swr-meter-svg is shown again here,
+     just moved below the gauge in the HTML instead of above it. */
+  .s-meter-svg {
+    display: none;
+  }
+  .meter-analog {
+    display: block;
+    width: 100%;
+    /* Half the previous height (Nutzer-Wunsch, 2026-10-09: "das meter ist
+       zu hoch höhe halbieren") — the gauge's own vertical extent is mostly
+       fixed by its radius/sweep angle (tuned to match the reference
+       bitmap's proportions), not by how many rows are stacked, so simply
+       halving this CSS height and letting the SVG's default
+       preserveAspectRatio="xMidYMid meet" scale the whole gauge down to
+       fit is the one change that reliably halves it without cropping or
+       distorting anything — at the cost of the gauge no longer filling
+       the column's full width (small side margins instead).
+       Made "ein wenig grösser" 2026-10-11: 150px high and the meter column a
+       bit wider (see the grid columns above). */
+    height: 150px;
+  }
+  .swr-meter-svg {
+    display: none;
+  }
+  .meter-mode-row {
+    display: flex;
+    justify-content: center;
+    gap: 1.2rem;
+    margin-top: 0.7rem;
+  }
+  /* .brand-row stays ONE real grid item (unlike .controls below) spanning
+     the FULL row width — a first attempt split it into two separate named
+     areas via display:contents on .brand-row so the logo and the model
+     text could size/centre independently, but found live, 2026-10-08, that
+     this browser doesn't fully honour display:contents for a nested
+     child's percentage/alignment math once the element has its own
+     position:relative (the base rule sets that): .brand-logo's grid-area
+     resolved to the right column but centred itself within some narrower,
+     wrong box, visibly off from the meter's actual centre. Keeping it as
+     one item and using justify-content:space-between internally is less
+     precise (logo sits at the area's left edge rather than centred exactly
+     over the meter) but is correct, not just approximately correct.
+     Spans all 4 columns, not just meter+freq: the model text sat right-
+     aligned at the freq column's own right edge, which still read as
+     "over the frequency display", not "to the right" (Nutzer-Feedback,
+     2026-10-08, screenshot) — spanning the full width pushes its right
+     edge out to the TX/slider column's edge instead, clearly separate
+     from the frequency display. */
+  /* "main .brand-row", not bare ".brand-row": same source-order trap as
+     .brand-model below — the base rule (later in the file) sets
+     justify-content/align-items/height/margin too, and at equal
+     specificity it would win and silently put justify-content back to
+     "center" (found live, 2026-10-08: the logo ended up stuck in the
+     middle of the row instead of flush left near the meter). The extra
+     type selector outranks it regardless of source order. */
+  main .brand-row {
+    grid-area: brand;
+    justify-content: space-between;
+    align-items: center;
+    /* Base rule's height/margin are tuned to phone's single-line content
+       (logo + one line of text) and the negative margins that keep that
+       exact box from widening the gap above/below it — both wrong once
+       the model text is two stacked lines here. */
+    height: auto;
+    margin: 0;
+  }
+  /* 1.5x the phone size (Nutzer-Wunsch, 2026-10-09 — was 2x, "1.5 faktor
+     anwenden" once the operator could actually see the doubled version
+     render, after a specificity bug had hidden it). Phone's own values stay
+     untouched (that rule's comment explains why they're deliberately
+     small/discreet there; desktop has the room to make the brand mark
+     actually readable).
+     "main .brand-logo" etc., not bare ".brand-logo": same source-order trap
+     documented elsewhere in this file (main .brand-row, .brand-row
+     .brand-model) — the base rules (further down the file) have equal
+     specificity and, after enough edits shifted them below this block, won
+     by coming later, silently undoing this sizing (Nutzer-Report,
+     2026-10-09: "die grösse... haben sich nicht geändert?" — they hadn't,
+     despite this rule existing). The extra type selector outranks the base
+     rule regardless of source order, the same fix already used twice above. */
+  main .brand-logo {
+    height: 21px;
+  }
+  main .brand-model-sub {
+    font-size: 0.675rem;
+  }
+  main .brand-model-name {
+    font-size: 1.425rem;
+  }
+  #freq {
+    grid-area: freq;
+    justify-self: center;
+    /* shifted down so the digits' top lines up with the AF slider row to the right */
+    position: relative;
+    top: 1.25rem;
+    /* Phone keeps the fixed 4.8rem (that rule's own comment explains why
+       it's deliberately not responsive there). Desktop needs to be
+       responsive here instead: the "freq" column is a fraction of a width
+       that now ranges 800-1600px, and a fixed 4.8rem that was sized for a
+       375px phone overflowed it badly at the narrow end (see main's own
+       column comment). Tuned against the real digit string's measured
+       width at 4.8rem (~349px for a 10-character string): ~3rem minimum
+       fits the ~225px available at 800px width.
+       Originally reached full 4.8rem only around ~1600px, which left the
+       digits visibly "gestaucht" (compressed) at 1024px — the width this
+       breakpoint is actually being tuned for (2026-10-09). Recalculated so
+       the ramp finishes by ~1024px instead: same 3rem floor at 800px, full
+       4.8rem already reached at 1024px (anything wider just stays capped
+       at 4.8rem instead of continuing to grow).
+    */
+    font-size: clamp(3rem, 13vw - 3.5rem, 4.3rem);
+  }
+  .vfo-other-freq {
+    display: block;
+    grid-area: otherfreq;
+    justify-self: center;
+    text-align: center;
+    color: var(--text-dim);
+    /* Same retro font as the big frequency display above it, just smaller.
+       Went 0.75rem -> 1rem (2026-10-12: "im gleichen Font... leicht grösser
+       als aktuell") -> 2rem (2026-10-12 follow-up: "doppelt so gross"). */
+    font-family: "Digital-7 Mono", monospace;
+    font-size: 2rem;
+    letter-spacing: 0.03em;
+    opacity: 0.7;
+  }
+  .selectors-row {
+    grid-area: selectors;
+  }
+  .filter-info-row {
+    grid-area: filterinfo;
+    /* The "selectors" grid row is taller than the mode/band/filter
+       dropdowns actually need (CSS Grid distributes the analog meter's
+       extra spanned height into the auto row tracks it crosses — the
+       buttons sit top-aligned in that inflated row, leaving ~18px of
+       empty space below them before this row even starts). A plain
+       8px/0.25rem margin-top barely dents that; pulled sharply negative
+       instead so the text sits right under the dropdowns, not centered
+       in the dead space between them and the button row below
+       (2026-10-09 user feedback: still "zu weit weg" at -0.25rem,
+       measured live — real gap was 22px, not the 4px box-gap alone). */
+    margin-top: -1.125rem;
+  }
+  /* .controls itself becomes a non-rendering pass-through so each of its
+     children (still in their original, untouched DOM positions/order —
+     nothing moved, so the phone layout above this breakpoint is unaffected)
+     becomes an individually placeable grid item of main. Lets the sliders
+     sit next to the frequency display while PROC/CFG stay grouped with the
+     button rows, without duplicating any markup. */
+  .controls {
+    display: contents;
+  }
+  /* .ctrl-row-group briefly merged ctrl-row-1+ctrl-row-2 into one flowing
+     button row sharing a single grid-area (2026-10-08: "die restlichen
+     buttons sollten auch rüber nach rechts... passen die in eine Zeile").
+     Un-merged again, 2026-10-09 ("Setze buttons ANT 1, AT ON, Tune und ATT
+     unter diesen Bereich" — i.e. under the meter/SWR-bar column, a
+     different place entirely from where ctrl-row-2 stays): back to a plain
+     pass-through, like .controls above, so ctrl-row-1 and ctrl-row-2 are
+     independent grid items again, each still its own real flex row (their
+     base .ctrl-row/.ctrl-row-buttons classes already do that — unlike the
+     merged version, neither needs display:contents here). */
+  .ctrl-row-group {
+    display: contents;
+  }
+  /* AT/TUNE/AGC/ANT/ATT, moved from the right side (under the slider/TX
+     columns) to under the meter + SWR bar instead, column 1. */
+  .ctrl-row-1 {
+    grid-area: metercontrols;
+    /* bottom-aligned: sits right above the spectrum controls */
+    align-self: end;
+    /* Tighter than the 1.5rem/0.6rem .ctrl-row-buttons default (still used
+       by ctrl-row-2) — needed so ANT+PRE+AGC+ATT actually fit on one line
+       at this column's width instead of each wrapping onto its own row
+       (measured live: the four buttons + 3 gaps need ~266px, the column's
+       content box at 1024px window width is only ~264px with the full
+       1.5rem inset). Freeing the left inset plus trimming the gap buys
+       just enough room, with the natural flex-wrap then breaking cleanly
+       after ATT instead of needing a forced break. */
+    padding-left: 0;
+    /* Line distance as a bottom margin on the buttons instead of row-gap: the forced
+       line break below (a zero-height flex item) would otherwise add a second row
+       gap. The container's negative bottom margin gives back the last line's. */
+    column-gap: 0.4rem;
+    row-gap: 0;
+    margin-bottom: -0.4rem;
+  }
+  .ctrl-row-1 .btn-group {
+    margin-bottom: 0.4rem;
+  }
+  /* Reordered into two rows (2026-10-09 user request: "ANT1, AGC, ATT" on
+     top, "AT ON, TUNE" below) without touching the DOM order phone relies
+     on — CSS `order` on each .btn-group (targeted via :has() on its
+     button, since the buttons themselves are the flex items' children,
+     not the flex items). No forced break needed: once ANT+PRE+AGC+ATT
+     fill the line (see padding/gap comment above), AT naturally wraps to
+     its own line with TUNE right beside it — an earlier version forced
+     the break with flex-basis:100% on AT, which also stretched AT to the
+     full row width and pushed TUNE down to a THIRD line by itself; plain
+     natural wrapping doesn't have that problem.
+     PRE joined this row afterwards (2026-10-09: "PRE OFF soll auch noch
+     ... zwischen ANT 1 und AGC") — but PRE's button lives in ctrl-row-2's
+     DOM (a *different* flex container), and `order` only reorders
+     siblings within the same container, so it can't be pulled in here by
+     CSS alone. app.js actually relocates that one DOM node (not a clone —
+     same element, so its click handler/id survive) into this row on the
+     desktop breakpoint and back to ctrl-row-2 on phone; this order value
+     just places it once it arrives. */
+  .ctrl-row-1 .btn-group:has(#ant-button) {
+    order: 1;
+  }
+  .ctrl-row-1 .btn-group:has(#pre-button) {
+    order: 2;
+  }
+  .ctrl-row-1 .btn-group:has(#agc-button) {
+    order: 3;
+  }
+  .ctrl-row-1 .btn-group:has(#att-button) {
+    order: 4;
+  }
+  /* AT and TUNE always start a new line under ANT 1 (Nutzer-Wunsch 2026-10-11),
+     however wide the column is: a zero-height full-width flex item between ATT (4)
+     and AT (5) forces the line break. */
+  .ctrl-row-1::after {
+    content: "";
+    order: 4;
+    flex: 0 0 100%;
+    height: 0;
+  }
+  .ctrl-row-1 .btn-group:has(#at-button) {
+    order: 5;
+  }
+  .ctrl-row-1 .btn-group:has(#tune-button) {
+    order: 6;
+  }
+  /* NR/NB/BC stay where the merged row used to sit (PRE moved out to
+     ctrl-row-1 above, desktop-only — see app.js). */
+  .ctrl-row-2 {
+    grid-area: buttons;
+  }
+  #pa-row {
+    grid-area: pa;
+  }
+  /* RIT/XIT knobs (desktop only): app.js moves both into #eq-row, which
+     already has grid-area: eqmid (same column as the Band/Mode/Filter
+     dropdowns, directly under Filter) and is otherwise empty on desktop now
+     that TX EQ/RX EQ moved next to PROC — see relocateRitXitKnobsForLayout
+     and #eq-row's own desktop rule further down for the actual placement. */
+  .rit-knob-wrap {
+    display: flex;
+  }
+  .desktop-only-group {
+    display: flex;
+  }
+  .mic-proc-row {
+    grid-area: controlsx;
+    margin-top: -0.15rem;
+  }
+  /* PROC as the same recessed key with a glowing slit as the meter-mode
+     buttons (PWR/SWR/ALC); the slit lights while PROC is on. */
+  #proc-button {
+    /* exactly the PWR/SWR/ALC key size, centred under the 4.2rem TX button */
+    width: 3.1rem;
+    min-width: 0;
+    right: 0.55rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.22rem;
+    padding: 0.24rem 0 0.22rem;
+    background: linear-gradient(#2a2a2d, #19191b);
+    border: 1px solid #3a3a3e;
+    border-radius: 4px;
+    color: #bdb8a4;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  #proc-button::before {
+    content: "";
+    width: 1.56rem;
+    height: 3.6px;
+    border-radius: 2px;
+    background: #3b3b3e;
+    box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
+  }
+  #proc-button.active {
+    color: #ffd27a;
+  }
+  #proc-button.active::before {
+    background: #ffb020;
+    box-shadow: 0 0 6px #ffb020;
+  }
+  .ctrl-row-buttons {
+    /* Phone keeps its centered, tightly-gapped rows (see that rule's own
+       comment). First desktop attempt used space-between across the full
+       row width — reported live as looking "wild" (Nutzer-Feedback,
+       2026-10-08): rows with different button counts/widths each stretch
+       to very different, uneven-looking gaps instead of lining up into any
+       consistent shape. Left-aligned with a modest, consistent gap instead
+       — reads as one intentional cluster regardless of how many buttons
+       are in it, and leaves the row's own right side free (a deliberate
+       side effect: room for a possible future tuning knob there, per the
+       same feedback). */
+    justify-content: flex-start;
+    padding-left: 1.5rem;
+  }
+  .slider-tx-block {
+    grid-area: sliders;
+    align-self: center;
+    margin-top: 0;
+  }
+  /* Phone's version spans only AF/SQL/RFG (grid-row 1/span 3, stretched to
+     fill that 3-row height) with a margin-top hand-tuned to land it on the
+     AF slider specifically — PWR sits below it on its own, so the button's
+     OWN rendered height ends up a bit short of the full 3-row span (76px:
+     3-row span minus that margin-top). Stretching those same 3 rows to
+     desktop (prior attempt: plain grid-row 1/span 3 + stretch) landed TX's
+     centre ~11px above the full AF-to-PWR stack's true centre (Nutzer-
+     Report, 2026-10-09: "zu weit oben"). Spanning all 4 rows and letting
+     it stretch fixed that centring but then stretched TX's actual HEIGHT
+     to the full 4-row span too — taller than phone's proportions, not
+     just better centred (Nutzer-Report: "in der Höhe lang gezogen",
+     clarified as "ich meine die Spannweite" — TX's own size needs to
+     match phone's, not grow to fill the bigger cell).
+     Nothing about AF/SQL/RFG/PWR's own sizing (slider height, row gap)
+     differs between phone and desktop — same .ctrl-row/.slider rules,
+     no override — so phone's exact 76px is just as correct a height here;
+     align-self:center centres that fixed-size box within the 4-row cell
+     instead of phone's margin-top offset within a 3-row one. */
+  .slider-tx-block .tx-button {
+    grid-row: 1 / span 4;
+    align-self: center;
+    height: 76px;
+    margin-top: 0;
+  }
+  .waterfall-row {
+    grid-area: wfrow;
+    margin-top: 1.5rem;
+    /* Phone keeps everything centred as one cluster (base rule). Desktop:
+       SPEC/speed/span on the left, the level slider + Auto on the right
+       (Nutzer-Wunsch, 2026-10-09) — margin-left:auto on the first "right
+       side" element is the standard flex trick for a two-group split
+       without wrapping the children in extra markup. */
+    justify-content: flex-start;
+  }
+  .scope-smooth-tuning {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .max-hold-group {
+    display: flex;
+    /* Max Hold now comes first in markup (Nutzer-Wunsch 2026-10-14: swapped
+       with Smooth) — it's the one that starts the right-aligned cluster now,
+       see .waterfall-row's own comment on this trick. */
+    margin-left: auto;
+  }
+  .waterfall-wrap {
+    grid-area: wf;
+    margin-top: 0;
+  }
+  /* Desktop: the page may grow downwards, the extra room goes to the
+     waterfall (+90px; the overlay spans spectrum + waterfall, so it grows by
+     the same amount). Phone keeps 176/246. */
+  .waterfall-canvas {
+    height: 266px;
+  }
+  .waterfall-overlay {
+    height: 336px;
+  }
+}
+
+/* Passband graphic at the top of the filter settings (drawFilterGraph in app.js). */
+.filter-graph {
+  width: 100%;
+  display: block;
+  margin-bottom: 0.9rem;
+}
+.filter-graph[hidden] { display: none; }
+.filter-graph .fg-frame { fill: rgba(0, 0, 0, 0.15); stroke: rgba(255, 255, 255, 0.12); }
+.filter-graph .fg-axis { stroke: rgba(255, 255, 255, 0.35); }
+.filter-graph .fg-shape { fill: rgba(255, 255, 255, 0.18); stroke: #fff; stroke-width: 1.2; }
+.filter-graph .fg-pitch { stroke: var(--accent); stroke-dasharray: 3 2; }
+.filter-graph text { fill: var(--text-dim); font-size: 9px; font-family: system-ui, sans-serif; }
+.filter-graph .fg-title { fill: #fff; font-size: 10px; }
+.filter-graph .fg-apf { fill: rgba(0, 205, 238, 0.35); stroke: #00cdee; stroke-width: 1; }
+.filter-graph .fg-apf-label { fill: #00cdee; font-size: 7px; }
+
+/* APF on/off button in the filter settings (CW only). */
+.apf-toggle {
+  background: var(--key-face);
+  border: none;
+  color: var(--key-text);
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin: 0 0.3rem;
+}
+.apf-toggle.active { background: rgb(110, 190, 60); color: var(--panel); }
+
+/* Filter settings only has the one close button: centred, with an empty line above. */
+#filter-settings-overlay .overlay-actions { justify-content: center; margin-top: 1.75rem; }
+/* Same — TX-Processor overlay also only has the one close button. */
+#proc-settings-overlay .overlay-actions { justify-content: center; margin-top: 1.75rem; }
+/* Same — Audio (VOIP) overlay also only has the one close button (2026-10-12). */
+#audio-overlay .overlay-actions { justify-content: center; margin-top: 1.75rem; }
+/* The TX (Mic) tab grew past a short viewport's height once the Mikrofon
+   device dropdown was added (Nutzer-Report, 2026-10-16: graphical glitch —
+   the panel had no max-height/scroll of its own, so on a short viewport it
+   overflowed past .overlay's fixed backdrop and the page behind showed
+   through around its edges). Same fix, same pattern as #connect-overlay's
+   own max-height+scroll treatment above: only the tab content scrolls,
+   title/tabs/close button stay in view. */
+#audio-overlay .overlay-panel {
+  /* Wider than the base .overlay-panel's fixed 280px (Nutzer-Wunsch,
+     2026-10-16) — min(90vw, ...) is the same responsive pattern
+     #connect-overlay already uses, so it still fits a phone screen (caps
+     at 90% of viewport width there) while getting noticeably roomier on
+     desktop. */
+  width: min(90vw, 420px);
+  max-height: 90dvh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#audio-overlay .overlay-panel > * {
+  flex: none;
+}
+#audio-overlay .overlay-panel > .overlay-tabpanels {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* Same — the "ms" latency details overlay also only has the one close button (2026-10-13). */
+#latency-overlay .overlay-actions { justify-content: center; margin-top: 1.75rem; }
+/* The dual-handle LC/HC slider has no height of its own: leave room for its handles. */
+#filter-lohicut-row { padding-bottom: 0.6rem; }
+
+/* Caption + button group rows in the filter settings (Filter wählen, SSB Filter
+   Mode, APF Breite): centred. */
+#filter-settings-overlay label.center-row { align-items: center; text-align: center; margin-bottom: 1.6rem; }
+
+/* Hardware-key bevel for the standard buttons: black outline, light top edge,
+   darker lower edge, drop shadow underneath. Done with shadows only, so it also
+   sits on the lit (orange/green) states, which keep their own colours. */
+.btn-group button,
+.audio-btn,
+.overlay-actions button,
+.amp-actions button,
+.apf-toggle {
+  border: 1px solid #0b0b0d;
+  border-bottom-color: #030304;
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -2px 3px rgba(0, 0, 0, 0.3), 0 2px 2px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+  font-weight: 700;
+}
+.btn-group button:active,
+.audio-btn:active,
+.overlay-actions button:active,
+.amp-actions button:active,
+.apf-toggle:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6), 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+/* Lit keys: dark lettering, no text shadow. */
+.btn-group button.active,
+.audio-btn.active,
+.audio-btn.power-on,
+.overlay-actions button.primary,
+.apf-toggle.active {
+  text-shadow: none;
+}
+
+/* Spectrum switched off: its span/level/Auto controls are dimmed and inert. */
+.scope-off { opacity: 0.4; }
+
+/* Frequency keypad in the spectrum area while the spectrum is off. Same grey
+   as the "off" canvases, keys in the hardware-key look, using the full width and
+   height of the area. What is typed shows on the big frequency display. */
+.freq-keypad {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #141414;
+  padding: 0.6rem;
+}
+.freq-keypad[hidden] { display: none; }
+
+.kp-grid {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(4, 1fr);
+  grid-template-areas:
+    "k1 k2 k3 clr"
+    "k4 k5 k6 comma"
+    "k7 k8 k9 ent"
+    "k0 k0 k0 ent";
+  gap: 8px;
+}
+.kp-key {
+  background: var(--key-face);
+  color: var(--key-text);
+  border: 1px solid #0b0b0d;
+  border-bottom-color: #030304;
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -2px 3px rgba(0, 0, 0, 0.3), 0 2px 2px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+  font: inherit;
+  font-size: 1.7rem;
+  font-weight: 700;
+  min-height: 0;
+  cursor: pointer;
+}
+.kp-key:hover { filter: brightness(1.15); }
+.kp-key:active {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6), 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+.kp-clr, .kp-ent { font-size: 1.2rem; letter-spacing: 0.05em; }
+.kp-ent { color: var(--accent); }
+
+/* Typing on the keypad: the entry sits right-aligned on the digit places like
+   on a calculator; a rejected entry turns red, same size. */
+.freq .kp-digit,
+.freq .kp-digit:hover { cursor: default; background: none; }
+.freq.entry-error {
+  color: #ff6a5a;
+  text-shadow: 0 0 5px rgba(255, 106, 90, 0.4);
+}
+
+/* SPEC key: green while the spectrum is on, plain grey key while it is off. */
+#scope-toggle-button.active {
+  background: rgb(110, 190, 60);
+  color: var(--panel);
+  text-shadow: none;
+}
+
+/* A key that does not apply right now (e.g. AGC in FM): still there, greyed out. */
+.btn-group button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.btn-group button:disabled:hover {
+  filter: none;
+}
+
+/* Small caption above a group of overlay fields. */
+.overlay-caption {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 0.2rem;
+}
+
+/* Sets a caption apart as the start of a new section within the same tab
+   (e.g. TX fields below RX fields in the VOIP tab) — a thin rule plus extra
+   space above, instead of a plain .overlay-caption's small bottom margin. */
+.overlay-section-divider {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Small, discreet KENWOOD mark between the SWR meter and the frequency. The
+   source is black on white: invert + hue-rotate turns it white-on-black with
+   the red kept, "screen" blending drops the black so it sits on the panel
+   without a box, low opacity keeps it unobtrusive. Tiny negative bottom
+   margin so it does not widen the gap. */
+.brand-logo {
+  display: block;
+  height: 14px;
+  width: auto;
+  /* Measured in the browser: visible gap from the SWR scale to the top of the
+     digits' ink is ~39px, the logo is centred in it; the negative margins keep
+     the total height unchanged (the freq line box has empty space above the
+     digits). */
+  margin: 0;
+  filter: invert(1) hue-rotate(180deg);
+  mix-blend-mode: screen;
+  opacity: 0.4;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Row holding the centred logo (position as measured above). The row carries
+   the negative margins that keep the total height unchanged. */
+.brand-row {
+  position: relative;
+  margin: -3.4px 0 -1.05px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem; /* logo + model text are centred together */
+}
+
+/* Model lettering as on the radio's front ("HF/50MHz TRANSCEIVER  TS-890"),
+   as discreet as the logo. */
+.brand-model {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #fff;
+  opacity: 0.4;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+.brand-model-sub {
+  font-size: 0.45rem;
+  letter-spacing: 0.04em;
+}
+.brand-model-name {
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  line-height: 1;
+}
+
+/* Tabs in the settings overlay (Netzwerk / Audio / PA). */
+.overlay-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.overlay-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.4rem 0.2rem;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+.overlay-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+/* All panels share one grid cell and a hidden one only turns invisible, so the
+   overlay keeps the height of the tallest tab. */
+.overlay-tabpanels { display: grid; }
+.overlay-tabpanel { grid-area: 1 / 1; }
+.overlay-tabpanel[hidden] { display: block; visibility: hidden; }
+/* Users tab: the list takes all spare height of the (constant) window instead
+   of leaving a gap above Abbrechen/OK; its own height does not count toward
+   the window size (flex-basis 0), it scrolls instead. */
+.overlay-tabpanel[data-tab="users"]:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+.overlay-tabpanel[data-tab="users"]:not([hidden]) .users-list {
+  flex: 1 1 0;
+  min-height: 6rem;
+  max-height: none;
+}
+/* While the tab is hidden (it still takes part in the shared grid height) the
+   list must not count at its full length, or leaving the tab grows the window. */
+.overlay-tabpanel[data-tab="users"][hidden] {
+  display: flex;
+  flex-direction: column;
+}
+.overlay-tabpanel[data-tab="users"][hidden] .users-list {
+  max-height: 6rem;
+}
+
+/* AF/SQL/RFG/PWR sliders all end at the same x: every row reserves the width
+   of PWR's value text on the right, which PWR fills with it. */
+.slider-col .ctrl-row {
+  position: relative;
+  padding-right: 3.2rem;
+}
+/* PWR value: phone keeps it in flow right behind the slider; desktop puts it
+   centred ON the slider (see the min-width block below). The wrapper is
+   transparent here. */
+.slider-wrap {
+  display: contents;
+}
+.slider-col .pwr-row {
+  padding-right: 0;
+}
+/* In flow right behind the slider (which is capped at 255px on wide screens);
+   same 3.2rem as the padding the other rows reserve, so all sliders end alike. */
+.slider-col .pwr-row #pwr-value {
+  flex: none;
+  width: 2.8rem; /* 3.2rem minus the row gap, so all sliders end at the same x */
+  padding-left: 0.4rem;
+  box-sizing: border-box;
+  text-align: left;
+  white-space: nowrap;
+}
+
+@media (min-width: 800px) {
+  /* Desktop: the watt value sits centred ON the slider (slightly see-through
+     chip); the row keeps the same 3.2rem right padding as the others. */
+  .slider-wrap {
+    display: flex;
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    max-width: 255px;
+    margin: 0 2px; /* the native range input's own default margin, as on the other sliders */
+  }
+  .slider-wrap .slider {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+  .slider-col .pwr-row {
+    padding-right: 3.2rem;
+  }
+  /* label + slider of all four rows 15px further right */
+  .slider-col .ctrl-row > .ctrl-label {
+    margin-left: 15px;
+  }
+  .slider-col .pwr-row #pwr-value {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: auto;
+    transform: translate(-50%, -50%);
+    padding: 0 0.5rem;
+    /* Full pill instead of the barely-rounded 3px corners it had (2026-10-12
+       user request: "die ecken schön rund machen") — same 999px convention
+       as .overlay-brand's pill elsewhere in this file. */
+    border-radius: 999px;
+    background: rgba(14, 14, 17, 0.55);
+    color: var(--text);
+    font-weight: 600;
+    pointer-events: none;
+  }
+}
+
+/* Discreet credit line above the settings title, the S-meter scale faintly in
+   the background. */
+.overlay-brand {
+  position: relative;
+  margin: 0 0 1rem; /* inside the panel padding, not touching its top edge */
+  padding: 0.7rem 1rem;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #b4bdc6;
+  overflow: hidden;
+  border-radius: 999px; /* pill shape */
+}
+.overlay-brand::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("meter-bg.jpg") center / cover no-repeat;
+  border-radius: inherit;
+  opacity: 0.32;
+  pointer-events: none;
+}
+.overlay-brand > span {
+  position: relative; /* above the background */
+}
+.overlay-brand a {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.overlay-brand a:hover {
+  color: var(--accent);
+}
+
+/* These buttons keep the width of their widest label while cycling. */
+#nr-button,
+#bc-button {
+  min-width: 3.85rem;
+}
+/* NB1/NB2/BC hidden on phone (Nutzer-Wunsch, 2026-10-14: "in mobilansicht
+   entfernen und dafür RX EQ, TX EQ hinzufügen") — still in the DOM (not
+   removed), app.js's relocateEqButtonsForLayout puts RX EQ/TX EQ in the
+   visual gap this leaves in .ctrl-row-2. Desktop keeps them exactly as
+   before. */
+#nb-buttons,
+.ctrl-row-2 .btn-group:has(#bc-button) {
+  display: none;
+}
+@media (min-width: 800px) {
+  #nb-buttons,
+  .ctrl-row-2 .btn-group:has(#bc-button) {
+    display: flex;
+  }
+}
+#at-button {
+  min-width: 3.7rem;
+}
+#pre-button {
+  min-width: 4.35rem;
+}
+#att-button {
+  min-width: 4.6rem;
+}
+#agc-button {
+  min-width: 4.5rem;
+}
+
+/* Recessed-key look (started as a desktop-only TRIAL, 2026-10-09; brought to
+   phone too, 2026-10-14 user request: "die buttons tauschen gegen das design
+   aus der Desktopansicht" — same dark face/glowing-slit design everywhere
+   now) for every button in the main page's .btn-group rows: dark face,
+   glowing slit instead of an orange fill when active. Overlay/dialog
+   buttons live outside <main> and are not touched; the top status row
+   (gear, power, PCM/OPUS, reset) and the waterfall row (SPEC, Hi) are
+   excluded.
+   Split in two: this block holds everything that ISN'T button height (bg,
+   border, color, the LED slit's shape/glow, the per-button state
+   overrides) and applies everywhere; padding/font-size/gap/LED
+   width-height — the actual height-determining properties — are set
+   separately per breakpoint further below, phone keeping its existing
+   (pre-redesign) button height exactly (Nutzer-Wunsch: "Die Höhe der
+   buttons soll aber wie bisher in der mobilansicht bleiben"), desktop
+   keeping the numbers this design already shipped with. */
+main > :not(.status-row):not(.waterfall-row) .btn-group button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  background: linear-gradient(#2a2a2d, #19191b);
+  border: 1px solid #3a3a3e;
+  border-radius: 4px;
+  box-shadow: none;
+  text-shadow: none;
+  color: #bdb8a4;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
+  content: "";
+  border-radius: 2px;
+  background: #3b3b3e;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+main > :not(.status-row):not(.waterfall-row) .btn-group button.active {
+  background: linear-gradient(#2a2a2d, #19191b);
+  color: #ffd27a;
+  text-shadow: none;
+}
+main > :not(.status-row):not(.waterfall-row) .btn-group button.active::before {
+  background: #ffb020;
+  box-shadow: 0 0 6px #ffb020;
+}
+/* Trigger keys (TUNE, PA TUNE, the PA level switch) have no state to show: the LED slit
+   is invisible (Nutzer-Wunsch 2026-10-11), but still takes its room, so the label sits
+   at exactly the same height as on the keys that do have an LED. ANT 1/2 joined this
+   group 2026-10-12 ("ANT 1 button die LED entfernen") — it just cycles between two
+   antenna ports, neither more "on" than the other, so a lit/unlit LED never meant
+   anything useful there either. AGC joined 2026-10-13 ("AGC LED vom button entfernen")
+   — unlike ANT/TUNE its button text already carries real state (OFF/S/M/F), just
+   without the extra LED now. */
+main #tune-button::before,
+main #pa-tune-button::before,
+main #pa-level-button::before,
+main #ant-button::before,
+main #agc-button::before {
+  visibility: hidden;
+}
+/* AGC also shouldn't light up (amber text) when active (Nutzer-Wunsch,
+   2026-10-13, right after the LED removal above) — same reasoning: the
+   button's own text already shows which AGC speed is selected, no extra
+   "lit" cue needed. Stays the plain unlit color in every state. */
+main #agc-button.active {
+  color: #bdb8a4;
+}
+main #pa-power-button.active::before {
+  background: rgb(110, 190, 60);
+  box-shadow: 0 0 6px rgb(110, 190, 60);
+}
+/* PA OPER: solid red LED instead of the earlier pulsing "hot amplifier"
+   glow on the whole button (2026-10-12 user request: "das glimmen
+   entfernen und stattdessen die LED rot leuchten lassen wenn aktiv") —
+   the button face itself stays the same muted green as PA power. */
+main #pa-oper-button.active::before {
+  background: rgb(230, 40, 40);
+  box-shadow: 0 0 6px rgb(230, 40, 40);
+}
+main #pa-power-button.active,
+main #pa-oper-button.active {
+  background: linear-gradient(#2a2a2d, #19191b);
+  color: rgb(170, 230, 120);
+}
+main > :not(.status-row):not(.waterfall-row) .btn-group button:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+/* Phone size, TEST (2026-10-14, Nutzer-Wunsch "testweise Buttons in mobile
+   gleich gross wie in Desktop"): same numbers as the desktop block below
+   instead of the smaller phone-tuned set these used to carry (24px tall,
+   matching the pre-redesign plain button) — easy to revert to the old phone
+   values (gap 0.16rem, min-width 2.5rem, padding 0.16rem 0.35rem 0.14rem,
+   font-size 0.68rem, ::before width 1.3rem/height 2.6px) if the test doesn't
+   stick. */
+main > :not(.status-row):not(.waterfall-row) .btn-group button {
+  gap: 0.22rem;
+  min-width: 3.1rem;
+  padding: 0.24rem 0.5rem 0.22rem;
+  font-size: 0.66rem;
+}
+main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
+  width: 1.56rem;
+  height: 3.6px;
+}
+@media (min-width: 800px) {
+  main > :not(.status-row):not(.waterfall-row) .btn-group button {
+    gap: 0.22rem;
+    min-width: 3.1rem;
+    padding: 0.24rem 0.5rem 0.22rem;
+    font-size: 0.66rem;
+  }
+  main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
+    width: 1.56rem;
+    height: 3.6px;
+  }
+}
+
+/* A control that does not apply in the current mode (e.g. RF gain in FM). */
+.ctrl-row.unavailable {
+  opacity: 0.4;
+}
+.ctrl-row.unavailable .slider {
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Spectrum/waterfall smoothing off: show the stretched bins as crisp blocks. */
+.waterfall-wrap.scope-crisp canvas {
+  image-rendering: pixelated;
+}
+
+/* Browser-mic level meter in the Setup window (VOIP tab): LED-style segments,
+   green -> yellow -> red, peak hold. */
+.mic-meter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1.6rem 0 0.4rem; /* room below the Mic Gain slider (collapses with the label's 0.75rem margin: the larger one wins) */
+  /* thin rule under the meter, separating it from the limiter block (same
+     look as the divider in Settings > Benutzer) */
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+/* Extra breathing room between the level meter (moved right under the Mic
+   Gain slider, 2026-10-14) and TX Mic Limiter below it — without this the
+   two sat right on top of each other since .mic-meter-row's own bottom
+   margin matches every other control row's normal spacing. */
+#mic-limiter-row {
+  margin-top: 0.9rem;
+}
+.mic-meter {
+  flex: 1;
+  display: flex;
+  gap: 2px;
+}
+.mic-meter span {
+  flex: 1;
+  height: 0.7rem;
+  border-radius: 1px;
+  background: #1c1c20;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.7);
+}
+.mic-meter span.g.on { background: #6cd44c; }
+.mic-meter span.y.on { background: #f1b72a; }
+.mic-meter span.r.on { background: #e8281e; }
+.mic-meter span.hold.g { background: #6cd44c; }
+.mic-meter span.hold.y { background: #f1b72a; }
+.mic-meter span.hold.r { background: #e8281e; }
+/* only used for the "kein Mikro" notice */
+#mic-meter-value:empty {
+  display: none;
+}
+
+/* Phone: the "Analog" key in the spectrum config row swaps the spectrum area for
+   the analog gauge with its PWR/SWR/ALC/IC keys (moved here from the hidden
+   desktop markup by app.js while shown). With the spectrum off, the config row
+   shrinks to SPEC + Analog. */
+.analog-toggle-group {
+  display: none;
+}
+.analog-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: #141414;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 0 0.6rem 0.3rem;
+}
+.analog-panel[hidden] {
+  display: none;
+}
+.analog-panel .meter-analog {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+.analog-panel .meter-mode-row {
+  display: flex;
+  justify-content: center;
+  gap: 1.2rem;
+  margin-top: 0.4rem;
+}
+@media (max-width: 799px) {
+  .analog-toggle-group {
+    display: flex;
+  }
+  .waterfall-row.scope-is-off > :not(.scope-keep) {
+    display: none;
+  }
+  /* SPEC on = the user chose the spectrum: no Analog key then */
+  .waterfall-row:not(.scope-is-off) .analog-toggle-group {
+    display: none;
+  }
+  /* SPEC and Analog keep their place whatever else is shown in the row */
+  .waterfall-row {
+    justify-content: flex-start;
+    width: 100%; /* full width, not shrink-to-fit + centred by the parent */
+    gap: 0.3rem; /* with the Analog key the full row has to fit the phone width */
+  }
+}
+
+/* Connected clients in the Traffic window: small list, one client per line, same
+   font as the table above; a line wider than the window scrolls sideways. */
+.client-list {
+  font-family: inherit;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  max-height: 9rem;
+  overflow: auto;
+  color: var(--text-dim);
+}
+.client-list div {
+  display: flex;
+  gap: 0.6rem;
+  white-space: nowrap;
+  width: max-content;
+  min-width: 100%;
+}
+.client-list .cl-time {
+  flex: none;
+  opacity: 0.8;
+}
+.client-list .cl-me {
+  color: var(--text);
+}
+
+/* Traffic window: wider (room for the client list), close key centred below it. */
+#traffic-overlay .overlay-panel {
+  width: min(92vw, 420px);
+}
+#traffic-overlay .overlay-actions {
+  justify-content: center;
+  margin-top: 1.25rem;
+}
+
+/* Login mask (outside the local network) and user management overlay. */
+.login-overlay {
+  background: rgba(0, 0, 0, 0.88);
+  z-index: 100;
+}
+#setup-button[hidden] {
+  display: none;
+}
+.overlay-panel label.users-admin {
+  flex-direction: row;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.users-admin input {
+  flex: none;
+  width: auto;
+}
+.users-row,
+.users-add {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+.users-row .users-name {
+  flex: 0 0 6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.users-row input,
+.users-add input {
+  flex: 1;
+  min-width: 0;
+}
+.users-empty {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 0.4rem;
+}
+.users-row button,
+.users-add button {
+  flex: none;
+  background: var(--key-face);
+  color: var(--key-text);
+  border: 1px solid #0b0b0d;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* iOS Safari zooms the whole page when a text field with a font size below 16px
+   gets focus, and stays zoomed after the dialog closes (seen after the login).
+   Text fields in the dialogs therefore use 16px on touch phones; pinch zoom stays
+   available. */
+@media (max-width: 799px) {
+  .overlay input[type="text"],
+  .overlay input[type="password"],
+  .overlay input[type="number"],
+  .overlay select {
+    font-size: 16px;
+  }
+}
+
+/* Text above the login fields (station description), centred. */
+.login-intro {
+  text-align: center;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--accent);
+  margin-bottom: 1.1rem;
+}
+.login-intro div:first-child {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+/* User names are short (about 6 characters): a field 8 characters wide; the free
+   "Name" field takes the remaining room. */
+.users-row .users-name {
+  flex: 0 0 8ch;
+}
+.users-add input.users-input-name {
+  flex: 0 0 auto;
+  width: calc(8ch + 1.2rem); /* 8 characters plus the field's padding */
+}
+.users-row input.users-input-display,
+.users-add input.users-input-display {
+  flex: 0.8; /* the free name field is narrower than before (1.3) */
+}
+
+/* Labelled fields of the "new user" row. */
+.users-add {
+  align-items: flex-end;
+}
+.users-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.75rem; /* same as the other overlay labels */
+  color: var(--text-dim);
+  min-width: 0;
+}
+.users-field input {
+  width: 100%;
+}
+.users-field-name {
+  flex: 0 0 auto;
+  width: calc(8ch + 1.4rem);
+}
+.users-field-display {
+  flex: 0.8;
+}
+.users-field-pass {
+  flex: 1;
+}
+
+.users-field span {
+  white-space: nowrap;
+}
+.users-field-name {
+  width: 6.2rem;
+}
+
+/* "Speichern" under the new-user fields, "Schließen" centred. */
+.users-add-actions {
+  margin: 0.2rem 0 0.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+/* A long user list scrolls inside the window instead of growing it (the add row
+   and status stay in view). */
+.users-list {
+  max-height: min(14rem, 38vh);
+  overflow-y: auto;
+  padding-right: 0.3rem;
+}
+
+.debug-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.4rem;
+}
+.debug-controls input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+.debug-follow {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.3rem !important;
+  font-size: 0.7rem;
+  white-space: nowrap;
+  margin: 0;
+}
+.debug-controls button {
+  flex: none;
+  background: var(--key-face);
+  color: var(--key-text);
+  border: 1px solid #0b0b0d;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+.debug-log {
+  margin: 0;
+  height: 16rem;
+  overflow: auto;
+  background: #08080a;
+  border-radius: 4px;
+  padding: 0.4rem 0.5rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: #b9c2cc;
+  white-space: pre;
+}
+
+/* Long log lines must scroll inside the Debug box instead of stretching the
+   window (a grid item's min-width is its content width unless told otherwise). */
+#connect-overlay .overlay-tabpanels {
+  grid-template-columns: minmax(0, 1fr);
+}
+#connect-overlay .overlay-tabpanel {
+  min-width: 0;
+}
+.debug-log {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+@media (max-width: 799px) {
+  .debug-log {
+    height: 38vh;
+  }
+}
+
+/* User window: all text fields and names in the same size as the other overlays' fields. */
+.users-row .users-name,
+.users-row input,
+.users-add input {
+  font-size: 0.9rem;
+}
+
+/* Server settings window: wider/taller than the other overlays (it holds the
+   debug log); on a phone it takes about 90% of the screen. */
+#connect-overlay .overlay-panel {
+  width: min(90vw, 520px);
+  max-height: 90dvh; /* tried 72dvh; back to 90dvh now that the buttons stay in view */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* Only the tab contents scroll; title, tabs, status line and the Abbrechen/OK
+   buttons stay in view (the buttons used to scroll out of the panel). */
+#connect-overlay .overlay-panel > * {
+  flex: none;
+}
+#connect-overlay .overlay-panel > .overlay-tabpanels {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+@media (max-width: 799px) {
+  #connect-overlay .overlay-panel {
+    padding: 1.2rem 1rem;
+  }
+}
+
+/* PA tab: the COM port field takes the room, "auto connect" sits right next to it. */
+.amp-port-pair {
+  align-items: flex-end;
+}
+.amp-port-pair > label:first-child {
+  flex: 2.2;
+}
+.amp-port-pair > label.overlay-checkbox {
+  flex: 1;
+  white-space: nowrap;
+}
+
+/* User list: login, name, Admin mark and an Edit button per row; editing happens
+   in the "useredit" window. */
+.users-row .users-display {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.9rem;
+  color: var(--accent);
+}
+.users-row .users-admin-mark {
+  flex: 0 0 2.6rem;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.users-add-actions button,
+.useredit-delete {
+  background: var(--key-face);
+  color: var(--key-text);
+  border: 1px solid #0b0b0d;
+  border-radius: 4px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.useredit-extra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.overlay-panel .useredit-extra label {
+  margin-bottom: 0;
+}
+.useredit-delete {
+  background: transparent;
+  color: #d9534f;
+  border-color: #d9534f55;
+}
+.useredit-delete:hover {
+  background: #d9534f22;
+}
+.useredit-delete[hidden] {
+  display: none;
+}
+
+.useredit-flags {
+  display: flex;
+  gap: 1rem;
+}
+.overlay-panel .useredit-flags label {
+  margin-bottom: 0;
+}
+
+/* Power window: two full-width choices. */
+.overlay-panel > button.power-choice {
+  display: block;
+  width: 100%;
+  margin-bottom: 0.6rem;
+  background: var(--key-face);
+  color: var(--key-text);
+  border: 1px solid #0b0b0d;
+  border-radius: 4px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.overlay-panel > button.power-choice-radio {
+  background: transparent;
+  color: #d9534f;
+  border-color: #d9534f55;
+}
+.overlay-panel > button.power-choice-radio:hover {
+  background: #d9534f22;
+}
+
+/* TX EQ / RX EQ: two buttons (a long press opens the effect choice). Desktop
+   only (2026-10-12 user request) — hidden on phone entirely, not just a
+   plain centred row like the first version of this comment said. */
+.eq-row {
+  justify-content: center;
+  display: none;
+}
+/* no text selection / iOS callout while long-pressing */
+button.longpress {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+.eq-effects {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 0.9rem;
+}
+.eq-effects button {
+  background: var(--key-face);
+  color: var(--key-text);
+  border: 1px solid #0b0b0d;
+  border-radius: 4px;
+  padding: 0.4rem 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.eq-effects button.active {
+  background: var(--accent);
+  color: var(--panel);
+}
+@media (min-width: 800px) {
+  .eq-row {
+    display: flex;
+    grid-area: eqmid;
+    align-self: end;
+    justify-self: center;
+    padding-left: 0;
+    gap: 0.6rem;
+    /* one button line (28px) + the 0.4rem row gap up: onto the ANT 1 / PRE OFF line
+       instead of the AT / TUNE line below it (both bottom-aligned in the same area) */
+    margin-bottom: 2.15rem;
+  }
+}
+
+/* Equalizer window (TX and RX share it): Schliessen centred. */
+#eq-overlay .overlay-actions {
+  justify-content: center;
+}
+
+/* Noise blanker window: Schliessen centred (like the equalizer window); the [hidden]
+   sections must really disappear (author display rules would win otherwise). */
+#nb-overlay .overlay-actions {
+  justify-content: center;
+}
+#nb-overlay [hidden] {
+  display: none;
+}
+
+/* "Sitzung beendet" window: wider, so the first sentence fits on one line; the
+   closing request centred. */
+#session-ended-overlay .overlay-panel {
+  width: min(92vw, 400px);
+  box-sizing: border-box;
+}
+.session-ended-close {
+  text-align: center;
+}
+#session-ended-overlay .session-ended-close + .session-ended-close {
+  margin-top: 0.6rem;
+}
+
+/* "Beenden" window (power button): Abbrechen centred. */
+#power-overlay .overlay-actions {
+  justify-content: center;
+  margin-top: 1.5em; /* one blank line above Abbrechen */
+}
+
+/* Date and time in the style of the radio's own display (cyan-blue, two lines).
+   Hidden on the phone. */
+.clock-desktop {
+  display: none;
+  text-align: center;
+  color: #2b9fcc; /* dimmer than the first version (#35c8ff) */
+  font-family: "Helvetica Neue", Arial, system-ui, sans-serif;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: 0;
+  text-shadow: 0 0 4px rgba(53, 200, 255, 0.2);
+  pointer-events: none;
+  user-select: none;
+}
+@media (min-width: 800px) {
+  .clock-desktop {
+    display: block;
+  }
+}
+.clock-desktop #clock-date {
+  font-size: 0.7rem;
+}
+.clock-desktop #clock-time {
+  font-size: 0.95rem;
+}
+
+/* Active-VFO indicator in the style of the radio's display: A and B stacked as little
+   boxes, a pointer on the active one (filled box). Desktop only (hidden on the phone).
+   app.js moves the element INTO #freq (and back in after every redraw of the digits),
+   where it sits right behind the last Hz digit, as tall as the digits; its sizes are
+   in em, i.e. they follow the frequency font size. Deliberately understated: grey
+   instead of white. */
+.vfo-ab-desktop {
+  display: none;
+}
+@media (min-width: 800px) {
+  #freq .vfo-ab-desktop {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.07em;
+    position: absolute;
+    left: 100%;
+    /* The digit glyphs (Digital-7 Mono) fill 0.1885em .. 0.843em of their line box
+       (measured: ascent 45.0 px of a 58 px font ascent at 68.8 px), so the
+       indicator spans exactly that: top edge = top of the digits, bottom edge =
+       their bottom. */
+    top: 0.1885em;
+    margin-left: 0.05em;
+    height: 0.6545em;
+    z-index: 5; /* above the slider block next to it, which would take the clicks */
+    font-family: system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    letter-spacing: normal;
+    font-size: 1em;
+  }
+  #freq.entering .vfo-ab-desktop,
+  #freq.entry-error .vfo-ab-desktop,
+  #freq.radio-off .vfo-ab-desktop {
+    display: none;
+  }
+  .vfo-ab .vfo-row {
+    display: flex;
+    align-items: center;
+    flex: 1 1 0;
+    gap: 0.05em;
+    min-height: 0;
+  }
+  .vfo-ab .vfo-ptr {
+    width: 0;
+    height: 0;
+    border-top: 0.06em solid transparent;
+    border-bottom: 0.06em solid transparent;
+    border-right: 0.09em solid #8b9197;
+    visibility: hidden;
+  }
+  .vfo-ab .vfo-row.active .vfo-ptr {
+    visibility: visible;
+  }
+  .vfo-ab button {
+    box-sizing: border-box;
+    height: 100%;
+    min-width: 0.27em;
+    padding: 0 0.05em;
+    background: transparent;
+    color: #6f757a;
+    border: 1px solid #4a4f54;
+    border-radius: 2px;
+    font: inherit;
+    font-size: 0.21em;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .vfo-ab .vfo-row.active button {
+    background: #8b9197;
+    color: #16161a;
+    border-color: #8b9197;
+  }
+}
+
+/* Offset scale under the waterfall (desktop only): values only, no ticks. */
+.wf-scale {
+  display: none;
+  position: relative;
+  height: 1.05rem;
+  margin-bottom: 0.15rem;
+  pointer-events: none;
+  user-select: none;
+}
+.wf-scale span {
+  position: absolute;
+  top: 0;
+  font-family: "Helvetica Neue", Arial, system-ui, sans-serif;
+  font-size: 0.7rem;
+  line-height: 1.05rem;
+  color: #2b9fcc;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+@media (min-width: 800px) {
+  .wf-scale {
+    display: block;
+    grid-area: wfscale;
+    margin-top: -0.4rem; /* cancels most of the grid's 0.5rem row gap: right under the waterfall */
+  }
+}
+
+/* Radio off / not connected (Nutzer-Wunsch 2026-10-11, extended to phone
+   2026-10-15 — "auf dem mobile sind nach power off noch die LEDs auf den
+   Buttons an": this whole block used to sit inside a desktop-only
+   @media (min-width: 800px), so phone never got it at all, the LEDs for
+   active/lit buttons like AT ON or TX EQ just stayed lit): no key lights
+   any more (the LED slits go dark, lit labels turn plain) and the meter
+   dims with the rest, on every screen size. */
+/* same selector chain as the lit rules they cancel (they are more specific than a plain
+   "main.controls-off .btn-group ...") */
+main.controls-off > :not(.status-row):not(.waterfall-row) .btn-group button.active {
+  color: #bdb8a4;
+}
+main.controls-off > :not(.status-row):not(.waterfall-row) .btn-group button.active::before,
+main.controls-off #pa-power-button.active::before,
+main.controls-off #pa-oper-button.active::before,
+main.controls-off #proc-button.active::before {
+  background: #3b3b3e;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+main.controls-off #pa-power-button.active,
+main.controls-off #pa-oper-button.active,
+main.controls-off #proc-button.active {
+  color: #bdb8a4;
+}
+/* the meter mode keys (PWR/SWR/ALC/IC) have their own slit element */
+main.controls-off .meter-mode-btn.active .mm-slit {
+  background: #3b3b3e;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
+}
+main.controls-off .meter-mode-btn.active {
+  color: #bdb8a4;
+}
+/* the green SPEC key and the other lit keys of the waterfall row */
+main.controls-off .waterfall-row .btn-group button.active,
+main.controls-off #scope-toggle-button.active {
+  background: var(--key-face);
+  color: var(--key-text);
+}
+main.controls-off .meter-analog,
+main.controls-off .swr-meter-svg,
+main.controls-off .s-meter-svg {
+  opacity: 0.4;
+  filter: grayscale(0.5);
+}
+/* sliders: no orange lit part of the scale (first background layer collapsed to 0
+   width) and the orange centre line of the cap turns grey */
+main.controls-off .slider::-webkit-slider-runnable-track {
+  background-size: 0 100%, 100% 100%, 100% 100%;
+}
+main.controls-off .slider::-moz-range-track {
+  background-size: 0 100%, 100% 100%, 100% 100%;
+}
+main.controls-off .slider::-webkit-slider-thumb {
+  background:
+    linear-gradient(to right, transparent calc(50% - 1px), #5a5d62 calc(50% - 1px), #5a5d62 calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0) 35%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.4) 100%),
+    linear-gradient(to right, #4a4d51 0%, #787b80 10%, #5e6165 22%, #8f9297 36%, #686b70 50%, #85888d 64%, #5a5d62 78%, #777a7f 90%, #45484c 100%);
+}
+main.controls-off .slider::-moz-range-thumb {
+  background:
+    linear-gradient(to right, transparent calc(50% - 1px), #5a5d62 calc(50% - 1px), #5a5d62 calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0) 35%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.4) 100%),
+    linear-gradient(to right, #4a4d51 0%, #787b80 10%, #5e6165 22%, #8f9297 36%, #686b70 50%, #85888d 64%, #5a5d62 78%, #777a7f 90%, #45484c 100%);
+}
+
+/* "Login Nachricht anpassen" (Benutzer tab): four-line text field, styled like
+   the other overlay fields, set apart from the user list by a thin rule. */
+.login-msg-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.login-msg-label textarea {
+  /* exactly the text width of the login mask (panel 280px minus its 1.5rem
+     padding on both sides) and its font, so lines wrap the same way */
+  width: calc(280px - 3rem);
+  max-width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  background: var(--bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: var(--accent);
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+.login-msg-label textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.login-msg-label + .users-add-actions {
+  padding-bottom: 0.9rem;
+  margin-bottom: 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+#users-list {
+  margin-top: 0;
+}
+
+/* Result of "Nachricht speichern", to the right of its button. */
+.login-msg-status {
+  align-self: center;
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+.login-msg-status.error {
+  color: #e66;
+}
+
+/* RX Taktkompensation sits right of the codec select (2026-10-16). */
+.audio-codec-row .overlay-checkbox {
+  margin: 0 0 0 0.75rem;
+}
+
+/* Server settings window: empty status lines took ~90px of dead space above
+   Abbrechen/OK; collapse them (they reappear when a message is set) and let the
+   user list and the debug log use the room (list/log still never count at
+   more than their minimum while their tab is hidden, so the window height does
+   not change between tabs). */
+#connect-overlay .overlay-status:empty {
+  display: none;
+}
+.overlay-tabpanel[data-tab="users"]:not([hidden]) .users-list {
+  min-height: 11rem;
+}
+.overlay-tabpanel[data-tab="users"][hidden] .users-list {
+  min-height: 11rem;
+  max-height: 11rem;
+}
+.overlay-tabpanel[data-tab="debug"]:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+}
+.overlay-tabpanel[data-tab="debug"]:not([hidden]) .debug-log {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 16rem;
+}
+
+/* Users and Debug tabs: leave about one line of space above Abbrechen/OK
+   (same in the hidden state, so the window height stays equal across tabs). */
+.overlay-tabpanel[data-tab="users"],
+.overlay-tabpanel[data-tab="debug"] {
+  padding-bottom: 1.4rem;
+}
+
+.ssl-help {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-dim);
+  margin: 0 0 0.7rem;
+}
+.ssl-link {
+  color: var(--accent);
+}
+
+/* HTTPS tab: one blank line between the heading and the text. */
+.overlay-tabpanel[data-tab="ssl"] .overlay-caption {
+  margin-bottom: 1.4rem;
+}
+
+/* Masked like a password field but a plain text input, so the browser's
+   password manager does not offer to save/fill the radio's KNS login (it is
+   not a login to this web page). */
+.masked-input {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
+/* Divider between "Listen to other clients' TX" and "Audio output" (RX tab);
+   the row is hidden on iOS, and its divider with it. */
+#audio-output-row:not([hidden]) {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}

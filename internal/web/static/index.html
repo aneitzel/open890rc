@@ -1,0 +1,923 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>open890RC</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png?v=1">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png?v=1">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="controls-off">
+  <div class="status-row">
+    <div class="btn-group">
+      <button type="button" id="power-button" class="audio-btn" title="TS-890 ein-/ausschalten">
+        <svg class="gear-icon" viewBox="0 0 24 24">
+          <path d="M12 3v8" />
+          <path d="M6.3 6.8a8 8 0 1 0 11.4 0" />
+        </svg>
+      </button>
+      <button type="button" id="setup-button" class="audio-btn" title="Settings" hidden>
+        <svg class="gear-icon gear-fill" viewBox="0 0 24 24">
+          <path d="M22.7 19 13.6 9.9c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4Z" />
+        </svg>
+      </button>
+    </div>
+    <div class="status-center">
+      <button type="button" class="audio-bitrate" id="audio-bitrate" title="Gesamter Netzwerk-Traffic (Browser, empfangen) — Klick für die Aufteilung"></button>
+      <button type="button" class="audio-latency" id="audio-latency" title="RX-Audio-Verzögerung (Server → Wiedergabe), Klick für Details"></button>
+    </div>
+    <div class="status-row-right">
+      <div class="btn-group">
+        <button type="button" id="record-button" class="audio-btn" title="Aufnahme starten (RX, und beim Senden auch der eigene TX-Ton) — beim Beenden Download, mit Esc abbrechen und verwerfen">
+          <svg class="record-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /></svg>
+          <span id="record-label">REC</span>
+        </button>
+      </div>
+      <div class="btn-group">
+        <button type="button" id="audio-button" class="audio-btn" title="RX-Audio ein/aus">
+          <svg class="audio-icon" viewBox="0 0 24 24">
+            <polygon points="3,9 8,9 13,4 13,20 8,15 3,15" />
+            <path class="wave" d="M16 8a5 5 0 0 1 0 8" />
+            <path class="wave" d="M18.5 5.5a9 9 0 0 1 0 13" />
+          </svg>
+          <span>TON</span>
+        </button>
+        <button type="button" id="audio-settings-button" class="audio-btn" title="Audio-Einstellungen (VOIP)">
+          <svg class="gear-icon gear-fill" viewBox="0 0 24 24">
+          <path d="M19.58 10.18 L22.90 10.54 L22.90 13.46 L19.58 13.82 L18.65 16.08 L20.74 18.67 L18.67 20.74 L16.08 18.65 L13.82 19.58 L13.46 22.90 L10.54 22.90 L10.18 19.58 L7.92 18.65 L5.33 20.74 L3.26 18.67 L5.35 16.08 L4.42 13.82 L1.10 13.46 L1.10 10.54 L4.42 10.18 L5.35 7.92 L3.26 5.33 L5.33 3.26 L7.92 5.35 L10.18 4.42 L10.54 1.10 L13.46 1.10 L13.82 4.42 L16.08 5.35 L18.67 3.26 L20.74 5.33 L18.65 7.92Z M15.4 12 A3.4 3.4 0 1 0 8.6 12 A3.4 3.4 0 1 0 15.4 12Z" />
+        </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- Desktop-only echo of #status-info below (Nutzer-Wunsch, 2026-10-08:
+       "die messages oben mittig in der ersten Zeile... da ist gut Platz
+       dafür") — a direct child of main, grid-placed into its own row right
+       under .status-row. NOT a DOM move of the original: that element's
+       position:absolute is relative to .meter-block (position:relative),
+       which centers it over the meter on phone — moving it out would break
+       that containing-block relationship. Same two-elements-one-source
+       pattern already used for the busy LED (#busy-indicator /
+       #busy-indicator-desktop): app.js's applyState writes the same text
+       into both via a shared helper, only one is ever visible per
+       breakpoint (see style.css). -->
+  <div class="status-message status-message-desktop" id="status-info-desktop"></div>
+
+  <div class="meter-block">
+  <div id="meter-tx-toggle" class="meter-tx-toggle">
+  <svg class="meter-svg s-meter-svg" viewBox="0 0 350 35">
+    <mask id="segMask"></mask>
+
+    <g class="meter-legend" transform="translate(0 2)">
+      <line id="s-leg-low" class="leg-line low" x1="0" y1="0" x2="172" y2="0" />
+      <line id="s-leg-high" class="leg-line high" x1="175" y1="0" x2="348" y2="0" />
+      <g id="s-pips-rx">
+        <line class="pip low" x1="12" x2="12" y1="0" y2="5" />
+        <line class="pip low" x1="52" x2="52" y1="0" y2="5" />
+        <line class="pip low" x1="92" x2="92" y1="0" y2="5" />
+        <line class="pip low" x1="132" x2="132" y1="0" y2="5" />
+        <line class="pip low" x1="172" x2="172" y1="0" y2="5" />
+        <line class="pip high" x1="232" x2="232" y1="0" y2="5" />
+        <line class="pip high" x1="288" x2="288" y1="0" y2="5" />
+        <line class="pip high" x1="348" x2="348" y1="0" y2="5" />
+      </g>
+      <g id="s-pips-tx" display="none"></g>
+      <g id="s-texts-tx" display="none" transform="translate(0 13)"></g>
+      <g id="s-texts-rx" transform="translate(0 13)">
+        <text class="leg-text low" x="10" y="0">1</text>
+        <text class="leg-text low" x="49" y="0">3</text>
+        <text class="leg-text low" x="90" y="0">5</text>
+        <text class="leg-text low" x="130" y="0">7</text>
+        <text class="leg-text low" x="170" y="0">9</text>
+        <text class="leg-text high" x="223" y="0">+20</text>
+        <text class="leg-text high" x="279" y="0">+40</text>
+        <text class="leg-text high" x="316" y="0">+60dB</text>
+      </g>
+    </g>
+
+    <g transform="translate(0 20)">
+      <rect x="0" y="0" width="350" height="15" class="meter-bg" />
+      <rect id="s-meter-low" x="0" y="0" width="0" height="15" class="meter-fill low" />
+      <rect id="s-meter-high" x="175" y="0" width="0" height="15" class="meter-fill high" />
+      <rect x="0" y="-2" width="350" height="25" fill="black" mask="url(#segMask)" />
+      <rect id="s-meter-peak" x="0" y="0" width="2" height="15" class="meter-peak" />
+    </g>
+  </svg>
+
+  <!-- Desktop-only analog replacement for the S/PO bar meter above: a STATIC
+       SVG rebuilt from the operator's reference bitmap (open890rc_smeter.bmp,
+       2026-10-09: "ich gebe Dir eine BMP Vorlage und Du baust daraus ein SVG
+       nach, gleiche Farben und proportionen"). viewBox = the bitmap's own
+       512x240 pixels; arcs are circles about (257,720) fitted to the bitmap,
+       tick angles/lengths and label boxes measured off it (checked by
+       difference-blending this SVG over the bitmap). Ticks fan out from the
+       needle pivot (257,323.5), not radially from the arc centre, like the
+       reference. PO row rescaled for the TS-890 to 0-150 W (reference: 0-250 W):
+       same non-linear tick spacing, i.e. position(w) = reference position(w*250/150),
+       so 100 W (full drive) sits at ~2/3 of the sweep (see ANALOG_PO_ANGLES, app.js). Only #analog-s-needle and #analog-dbm are driven from JS
+       (needle physics unchanged, see app.js). SWR is the digital bar below.
+       Hidden on phone, see style.css. -->
+  <svg class="meter-svg meter-analog" id="meter-analog" viewBox="0 0 512 240">
+    <defs>
+      <linearGradient id="analog-band-gradient" gradientUnits="userSpaceOnUse" x1="262" y1="0" x2="478" y2="0">
+        <stop offset="0" stop-color="#fcd500" />
+        <stop offset=".25" stop-color="#ffb900" />
+        <stop offset=".55" stop-color="#f78c05" />
+        <stop offset=".8" stop-color="#fa6400" />
+        <stop offset="1" stop-color="#ff5a00" />
+      </linearGradient>
+      <!-- soft shadow of the needle on the dial face; userSpaceOnUse because a straight line has no usable bounding box -->
+      <filter id="analog-needle-blur" filterUnits="userSpaceOnUse" x="0" y="0" width="512" height="240">
+        <feGaussianBlur stdDeviation="1.5" />
+      </filter>
+    </defs>
+      <g class="m-yellow">
+      <path class="ln" d="M30 103.03A657.4 657.4 0 0 1 257 62.6"/>
+      <path class="fill" d="M39 91L51 87L58 85L60 91.5L58 95L42 100L39 101Z"/>
+      <path class="t" d="M51.89 95.42L39.85 82.03M93.29 83.31L87.66 75.05M121.67 76.68L113.97 62.65M149.4 71.46L145.08 61.35M173.47 67.93L167.88 50.82M196.73 65.37L193.78 52.71M218.24 63.74L215.44 44.95M239.1 62.84L238.14 48.88M257.46 62.6L257.49 42.6"/>
+      <path class="ln" d="M35.92 109.28A649.5 649.5 0 0 1 478.08 109.28"/>
+      <g data-po-ticks="std"><path class="t" d="M54.78 102.78L62.89 111.63M163.99 77.19L168.23 88.42M206.57 72.46L207.95 79.32M237.96 70.78L238.48 77.76M263.5 70.53L263.32 77.53M286.54 71.17L285.14 83.09M306.38 72.38L305.03 79.25M326.92 74.27L325.03 81.01M344.85 76.47L342.5 83.06M362.86 79.18L360.07 85.61M379.52 82.16L374.09 92.86M396.03 85.55L392.5 91.6M412.59 89.41L408.71 95.24M429.41 93.8L425.2 99.4M444.65 98.2L440.17 103.58M459.65 102.92L451.53 111.76"/></g><g data-po-ticks="pa" style="display:none"><path class="t" d="M54.78 102.78L62.89 111.63M141.76 80.81L144.76 87.13M175.15 75.68L177.34 82.33M199.71 73.03L201.28 79.85M220.29 71.54L221.3 78.47M237.96 70.78L238.86 82.75M253.37 70.51L253.47 77.51M268.56 70.6L268.24 77.6M282.16 70.99L281.47 77.95M295.29 71.63L294.24 78.55M306.38 72.38L304.06 84.15M319.25 73.49L317.56 80.28M330.75 74.7L328.76 81.41M341.33 76L339.07 82.62M351.88 77.47L349.36 84M362.86 79.18L358.09 90.2M373.58 81.05L370.54 87.36M382.49 82.74L379.25 88.95M392.7 84.83L389.24 90.92M402.66 87.04L398.99 93M412.59 89.41L405.95 99.4M422.69 91.99L418.62 97.68M432.75 94.73L428.49 100.28M441.47 97.25L437.04 102.67M451.01 100.15L446.42 105.44M459.65 102.92L451.53 111.76"/></g>
+      <path class="ln" d="M72.89 149.99A599 599 0 0 1 392.76 136.59"/>
+      <path class="t" d="M90.29 144.67L83.47 137.35M108.03 139.82L104.26 135.16M124.7 135.79L121.24 130.89M140.65 132.41L137.53 127.28M156.9 129.42L153.69 123.2M171.36 127.15L167.36 117.99M186.28 125.19L184.27 119.54M201.05 123.62L199.16 116.88M215.84 122.42L214.64 116.54M229.2 121.65L228.25 114.71M242.99 121.16L242.3 111.19M257.63 121L257.65 115M271.43 121.17L271.85 115.19M284.8 121.65L285.75 114.71M298.78 122.46L300.21 115.61M313.37 123.66L316.09 114.03M328.13 125.24L330.16 119.59M342.64 127.15L345.04 121.65M357.93 129.56L361.16 123.35M373.96 132.53L377.1 127.41M389.71 135.89L395.48 127.72"/>
+      <path class="ln" d="M94.34 170.88A572.7 572.7 0 0 1 420.61 171.17"/>
+      <path class="t" d="M110.9 166.25L104.09 158.92M127.2 162.2L123.44 157.53M140.08 159.36L136.6 154.47M153.03 156.82L149.85 151.73M164.45 154.83L161.56 149.57M175.12 153.18L170.79 144.17M213.26 148.97L210.83 139.27M257.4 147.3L257.42 137.3M303.73 149.21L306.32 139.55"/>
+      <path class="alc" d="M133 215L143 212L144 204L148 204L156 202L172 199L188 197L212 194L236 193L252 192L268 193L275 193L275 201L252 201L236 201L212 203L188 205L172 208L156 211L148 213L138 215Z"/>
+      <path class="ln" d="M279 200.5Q331 201.5 383 214.5"/>
+      
+      </g>
+      <g class="m-orange">
+      <path class="band" d="M262.77 59.03A661 661 0 0 1 487.41 100.46"/>
+      <path class="t" d="M293.02 54.97L293.95 48.04M326.62 57.65L329.91 45.07M361.19 62.2L363.78 55.7M396.61 68.8L402.85 57.4M436.66 78.69L440.8 73.05M474.93 90.66L483.81 81.17"/>
+      </g>
+      <g class="m-text"><text class="lb sS" x="22.5" y="61" text-anchor="middle">S</text><text class="lb sd" x="41.5" y="74" text-anchor="middle">1</text><text class="lb sd" x="108.5" y="56" text-anchor="middle">3</text><text class="lb sd" x="165.5" y="46" text-anchor="middle">5</text><text class="lb sd" x="215" y="41" text-anchor="middle">7</text><text class="lb sd" x="258.5" y="39" text-anchor="middle">9</text><g data-po-labels="std"><text class="lb sn" x="69" y="124" text-anchor="middle">0</text></g><text class="lb sn" x="80.5" y="136" text-anchor="middle">0</text><text class="lb sn" x="167" y="116" text-anchor="middle">5</text><text class="lb sn" x="242.5" y="111" text-anchor="middle" textLength="17" lengthAdjust="spacingAndGlyphs">10</text><text class="lb sn" x="318" y="113" text-anchor="middle" textLength="16" lengthAdjust="spacingAndGlyphs">15</text><text class="lb sn" x="400" y="126" text-anchor="middle" textLength="19" lengthAdjust="spacingAndGlyphs">20</text><text class="lb sn" x="99" y="158" text-anchor="middle">1</text><text class="lb sn" x="171.5" y="144" text-anchor="middle" textLength="19" lengthAdjust="spacingAndGlyphs">1.5</text><text class="lb sn" x="210" y="139" text-anchor="middle">2</text><text class="lb sn" x="258" y="135" text-anchor="middle">3</text><text class="lb sn" x="307.5" y="139" text-anchor="middle">5</text><text class="lb sn" x="412" y="161" text-anchor="middle" textLength="16" lengthAdjust="spacingAndGlyphs">&#8734;</text><text class="lb sl" x="33" y="131" text-anchor="middle" textLength="26" lengthAdjust="spacingAndGlyphs">PO</text><text class="lb sl" x="57.5" y="153" text-anchor="middle" textLength="19" lengthAdjust="spacingAndGlyphs">IC</text><text class="lb sl" x="64" y="177" text-anchor="middle" textLength="46" lengthAdjust="spacingAndGlyphs">SWR</text><text class="lb sl" x="479.5" y="133" text-anchor="middle" textLength="19" lengthAdjust="spacingAndGlyphs">W</text><g data-po-labels="pa1000" style="display:none"><text class="lb sn" x="69" y="124" text-anchor="middle">0</text><text class="lb sn" x="239.5" y="97" text-anchor="middle" textLength="29" lengthAdjust="spacingAndGlyphs">200</text><text class="lb sn" x="304.5" y="98" text-anchor="middle" textLength="29" lengthAdjust="spacingAndGlyphs">400</text><text class="lb sn" x="357" y="106" text-anchor="middle" textLength="29" lengthAdjust="spacingAndGlyphs">600</text><text class="lb sn" x="402" y="113" text-anchor="middle" textLength="29" lengthAdjust="spacingAndGlyphs">800</text><text class="lb sn" x="447.5" y="128" text-anchor="middle" textLength="38" lengthAdjust="spacingAndGlyphs">1000</text></g><g data-po-labels="pa1500" style="display:none"><text class="lb sn" x="69" y="124" text-anchor="middle">0</text><text class="lb sn" x="239.5" y="97" text-anchor="middle" textLength="29" lengthAdjust="spacingAndGlyphs">300</text><text class="lb sn" x="304.5" y="98" text-anchor="middle" textLength="29" lengthAdjust="spacingAndGlyphs">600</text><text class="lb sn" x="357" y="106" text-anchor="middle" textLength="29" lengthAdjust="spacingAndGlyphs">900</text><text class="lb sn" x="402" y="113" text-anchor="middle" textLength="38" lengthAdjust="spacingAndGlyphs">1200</text><text class="lb sn" x="447.5" y="128" text-anchor="middle" textLength="38" lengthAdjust="spacingAndGlyphs">1500</text></g><text class="lb sl" x="416" y="147" text-anchor="middle" textLength="13" lengthAdjust="spacingAndGlyphs">A</text><text class="lb sl" x="108" y="221" text-anchor="middle" textLength="38" lengthAdjust="spacingAndGlyphs">ALC</text><g data-po-labels="std"><text class="lb sn" x="172.3" y="102.8" text-anchor="middle" textLength="18" lengthAdjust="spacingAndGlyphs">10</text></g><g data-po-labels="std"><text class="lb sn" x="285.6" y="96.9" text-anchor="middle" textLength="19" lengthAdjust="spacingAndGlyphs">50</text></g><g data-po-labels="std"><text class="lb sn" x="373.0" y="108.7" text-anchor="middle" textLength="29" lengthAdjust="spacingAndGlyphs">100</text></g><g data-po-labels="std"><text class="lb sn" x="447.6" y="125.4" text-anchor="middle" textLength="28" lengthAdjust="spacingAndGlyphs">150</text></g><text class="lo" x="491" y="57" text-anchor="middle" textLength="22" lengthAdjust="spacingAndGlyphs">dB</text><text class="lo" x="327.5" y="44" text-anchor="middle" textLength="39" lengthAdjust="spacingAndGlyphs">+20</text><text class="lo" x="402.5" y="56" text-anchor="middle" textLength="39" lengthAdjust="spacingAndGlyphs">+40</text><text class="lo" x="480" y="77" text-anchor="middle" textLength="39" lengthAdjust="spacingAndGlyphs">+60</text></g>
+    <!-- ALC over-range LED at the end of the ALC scale (lit by app.js above the "OK" value) -->
+    <circle id="analog-alc-led" class="analog-alc-led" cx="396" cy="217" r="3.6" />
+    <line id="analog-s-needle-shadow" class="analog-needle-shadow" filter="url(#analog-needle-blur)" transform="translate(4.5 5.5)" />
+    <line id="analog-s-needle" class="analog-needle" />
+    <!-- dBm readout, blanked while transmitting (needle means watts then) -->
+    <text id="analog-dbm" class="analog-dbm" x="257" y="231" text-anchor="middle"></text>
+  </svg>
+
+  <!-- Meter mode for TX (desktop only): what the gauge's needle reads while
+       transmitting — PWR (PO row) or SWR (SWR row). The digital SWR bar below
+       stays in the markup for phone; desktop hides it (style.css). -->
+  <div class="meter-mode-row">
+    <button type="button" class="meter-mode-btn" data-mode="pwr"><span class="mm-slit"></span><span class="mm-label">PWR</span></button>
+    <button type="button" class="meter-mode-btn" data-mode="swr"><span class="mm-slit"></span><span class="mm-label">SWR</span></button>
+    <button type="button" class="meter-mode-btn" data-mode="alc"><span class="mm-slit"></span><span class="mm-label">ALC</span></button>
+    <button type="button" class="meter-mode-btn" data-mode="id"><span class="mm-slit"></span><span class="mm-label">IC</span></button>
+  </div>
+
+  <!-- Digital SWR bar (phone) -->
+  <svg class="meter-svg swr-meter-svg" viewBox="0 0 350 35">
+    <!-- Own mask, not a reference to #segMask over in .s-meter-svg — that
+         svg is display:none on desktop, which broke this bar's segment
+         mask too (see buildSegmentMask's own comment, app.js). -->
+    <mask id="segMaskSwr"></mask>
+    <g class="meter-legend" transform="translate(0 15)">
+      <text class="leg-text" y="0" x="0">1</text>
+      <text class="leg-text" y="0" x="28">1.5</text>
+      <text class="leg-text" y="0" x="90">2</text>
+      <text class="leg-text" y="0" x="170">3</text>
+      <text class="leg-text inf" y="0" x="335">&#8734;</text>
+    </g>
+
+    <g transform="translate(0 20)">
+      <rect x="0" y="0" width="350" height="15" class="meter-bg" />
+      <rect id="swr-meter-low" x="0" y="0" width="0" height="15" class="meter-fill low" />
+      <rect id="swr-meter-high" x="175" y="0" width="0" height="15" class="meter-fill high" />
+      <rect x="0" y="-2" width="350" height="25" fill="black" mask="url(#segMaskSwr)" />
+    </g>
+  </svg>
+  </div>
+  <div class="status-message" id="status-info"></div>
+  </div>
+
+  <div class="brand-row">
+    <img class="brand-logo" src="kenwood-logo.png" alt="KENWOOD" draggable="false">
+    <span class="brand-model"><span class="brand-model-sub">HF/50MHz TRANSCEIVER</span><span class="brand-model-name">TS-890</span></span>
+  </div>
+  <div id="busy-indicator-desktop" class="busy-indicator busy-indicator-desktop"></div>
+  <!-- Desktop only: date and time in the radio display's style, right of the busy/TX
+       LED, over the Hz digits. Browser clock. -->
+  <div id="clock-desktop" class="clock-desktop" title="Datum und Uhrzeit (Browser)">
+    <div id="clock-date"></div>
+    <div id="clock-time"></div>
+  </div>
+  <!-- Desktop only (not shown on the phone): active VFO (A/B) right of the frequency digits, radio display style -->
+  <div class="vfo-ab vfo-ab-desktop" role="group" title="Aktiver VFO (A/B) - Klick zum Umschalten">
+    <div class="vfo-row" data-vfo="A"><span class="vfo-ptr"></span><button type="button" data-vfo="A">A</button></div>
+    <div class="vfo-row" data-vfo="B"><span class="vfo-ptr"></span><button type="button" data-vfo="B">B</button></div>
+  </div>
+  <div id="freq" class="freq"></div>
+  <!-- Desktop only: frequency of the currently INACTIVE VFO (whichever of A/B
+       isn't shown above), small and understated. -->
+  <div id="vfo-other-freq" class="vfo-other-freq" title="Frequenz des inaktiven VFO"></div>
+  <div class="selectors-row">
+    <div class="band-select">
+      <button type="button" id="band-button" class="mode-button">--</button>
+      <ul id="band-menu" class="mode-menu" hidden></ul>
+    </div>
+    <div class="mode-select">
+      <button type="button" id="mode-button" class="mode-button">--</button>
+      <ul id="mode-menu" class="mode-menu" hidden></ul>
+    </div>
+    <div class="filter-select">
+      <button type="button" id="filter-button" class="mode-button">--</button>
+      <ul id="filter-menu" class="mode-menu" hidden></ul>
+    </div>
+  </div>
+  <div class="filter-info-row">
+    <div id="busy-indicator" class="busy-indicator"></div>
+    <span class="audio-filter-info" id="audio-filter-info"></span>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl-row-group">
+      <div class="ctrl-row ctrl-row-buttons ctrl-row-1">
+        <div class="btn-group"><button type="button" id="at-button">AT OFF</button></div>
+        <div class="btn-group"><button type="button" id="tune-button">TUNE</button></div>
+        <div class="btn-group"><button type="button" id="agc-button">AGC OFF</button></div>
+        <div class="btn-group"><button type="button" id="ant-button">ANT 1</button></div>
+        <div class="btn-group"><button type="button" id="att-button">ATT OFF</button></div>
+      </div>
+      <div class="ctrl-row ctrl-row-buttons ctrl-row-2">
+        <div class="btn-group"><button type="button" id="nr-button">NR OFF</button></div>
+        <div class="btn-group" id="nb-buttons"></div>
+        <div class="btn-group"><button type="button" id="bc-button">BC OFF</button></div>
+        <div class="btn-group"><button type="button" id="pre-button">PRE OFF</button></div>
+      </div>
+    </div>
+    <div class="ctrl-row ctrl-row-buttons eq-row" id="eq-row">
+      <!-- Desktop only (Nutzer-Wunsch, 2026-10-14: "desktop: ... button hierfür
+           links von RX EQ") — hidden on phone via .desktop-only-group in
+           style.css, same as the RIT/XIT knobs above. -->
+      <div class="btn-group desktop-only-group"><button type="button" id="txmon-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">TX MON</button></div>
+      <div class="btn-group"><button type="button" id="txeq-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">TX EQ</button></div>
+      <div class="btn-group"><button type="button" id="rxeq-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">RX EQ</button></div>
+    </div>
+    <div class="ctrl-row ctrl-row-buttons" id="pa-row" hidden>
+      <div class="btn-group"><button type="button" id="pa-power-button">PA ON</button></div>
+      <div class="btn-group"><button type="button" id="pa-tune-button">PA TUNE</button></div>
+      <div class="btn-group"><button type="button" id="pa-oper-button">PA OPER</button></div>
+      <div class="btn-group"><button type="button" id="pa-level-button">500W</button></div>
+    </div>
+    <!-- RIT/XIT: identical knob (same .rit-knob* classes, reused — only the
+         SVG gradient ids differ per instance, since id="..." must be unique
+         per document even across two otherwise-identical <svg>s) and
+         identical drag/wheel/long-press behavior (makeRitXitKnob in app.js),
+         just a different on/off command and state flag. Both relocate into
+         #eq-row on desktop (Nutzer-Wunsch, 2026-10-13: "unter das Filter
+         dropdown" — see relocateRitXitKnobsForLayout), which sits in the
+         same grid column as the Band/Mode/Filter dropdowns above and is
+         otherwise empty on desktop now that TX EQ/RX EQ moved next to PROC. -->
+    <div class="rit-knob-wrap" id="rit-knob-wrap">
+      <button type="button" id="rit-knob" class="rit-knob">
+        <svg viewBox="0 0 100 100" class="rit-knob-svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="rit-disc-grad" cx="50%" cy="34%" r="85%">
+              <stop offset="0%" stop-color="#4a4a4a" />
+              <stop offset="55%" stop-color="#343434" />
+              <stop offset="100%" stop-color="#242424" />
+            </radialGradient>
+          </defs>
+          <circle class="rit-knob-activering" cx="50" cy="50" r="46" fill="none" stroke="var(--accent)" stroke-width="2" />
+          <g id="rit-knob-rotating" class="rit-knob-rotating">
+            <circle cx="50" cy="50" r="44" fill="url(#rit-disc-grad)" />
+            <circle cx="50" cy="20" r="3.4" fill="#fd8624" />
+          </g>
+        </svg>
+      </button>
+      <div class="rit-knob-label">RIT</div>
+    </div>
+    <div class="rit-knob-wrap" id="xit-knob-wrap">
+      <button type="button" id="xit-knob" class="rit-knob">
+        <svg viewBox="0 0 100 100" class="rit-knob-svg" aria-hidden="true">
+          <defs>
+            <radialGradient id="xit-disc-grad" cx="50%" cy="34%" r="85%">
+              <stop offset="0%" stop-color="#4a4a4a" />
+              <stop offset="55%" stop-color="#343434" />
+              <stop offset="100%" stop-color="#242424" />
+            </radialGradient>
+          </defs>
+          <circle class="rit-knob-activering" cx="50" cy="50" r="46" fill="none" stroke="var(--accent)" stroke-width="2" />
+          <g id="xit-knob-rotating" class="rit-knob-rotating">
+            <circle cx="50" cy="50" r="44" fill="url(#xit-disc-grad)" />
+            <circle cx="50" cy="20" r="3.4" fill="#fd8624" />
+          </g>
+        </svg>
+      </button>
+      <div class="rit-knob-label">XIT</div>
+    </div>
+    <div class="slider-tx-block">
+      <div class="slider-col">
+      <div class="ctrl-row">
+        <span class="ctrl-label">AF</span>
+        <input type="range" class="slider" id="af-slider" min="0" max="255" value="0">
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">SQL</span>
+        <input type="range" class="slider" id="sql-slider" min="0" max="255" value="0">
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">RFG</span>
+        <input type="range" class="slider" id="rf-slider" min="0" max="255" value="0">
+      </div>
+      <div class="ctrl-row pwr-row">
+        <span class="ctrl-label">PWR</span>
+        <div class="slider-wrap">
+          <input type="range" class="slider" id="pwr-slider" min="5" max="100" value="5">
+          <span class="ctrl-max" id="pwr-value">0W</span>
+        </div>
+      </div>
+      </div>
+      <button type="button" id="tx-button" class="tx-button" title="Senden/Empfangen umschalten (T-Taste gedrückt halten = Senden)">TX</button>
+    </div>
+    <div class="ctrl-row mic-proc-row">
+      <div class="btn-group"><button type="button" id="proc-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">PROC</button></div>
+    </div>
+  </div>
+
+  <div class="waterfall-row">
+    <div class="btn-group scope-keep"><button type="button" id="scope-toggle-button" title="Spektrum/Wasserfall ein- und ausschalten">SPEC</button></div>
+    <div class="btn-group scope-keep analog-toggle-group"><button type="button" id="analog-toggle-button" title="Analoges Meter anstelle des Spektrums anzeigen">ANALOG</button></div>
+    <div class="btn-group"><button type="button" id="scope-rate-button" class="small-btn" title="Spektrum-Geschwindigkeit (Hi/Mid/Lo)">Hi</button></div>
+    <select id="scope-span-select" class="scope-span-select"></select>
+    <label class="scope-auto-label max-hold-group" title="Spitzenwerte je Frequenz dauerhaft festhalten (leicht durchsichtig hinter der live weiterlaufenden Hüllkurve) — setzt sich beim Ein-/Ausschalten oder Verstimmen zurück">
+      <input type="checkbox" id="scope-maxhold-checkbox">
+      Max Hold
+    </label>
+    <label class="scope-auto-label scope-smooth-group" title="Waagerechte Dehnung weich (an) oder in scharfen Blöcken (aus) darstellen — wirkt nur auf unsere Anzeige">
+      <input type="checkbox" id="scope-smooth-checkbox" checked>
+      Smooth
+    </label>
+    <div class="scope-smooth-tuning" id="scope-smooth-tuning">
+      <label class="smooth-tune-select" title="Stärke der waagerechten Glättung je Zeile (nur bei aktivem Smooth wirksam)">
+        H
+        <select id="scope-hsmooth-select" class="scope-span-select">
+          <option value="0">Aus</option>
+          <option value="25">Leicht</option>
+          <option value="50" selected>Mittel</option>
+          <option value="75">Stark</option>
+          <option value="100">Maximal</option>
+        </select>
+      </label>
+      <label class="smooth-tune-select" title="Stärke der senkrechten Glättung über die Zeit (Schmiereffekt), nur bei aktivem Smooth wirksam">
+        V
+        <select id="scope-vsmooth-select" class="scope-span-select">
+          <option value="0">Aus</option>
+          <option value="25">Leicht</option>
+          <option value="50" selected>Mittel</option>
+          <option value="75">Stark</option>
+          <option value="100">Maximal</option>
+        </select>
+      </label>
+    </div>
+    <div class="dual-slider scope-level-slider" title="Darstellung anpassen (wirkt nur auf unsere Anzeige, ändert nichts am Radio) — linker Griff: Nullpunkt/Rauschboden, rechter Griff: Höhe/Kontrast der Werte">
+      <div class="dual-slider-track"></div>
+      <div class="dual-slider-fill" id="scope-level-fill"></div>
+      <input type="range" id="scope-floor-slider" min="90" max="255" step="1">
+      <input type="range" id="scope-ceiling-slider" min="90" max="255" step="1">
+    </div>
+    <label class="scope-auto-label" title="Floor/Ceiling automatisch aus den echten Werten je Zeile nachführen, träge geglättet statt sofort zu springen">
+      <input type="checkbox" id="scope-auto-level" checked>
+      Auto
+    </label>
+  </div>
+  <div class="waterfall-wrap">
+    <canvas id="spectrum-canvas" class="spectrum-canvas" width="640" height="70"></canvas>
+    <canvas id="waterfall-canvas" class="waterfall-canvas" width="640" height="176"></canvas>
+    <canvas id="waterfall-overlay" class="waterfall-overlay" width="640" height="246"></canvas>
+    <div id="waterfall-off-hint" class="waterfall-off-hint" hidden>Spectrum aus</div>
+    <div id="analog-panel" class="analog-panel" hidden></div>
+    <div id="freq-keypad" class="freq-keypad" hidden>
+      <div class="kp-grid">
+        <button type="button" class="kp-key" data-key="1" style="grid-area: k1">1</button>
+        <button type="button" class="kp-key" data-key="2" style="grid-area: k2">2</button>
+        <button type="button" class="kp-key" data-key="3" style="grid-area: k3">3</button>
+        <button type="button" class="kp-key kp-clr" data-key="CLR" style="grid-area: clr">CLR</button>
+        <button type="button" class="kp-key" data-key="4" style="grid-area: k4">4</button>
+        <button type="button" class="kp-key" data-key="5" style="grid-area: k5">5</button>
+        <button type="button" class="kp-key" data-key="6" style="grid-area: k6">6</button>
+        <button type="button" class="kp-key" data-key="." style="grid-area: comma">.</button>
+        <button type="button" class="kp-key" data-key="7" style="grid-area: k7">7</button>
+        <button type="button" class="kp-key" data-key="8" style="grid-area: k8">8</button>
+        <button type="button" class="kp-key" data-key="9" style="grid-area: k9">9</button>
+        <button type="button" class="kp-key kp-ent" data-key="ENT" style="grid-area: ent">ENT</button>
+        <button type="button" class="kp-key" data-key="0" style="grid-area: k0">0</button>
+      </div>
+    </div>
+  </div>
+  <!-- Desktop only: values only, no ticks, under the waterfall - the distance from the
+       centre (the VFO) in kHz, -/+ in tenths of the displayed span (filled by waterfall.js) -->
+  <div id="wf-scale" class="wf-scale" aria-hidden="true"></div>
+</main>
+
+<div id="connect-overlay" class="overlay" hidden>
+  <form class="overlay-panel" id="connect-form">
+    <h2>Server Einstellungen</h2>
+    <button type="button" id="connect-disconnect" class="conn-toggle danger">Trenne WebServer &lt;-&gt; TS890</button>
+    <div class="overlay-tabs" role="tablist">
+      <button type="button" class="overlay-tab active" data-tab="net">TS890</button>
+      <button type="button" class="overlay-tab" data-tab="pa">PA</button>
+      <button type="button" class="overlay-tab" data-tab="users">Benutzer</button>
+      <button type="button" class="overlay-tab" data-tab="debug">Debug</button>
+    </div>
+    <div class="overlay-tabpanels">
+    <div class="overlay-tabpanel" data-tab="net">
+    <div class="field-pair">
+      <label>IP or hostname of TS890
+        <input type="text" id="connect-host" autocomplete="off" placeholder="192.168.1.201" required>
+      </label>
+      <label title="MAC-Adresse für Wake-on-LAN (optional, wird automatisch ermittelt)">MAC (Wake-on-LAN)
+        <input type="text" id="connect-mac" autocomplete="off" placeholder="automatisch">
+      </label>
+    </div>
+    <div class="field-pair">
+      <label>TCP port
+        <input type="number" id="connect-port" min="1" max="65535" placeholder="60000">
+      </label>
+      <label>VoIP UDP port
+        <input type="number" id="connect-voipport" min="1" max="65535" placeholder="60001">
+      </label>
+    </div>
+    <div class="field-pair">
+      <label>KNS User
+        <input type="text" id="connect-user" autocomplete="off" data-1p-ignore data-lpignore="true" required>
+      </label>
+      <label>KNS Passwort
+        <input type="text" id="connect-pass" class="masked-input" autocomplete="off" autocapitalize="none" spellcheck="false" data-1p-ignore data-lpignore="true">
+      </label>
+    </div>
+    <div class="field-pair check-pair">
+      <label class="overlay-checkbox">
+        <input type="checkbox" id="connect-admin">
+        KNS Admin
+      </label>
+      <label class="overlay-checkbox" title="Einstellungen merken und beim Start des Servers automatisch verbinden">
+        <input type="checkbox" id="connect-auto">
+        auto connect
+      </label>
+    </div>
+    <div class="slider-pair" id="voip-level-row">
+      <label>VoIP Audio Input <span class="ctrl-max" id="voip-input-value"></span>
+        <div class="level-slider">
+          <div class="level-slider-track"></div>
+          <div class="level-slider-fill" id="voip-input-fill"></div>
+          <input type="range" id="voip-input-slider" min="0" max="100" step="1" value="49">
+        </div>
+      </label>
+      <label>VoIP Audio Output <span class="ctrl-max" id="voip-output-value"></span>
+        <div class="level-slider">
+          <div class="level-slider-track"></div>
+          <div class="level-slider-fill" id="voip-output-fill"></div>
+          <input type="range" id="voip-output-slider" min="0" max="100" step="1" value="49">
+        </div>
+      </label>
+    </div>
+    <label id="jitter-row">
+      <span>VoIP Jitter Buffer <span class="ctrl-max" id="jitter-value"></span></span>
+      <div class="level-slider" id="jitter-level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="jitter-fill"></div>
+        <input type="range" id="jitter-slider" min="0" max="3" step="1" value="1">
+      </div>
+    </label>
+    </div>
+    <div class="overlay-tabpanel" data-tab="debug" hidden>
+      <div class="debug-controls">
+        <input type="text" id="debug-filter" placeholder="Filter" autocomplete="off" spellcheck="false">
+        <label class="debug-follow"><input type="checkbox" id="debug-follow" checked> auto scroll</label>
+      </div>
+      <pre class="debug-log" id="debug-log"></pre>
+    </div>
+    <div class="overlay-tabpanel" data-tab="pa" hidden>
+    <div class="field-pair check-pair amp-port-pair">
+      <label>SPE Expert 1k5 COM port
+        <input type="text" id="amp-port" list="amp-port-list" autocomplete="off" placeholder="/dev/cu.usbserial-1430">
+        <datalist id="amp-port-list"></datalist>
+      </label>
+      <label class="overlay-checkbox" title="PA automatisch verbinden">
+        <input type="checkbox" id="amp-auto">
+        auto connect
+      </label>
+    </div>
+    <div class="amp-actions">
+      <button type="button" id="amp-connect">verbinden</button>
+    </div>
+    <label class="amp-timeout-row" title="PA TimeOutTimer (Sicherheitsfeature falls TX mal hängt in Sek, 0 = AUS)">
+      <input type="number" id="amp-tx-timeout" min="0" max="999" placeholder="0">
+      PA TX (TimeOutTimer)
+    </label>
+    <label class="amp-timeout-row" title="Maximale Transceiverleistung (PWR), solange die PA aktiv ist">
+      <input type="number" id="amp-max-power" min="5" max="100" placeholder="15">
+      Max PWR bei aktiver PA
+    </label>
+    </div>
+    <div class="overlay-tabpanel" data-tab="users" hidden>
+      <div class="overlay-caption">Benutzeranmeldung für Anwender ausserhalb des lokalen LAN</div>
+      <label class="login-msg-label">Login Nachricht:
+        <textarea id="login-msg-input" rows="4" maxlength="300" spellcheck="false"></textarea>
+      </label>
+      <div class="users-add-actions">
+        <button type="button" id="login-msg-save">speichern</button>
+        <span class="login-msg-status" id="login-msg-status"></span>
+      </div>
+      <div class="users-list" id="users-list"></div>
+      <div class="users-add-actions">
+        <button type="button" id="users-new-button">Neuer Benutzer</button>
+      </div>
+      <div class="overlay-status" id="users-status"></div>
+    </div>
+    </div>
+    <div class="overlay-status" id="connect-status"></div>
+    <div class="overlay-status" id="amp-status"></div>
+    <div class="overlay-actions" id="connect-actions">
+      <button type="button" id="connect-cancel">Abbrechen</button>
+      <button type="submit" class="primary">OK</button>
+    </div>
+  </form>
+</div>
+
+<div id="audio-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <div class="overlay-brand"><span>Open890RC by <a href="https://www.qrz.com/db/HB9INA" target="_blank" rel="noopener noreferrer">HB9INA</a></span></div>
+    <h2 data-i18n>Einstellungen</h2>
+    <div class="overlay-tabs" role="tablist">
+      <button type="button" class="overlay-tab active" data-tab="rx">RX</button>
+      <button type="button" class="overlay-tab" data-tab="tx">TX (Mic)</button>
+      <button type="button" class="overlay-tab" data-tab="lang" data-i18n>Sprache</button>
+      <button type="button" class="overlay-tab" data-tab="ssl">HTTPS</button>
+    </div>
+    <div class="overlay-tabpanels">
+      <div class="overlay-tabpanel" data-tab="rx">
+        <div class="audio-reset-row">
+          <div class="audio-reset-btn">
+            <button type="button" id="reset-rx-audio-button" class="audio-btn" data-i18n-title title="Reset VoIP Verbindung zum TS890 (wirkt auf alle verbundenen Clients)">
+              <svg class="reset-icon" viewBox="0 0 24 24">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                <polyline points="21 3 21 9 15 9" />
+              </svg>
+            </button>
+            <span>TS890 VoIP reset</span>
+          </div>
+          <div class="audio-sync" data-i18n-title title="Der Server startet den VoIP-Strom des TS890 in diesem Abstand selbst neu (wirkt auf alle Clients, wartet während Senden/Tunen)">
+            <label class="overlay-checkbox">
+              <input type="checkbox" id="voip-auto-sync">
+              Auto sync
+            </label>
+            <select id="voip-auto-sync-min" aria-label="Abstand in Minuten">
+              <option value="1">1 min</option><option value="2">2 min</option><option value="3">3 min</option><option value="4">4 min</option><option value="5">5 min</option><option value="6">6 min</option><option value="7">7 min</option><option value="8">8 min</option><option value="9">9 min</option><option value="10">10 min</option>
+            </select>
+          </div>
+        </div>
+        <div class="audio-codec-row">
+          <span data-i18n>Codec:</span>
+          <select id="audio-codec" data-i18n-title title="Codec für Audio-Übertragung">
+            <option value="pcm" data-i18n-title title="LAN, geringste Latenz">PCM</option>
+            <option value="opus" data-i18n-title title="reduzierte Bitrate, für Mobilverbindungen">OPUS</option>
+          </select>
+          <label class="overlay-checkbox" data-i18n-title title="Gleicht Taktabweichungen zwischen Radio und Browser automatisch aus">
+            <input type="checkbox" id="rx-servo-slip">
+            <span data-i18n>RX Taktkompensation</span>
+          </label>
+        </div>
+        <div class="overlay-caption overlay-section-divider" data-i18n data-i18n-title title="Wird der Rückstand im Browser-Puffer zu groß, werden die ältesten Audio-Daten verworfen">Bei Browser RX  Pufferüberlauf:</div>
+        <div class="slider-pair">
+          <label>
+            <span><span data-i18n>Kürzen ab</span> <span class="ctrl-max" id="trim-trigger-value"></span></span>
+            <div class="level-slider">
+              <div class="level-slider-track"></div>
+              <div class="level-slider-fill" id="trim-trigger-fill"></div>
+              <input type="range" id="trim-trigger-slider" min="0.4" max="2" step="0.1" value="0.7" data-i18n-title title="RX-Audio: ab diesem Rückstand im Browser-Puffer wird gekürzt (Sekunden)">
+            </div>
+          </label>
+          <label>
+            <span><span data-i18n>auf</span> <span class="ctrl-max" id="trim-target-value"></span></span>
+            <div class="level-slider">
+              <div class="level-slider-track"></div>
+              <div class="level-slider-fill" id="trim-target-fill"></div>
+              <input type="range" id="trim-target-slider" min="0.1" max="0.6" step="0.05" value="0.1" data-i18n-title title="RX-Audio: so viel Rückstand bleibt nach dem Kürzen (Sekunden)">
+            </div>
+          </label>
+        </div>
+        <label id="tx-relay-volume-row" data-i18n-title title="Lautstärke, wenn ein anderer Client TX sendet und hier mitgehört wird (unabhängig von AF)">
+          <span data-i18n>TX anderer Clients mithören</span>
+          <div class="level-slider">
+            <div class="level-slider-track"></div>
+            <div class="level-slider-fill" id="tx-relay-volume-fill"></div>
+            <input type="range" id="tx-relay-volume-slider" min="0" max="100" step="5" value="100" data-i18n-title title="Lautstärke des Mithörens, wenn ein anderer Client sendet (0 = aus)">
+          </div>
+        </label>
+        <label id="audio-output-row" hidden data-i18n-title title="Gerät für die Tonausgabe (nur dieser Browser). Auf iPhone/iPad wählt iOS das Gerät selbst, dort wird die Auswahl nicht angezeigt">
+          <span data-i18n>Tonausgabe auf:</span>
+          <select id="audio-output"></select>
+        </label>
+      </div>
+      <div class="overlay-tabpanel" data-tab="tx" hidden>
+        <label data-i18n-title title="Eingabegerät für das Senden (nur dieses Gerät). Das eingebaute Mikrofon vermeidet bei Bluetooth die Umschaltung ins Headset-Profil">
+          <span data-i18n>Mikrofon</span>
+          <select id="mic-device"></select>
+        </label>
+        <label data-i18n-title title="Verstärkung des Mikrofons im Browser vor dem Senden (nur dieses Gerät)">
+          <span>Browser Mic Gain <span class="ctrl-max" id="mic-gain-value"></span></span>
+          <div class="level-slider">
+            <div class="level-slider-track"></div>
+            <div class="level-slider-fill" id="mic-gain-fill"></div>
+            <input type="range" id="mic-gain-slider" min="1" max="25" step="1" value="15">
+          </div>
+        </label>
+        <div class="mic-meter-row" data-i18n-title title="Pegel des Browser-MIC">
+          <div class="mic-meter" id="mic-meter"></div>
+          <span class="ctrl-max" id="mic-meter-value"></span>
+        </div>
+        <label class="overlay-checkbox" id="mic-limiter-row" data-i18n-title title="Sanfte Pegel-Begrenzung vor dem Senden gegen vereinzelte Übersteuerungsspitzen bei hohem Mic Gain">
+          <input type="checkbox" id="mic-limiter">
+          TX Mic Limiter
+        </label>
+        <div class="mic-limiter-tuning" id="mic-limiter-tuning" data-i18n-title title="Testweise einstellbar — wirkt sofort, auch während einer laufenden Sendung">
+          <label>
+            <span>Limiter Threshold <span class="ctrl-max" id="mic-limiter-threshold-value"></span></span>
+            <div class="level-slider">
+              <div class="level-slider-track"></div>
+              <div class="level-slider-fill" id="mic-limiter-threshold-fill"></div>
+              <input type="range" id="mic-limiter-threshold-slider" min="-24" max="0" step="1" value="-1" data-i18n-title title="Ab welchem Pegel der Limiter eingreift (dB, näher an 0 = greift erst später/seltener ein)">
+            </div>
+          </label>
+          <label>
+            <span>Limiter Ratio <span class="ctrl-max" id="mic-limiter-ratio-value"></span></span>
+            <div class="level-slider">
+              <div class="level-slider-track"></div>
+              <div class="level-slider-fill" id="mic-limiter-ratio-fill"></div>
+              <input type="range" id="mic-limiter-ratio-slider" min="2" max="20" step="1" value="6" data-i18n-title title="Wie stark oberhalb der Schwelle gedämpft wird (höher = härter)">
+            </div>
+          </label>
+          <label>
+            <span>Limiter Attack <span class="ctrl-max" id="mic-limiter-attack-value"></span></span>
+            <div class="level-slider">
+              <div class="level-slider-track"></div>
+              <div class="level-slider-fill" id="mic-limiter-attack-fill"></div>
+              <input type="range" id="mic-limiter-attack-slider" min="0" max="50" step="1" value="10" data-i18n-title title="Wie schnell der Limiter auf eine Spitze reagiert (ms, niedriger = fängt kurze Spitzen eher ab)">
+            </div>
+          </label>
+        </div>
+        <label class="overlay-checkbox" id="mic-keep-warm-row" data-i18n-title title="Mikrofon zwischen den Sendungen offen halten: Bei Bluetooth bleibt das Gerät im (HFP) Headset-Profil (evtl. schmalbandiger Ton), dafür keine Umschaltzeit zwischen den Profilen">
+          <input type="checkbox" id="mic-keep-warm">
+          <span data-i18n>Mikrofon dauerhaft offenhalten</span>
+        </label>
+      </div>
+      <div class="overlay-tabpanel" data-tab="lang" hidden>
+        <label data-i18n-title title="Sprache der Oberfläche (nur dieser Browser)">
+          <span data-i18n>Sprache</span>
+          <select id="ui-language">
+            <option value="de">Deutsch</option>
+            <option value="en">English</option>
+            <option value="it">Italiano</option>
+            <option value="es">Español</option>
+          </select>
+        </label>
+      </div>
+      <div class="overlay-tabpanel" data-tab="ssl" hidden>
+        <div class="overlay-caption" data-i18n>HTTPS-Zertifikat</div>
+        <p class="ssl-help" data-i18n>Der Server signiert sein Zertifikat mit einer eigenen CA. Installiert man diese CA einmal auf Handy oder Rechner und vertraut ihr, kommt keine Zertifikatswarnung mehr für diese IP/hostname.</p>
+        <p class="ssl-help"><a href="/ca.crt" id="ssl-ca-link" class="ssl-link" data-i18n>CA-Zertifikat laden (open890rc-ca.crt)</a></p>
+      </div>
+    </div>
+    <div class="overlay-actions">
+      <button type="button" id="audio-overlay-close" class="primary" data-i18n>Schließen</button>
+    </div>
+  </div>
+</div>
+
+<div id="power-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>Beenden</h2>
+    <button type="button" id="power-session" class="power-choice" title="Trennt diesen Browser vom Web-Server (meldet ihn ab und schliesst das Fenster); das TS890 bleibt an">Session beenden</button>
+    <button type="button" id="power-confirm" class="power-choice power-choice-radio">TS890 ausschalten</button>
+    <div class="overlay-actions">
+      <button type="button" id="power-cancel">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<div id="session-ended-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>Sitzung beendet</h2>
+    <div class="overlay-caption session-ended-close">Browser ist nun vom Webserver getrennt.</div>
+    <div class="overlay-caption session-ended-close">Fenster bitte schliessen!</div>
+  </div>
+</div>
+
+<div id="login-overlay" class="overlay login-overlay" hidden>
+  <form class="overlay-panel" id="login-form" autocomplete="on">
+    <div class="login-intro" id="login-intro">
+      <div>Remote-Station von HB9INA</div>
+      <div>TS890 + SPE 1k5 + ZS6BKW</div>
+      <div>JN37RE 500 m ü. M</div>
+    </div>
+    <label>Benutzer
+      <input type="text" id="login-user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    </label>
+    <label>Passwort
+      <input type="password" id="login-pass" name="password" autocomplete="current-password" required>
+    </label>
+    <div class="overlay-status" id="login-status"></div>
+    <div class="overlay-actions">
+      <button type="submit" class="primary" id="login-submit">Anmelden</button>
+    </div>
+  </form>
+</div>
+
+
+<div id="useredit-overlay" class="overlay" hidden>
+  <form class="overlay-panel" id="useredit-form">
+    <h2 id="useredit-title">Benutzer bearbeiten</h2>
+    <label>LOGIN
+      <input type="text" id="useredit-login" maxlength="8" autocomplete="off" autocapitalize="none" spellcheck="false" required>
+    </label>
+    <label>NAME
+      <input type="text" id="useredit-name" maxlength="40" autocomplete="off">
+    </label>
+    <label><span>Passwort <span id="useredit-pass-hint">(leer = unverändert)</span></span>
+      <input type="password" id="useredit-pass" autocomplete="new-password">
+    </label>
+    <div class="useredit-extra">
+      <div class="useredit-flags">
+        <label class="overlay-checkbox" title="Admin: sieht die Einstellungen und die Benutzerverwaltung (und die PA)">
+          <input type="checkbox" id="useredit-admin">
+          Admin
+        </label>
+        <label class="overlay-checkbox" title="PA: sieht und bedient die PA (Admins immer)">
+          <input type="checkbox" id="useredit-pa">
+          PA
+        </label>
+      </div>
+      <button type="button" id="useredit-delete" class="useredit-delete">Löschen</button>
+    </div>
+    <div class="overlay-status" id="useredit-status"></div>
+    <div class="overlay-actions">
+      <button type="button" id="useredit-cancel">Abbruch</button>
+      <button type="submit" class="primary">OK</button>
+    </div>
+  </form>
+</div>
+
+<div id="traffic-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>Netzwerk-Traffic</h2>
+    <table class="latency-table">
+      <tr><td>Status / Steuerung</td><td id="traf-ctrl"></td></tr>
+      <tr><td id="traf-audio-label">RX-Audio</td><td id="traf-audio"></td></tr>
+      <tr><td>Spektrum</td><td id="traf-scope"></td></tr>
+      <tr class="latency-sum"><td>Summe</td><td id="traf-total"></td></tr>
+    </table>
+    <div class="overlay-caption">Verbundene Clients am Server</div>
+    <div class="client-list" id="client-list"></div>
+    <div class="overlay-actions">
+      <button type="button" id="traffic-close" class="primary">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<div id="latency-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>RX-Audio Verzögerung</h2>
+    <table class="latency-table">
+      <tr><td>Puffer im Browser</td><td id="lat-buffer"></td></tr>
+      <tr><td>Ausgabe Browser</td><td id="lat-output"></td></tr>
+      <tr><td>Netzwerk (RTT/2)</td><td id="lat-network"></td></tr>
+      <tr id="lat-decode-row"><td>Opus-Decode</td><td id="lat-decode"></td></tr>
+      <tr class="latency-sum"><td>Summe</td><td id="lat-total"></td></tr>
+      <tr><td>RTT zum Server</td><td id="lat-rtt"></td></tr>
+    </table>
+    <div class="overlay-actions">
+      <button type="button" id="latency-close" class="primary">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<div id="filter-settings-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>Filter Einstellungen</h2>
+    <svg id="filter-graph" class="filter-graph" viewBox="0 0 232 74" hidden></svg>
+    <label class="center-row">Filter wählen
+      <div class="btn-group" id="filter-settings-roofing-buttons"></div>
+    </label>
+    <label id="ssb-filter-mode-row" class="center-row" hidden>SSB Filter Mode
+      <div class="btn-group" id="ssb-filter-mode-buttons"></div>
+    </label>
+    <label id="filter-width-row">
+      <span>Breite <span class="ctrl-max" id="filter-width-value"></span></span>
+      <input type="range" class="slider" id="filter-width-slider" min="0" max="3000" step="100">
+    </label>
+    <label id="filter-shift-row" hidden>
+      <span>Shift <span class="ctrl-max" id="filter-shift-value"></span></span>
+      <input type="range" class="slider" id="filter-shift-slider" min="0" max="3000" step="10">
+    </label>
+    <label id="apf-row" hidden>
+      <span>APF <button type="button" id="apf-toggle" class="apf-toggle">OFF</button> <span class="ctrl-max" id="apf-value"></span></span>
+      <input type="range" class="slider" id="apf-slider" min="-200" max="200" step="5" value="0">
+    </label>
+    <label id="apf-bw-row" class="center-row" hidden>APF Breite
+      <div class="btn-group" id="apf-bw-buttons"></div>
+    </label>
+    <label id="apf-gain-row" hidden>
+      <span>APF Gain <span class="ctrl-max" id="apf-gain-value"></span></span>
+      <input type="range" class="slider" id="apf-gain-slider" min="0" max="6" step="1" value="0">
+    </label>
+    <label id="filter-lohicut-row" hidden>
+      <span>LC <span class="ctrl-max" id="locut-value"></span> — HC <span class="ctrl-max" id="hicut-value"></span></span>
+      <div class="dual-slider">
+        <div class="dual-slider-track"></div>
+        <div class="dual-slider-fill" id="lohicut-fill"></div>
+        <input type="range" id="locut-slider">
+        <input type="range" id="hicut-slider">
+      </div>
+    </label>
+    <div class="overlay-actions">
+      <button type="button" id="filter-settings-close">Schliessen</button>
+    </div>
+  </div>
+</div>
+
+<div id="nb-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2 id="nb-overlay-title">Noise Blanker</h2>
+    <label>
+      <span>Level <span class="ctrl-max" id="nb-level-value"></span></span>
+      <input type="range" class="slider" id="nb-level-slider" min="1" max="20" step="1" value="1">
+    </label>
+    <div id="nb2-extra">
+      <label class="center-row">Type
+        <div class="btn-group" id="nb-type-buttons"></div>
+      </label>
+      <div id="nb-typeb-extra">
+        <label>
+          <span>Depth <span class="ctrl-max" id="nb-depth-value"></span></span>
+          <input type="range" class="slider" id="nb-depth-slider" min="1" max="20" step="1" value="1">
+        </label>
+        <label>
+          <span>Width <span class="ctrl-max" id="nb-width-value"></span></span>
+          <input type="range" class="slider" id="nb-width-slider" min="1" max="20" step="1" value="1">
+        </label>
+      </div>
+    </div>
+    <div class="overlay-actions">
+      <button type="button" id="nb-overlay-close">Schliessen</button>
+    </div>
+  </div>
+</div>
+
+<div id="txmon-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>TX Monitor</h2>
+    <label>
+      <span>Level <span class="ctrl-max" id="txmon-level-value"></span></span>
+      <input type="range" class="slider" id="txmon-level-slider" min="0" max="20" step="1" value="0">
+    </label>
+    <div class="overlay-actions">
+      <button type="button" id="txmon-overlay-close">Schliessen</button>
+    </div>
+  </div>
+</div>
+
+<div id="eq-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2 id="eq-overlay-title">Equalizer</h2>
+    <div class="overlay-caption">Effekt</div>
+    <div class="eq-effects" id="eq-effects"></div>
+    <div class="overlay-actions">
+      <button type="button" id="eq-overlay-close">Schliessen</button>
+    </div>
+  </div>
+</div>
+
+<div id="proc-settings-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>TX-Processor</h2>
+    <label class="center-row">Mode
+      <div class="btn-group" id="proc-type-buttons"></div>
+    </label>
+    <label>
+      <span>Input <span class="ctrl-max" id="proc-in-value"></span></span>
+      <input type="range" class="slider" id="proc-in-slider" min="0" max="100" step="1" value="0">
+    </label>
+    <label>
+      <span>Output <span class="ctrl-max" id="proc-out-value"></span></span>
+      <input type="range" class="slider" id="proc-out-slider" min="0" max="100" step="1" value="0">
+    </label>
+    <div class="overlay-actions">
+      <button type="button" id="proc-settings-close">Schliessen</button>
+    </div>
+  </div>
+</div>
+
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+<script src="audio.js"></script>
+<script src="waterfall.js"></script>
+</body>
+</html>

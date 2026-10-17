@@ -1,0 +1,12 @@
+/open890rc
+/bin/
+*.test
+.DS_Store
+open890rc-cert.pem
+open890rc-key.pem
+open890rc-users.json
+/open890rc-pi
+open890rc-config.json
+open890rc-config.json.bad
+open890rc-ca.pem
+open890rc-ca-key.pem

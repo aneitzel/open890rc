@@ -1,0 +1,23 @@
+[Unit]
+Description=open890rc - web remote control for Kenwood TS-890S
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+# Settings (open890rc-config.json), users and certificate files (*.pem) are
+# written relative to the working directory.
+WorkingDirectory=/home/pi/open890rc
+ExecStart=/home/pi/open890rc/open890rc-pi
+# Optional: -knsip/-knsuser/... flags or OPEN890RC_* variables can go here;
+# normally the web UI settings dialog (saved in open890rc-config.json) is enough.
+# EnvironmentFile=-/home/pi/open890rc/open890rc.env
+Restart=always
+RestartSec=3
+# Serial port for the SPE PA (/dev/ttyUSB*) needs the dialout group.
+SupplementaryGroups=dialout
+
+[Install]
+WantedBy=multi-user.target
