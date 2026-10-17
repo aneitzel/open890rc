@@ -24,9 +24,9 @@ a cable. This ensures the fastest UDP/VoIP audio and reliable Wake-on-LAN.
 Examples for Config & Settings:
 
 <p>
-  <img src="docs/server_settings.png" width="256" align="top" alt="Server settings: connection to the TS-890">
-  <img src="docs/audio_delay.png" width="187" align="top" alt="RX audio delay window">
-  <img src="docs/voip_settings.png" width="307" align="top" alt="Settings: RX audio">
+  <img src="docs/server_settings.png" width="230" align="top" alt="Server settings: connection to the TS-890">
+  <img src="docs/voip_settings.png" width="276" align="top" alt="Settings: RX audio">
+  <img src="docs/audio_delay.png" width="168" align="top" alt="RX audio delay window">
 </p>
 
 ## Features
