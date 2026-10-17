@@ -245,6 +245,48 @@
       // feature, fine to just skip it there.
     }
   }
+  let softPaused = false;
+  let softPauseTimer = null;
+  const SOFT_PAUSE_MAX_MS = 10 * 60 * 1000;
+  function clearSoftPause() {
+    softPaused = false;
+    clearTimeout(softPauseTimer);
+    softPauseTimer = null;
+  }
+  // Returns false when there is nothing running to pause (caller then stops).
+  function softPause() {
+    if (!activeMode || !audioCtx || softPaused) return softPaused;
+    softPaused = true;
+    streamAudioEl.pause();
+    if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
+    clearTimeout(softPauseTimer);
+    softPauseTimer = setTimeout(() => {
+      if (!softPaused) return;
+      audioShouldBeRunning = false;
+      stop(); // also clears the soft pause
+    }, SOFT_PAUSE_MAX_MS);
+    return true;
+  }
+  // Returns true when it resumed a soft-paused stream.
+  function softResume() {
+    if (!softPaused) return false;
+    clearSoftPause();
+    if (!activeMode || !audioCtx) return false; // stream is gone: caller restarts it
+    audioCtx.resume().catch(() => {});
+    streamAudioEl
+      .play()
+      .then(() => {
+        if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
+        markLive();
+      })
+      .catch(() => {
+        // The browser refused (no user gesture): restart the stream the normal way.
+        audioShouldBeRunning = true;
+        if (lastActiveMode === "opus") startOpus();
+        else startPCM();
+      });
+    return true;
+  }
   let lastActiveMode = "pcm";
   if ("mediaSession" in navigator) {
     // "play" resumes whichever codec was last active (falls back to PCM if
@@ -252,13 +294,23 @@
     // just stop — there's no meaningful paused-but-resumable state here,
     // it's a live feed, not seekable media.
     navigator.mediaSession.setActionHandler("play", () => {
+      if (softResume()) return;
       audioShouldBeRunning = true;
       if (lastActiveMode === "opus") startOpus();
       else startPCM();
     });
+    // "pause" (lock screen, headset button, CarPlay) is a SOFT pause: the
+    // <audio> element keeps its MediaStream and the page stays the "Now
+    // Playing" app, only the sound is paused (playbackState "paused"). A full
+    // stop() here (element emptied, playbackState "none") made iOS forget
+    // this page, so the next Play press on the lock screen started the last
+    // song of the Music app instead (Nutzer-Report, 2026-10-17). After
+    // SOFT_PAUSE_MAX_MS the stream is really stopped, to not run forever.
     navigator.mediaSession.setActionHandler("pause", () => {
-      audioShouldBeRunning = false;
-      stop();
+      if (!softPause()) {
+        audioShouldBeRunning = false;
+        stop();
+      }
     });
     navigator.mediaSession.setActionHandler("stop", () => {
       audioShouldBeRunning = false;
@@ -735,6 +787,7 @@
   function stop(restart = false) {
     const wasActive = activeMode;
     activeMode = null;
+    clearSoftPause();
     if (!restart) {
       setAudioActive(false);
       if (window.hamrcReportAudioCodec) window.hamrcReportAudioCodec("");
