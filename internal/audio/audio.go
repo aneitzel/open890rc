@@ -208,7 +208,6 @@ func (r *Receiver) trackSequence(seq uint16) bool {
 		// Follow the new numbering instead (not a loss, nothing dropped).
 		r.stale = 0
 		r.nextSeq = seq + 1
-		log.Printf("audio: RX stream from the radio restarted (sequence number jumped by %d)", gap)
 		return true
 	}
 	if gap < 0 {
@@ -222,7 +221,6 @@ func (r *Receiver) trackSequence(seq uint16) bool {
 		if r.stale >= restartStale {
 			r.stale = 0
 			r.nextSeq = seq + 1
-			log.Printf("audio: RX stream from the radio continues at a lower sequence number, following it")
 			return true
 		}
 		r.reordered.Add(1)
