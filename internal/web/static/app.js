@@ -3284,8 +3284,10 @@ micKeepWarmInput.addEventListener("change", () => {
 });
 const micLimiterInput = document.getElementById("mic-limiter");
 const micLimiterTuningInputs = document.querySelectorAll("#mic-limiter-tuning input");
+const micLimiterPresetSelectEl = document.getElementById("mic-limiter-preset");
 function syncMicLimiterTuningEnabled() {
   for (const el of micLimiterTuningInputs) el.disabled = !micLimiterInput.checked;
+  micLimiterPresetSelectEl.disabled = !micLimiterInput.checked;
 }
 micLimiterInput.addEventListener("change", () => {
   if (window.hamrcSetMicLimiter) window.hamrcSetMicLimiter(micLimiterInput.checked);
@@ -3327,6 +3329,44 @@ const micLimiterAttackSlider = makeSlider(
   "mic-limiter-attack-fill"
 );
 
+// Limiter presets (Nutzer-Wunsch 2026-10-18): "Sanft" is the original
+// shipped default (barely audible, only catches genuine peaks); "Stark" is
+// a deliberately harder setting (lower threshold, higher ratio, faster
+// attack) for whoever wants more aggressive levelling and accepts some
+// audible pumping for it. Picking one just applies its three slider values
+// immediately — there's no third "custom" state in the dropdown, dragging
+// a slider afterward simply leaves it showing whichever preset was last
+// picked even if the values no longer match exactly (synced back only on
+// the next overlay open, see syncMicLimiterPreset in loadTrimSliders).
+const MIC_LIMITER_PRESETS = {
+  soft: { threshold: -1, ratio: 6, attack: 10 },
+  hard: { threshold: -8, ratio: 12, attack: 3 },
+};
+const micLimiterPresetSelect = document.getElementById("mic-limiter-preset");
+micLimiterPresetSelect.addEventListener("change", () => {
+  const p = MIC_LIMITER_PRESETS[micLimiterPresetSelect.value];
+  if (!p) return;
+  micLimiterThresholdSlider.applyValue(p.threshold);
+  micLimiterRatioSlider.applyValue(p.ratio);
+  micLimiterAttackSlider.applyValue(p.attack);
+  if (window.hamrcSetMicLimiterThreshold) window.hamrcSetMicLimiterThreshold(p.threshold);
+  if (window.hamrcSetMicLimiterRatio) window.hamrcSetMicLimiterRatio(p.ratio);
+  if (window.hamrcSetMicLimiterAttack) window.hamrcSetMicLimiterAttack(p.attack);
+});
+function syncMicLimiterPreset() {
+  const t = window.hamrcGetMicLimiterThreshold ? window.hamrcGetMicLimiterThreshold() : MIC_LIMITER_PRESETS.soft.threshold;
+  const r = window.hamrcGetMicLimiterRatio ? window.hamrcGetMicLimiterRatio() : MIC_LIMITER_PRESETS.soft.ratio;
+  const a = window.hamrcGetMicLimiterAttack ? window.hamrcGetMicLimiterAttack() : MIC_LIMITER_PRESETS.soft.attack;
+  for (const [name, p] of Object.entries(MIC_LIMITER_PRESETS)) {
+    if (p.threshold === t && p.ratio === r && p.attack === a) {
+      micLimiterPresetSelect.value = name;
+      return;
+    }
+  }
+  // current values match neither preset (manually tuned) — leave the
+  // dropdown showing whatever it last did rather than guessing
+}
+
 // Browser-local volume for mithören another client's TX relay (Nutzer-
 // Wunsch, 2026-10-15) — see audio.js's hamrcSetTxRelayVolume for why this is
 // independent of the AF slider rather than a multiplier on it.
@@ -3349,6 +3389,7 @@ function loadTrimSliders() {
   if (window.hamrcGetMicLimiterThreshold) micLimiterThresholdSlider.applyValue(window.hamrcGetMicLimiterThreshold());
   if (window.hamrcGetMicLimiterRatio) micLimiterRatioSlider.applyValue(window.hamrcGetMicLimiterRatio());
   if (window.hamrcGetMicLimiterAttack) micLimiterAttackSlider.applyValue(window.hamrcGetMicLimiterAttack());
+  syncMicLimiterPreset();
   if (window.hamrcGetTxRelayVolume) txRelayVolumeSlider.applyValue(window.hamrcGetTxRelayVolume());
   const t = window.hamrcGetRxTrim && window.hamrcGetRxTrim();
   if (t) {

@@ -1478,6 +1478,56 @@ main {
   margin-bottom: 1.5rem; /* extra breathing room before the next field (Browser Mic Gain) */
 }
 
+/* TX Mic Limiter checkbox + its Sanft/Stark preset dropdown on one row
+   (Nutzer-Wunsch 2026-10-18) — the select is a SIBLING of the checkbox's
+   own <label>, not nested inside it: putting it inside would make clicking
+   the dropdown also toggle the checkbox, since clicks anywhere in a
+   <label> activate the control it wraps. */
+.mic-limiter-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem; /* beside the checkbox (Nutzer-Wunsch 2026-10-18), not pushed
+                  to the far edge like space-between did, but with a bit more
+                  breathing room than the first 0.5rem attempt */
+  margin-bottom: 1.5rem; /* moved here from .overlay-checkbox, which this wraps */
+}
+.mic-limiter-row-wrap .overlay-checkbox {
+  margin-bottom: 0;
+}
+/* Dezenter als der normale .overlay-panel select (Nutzer-Feedback 2026-10-18,
+   "sieht blöd aus"): kein Kasten/Rahmen, gedämpfte Textfarbe wie ein stilles
+   Label statt eines gleichwertig prominenten zweiten Eingabefelds neben der
+   Checkbox — wird erst bei Hover/Fokus (Tastaturbedienung) deutlicher. */
+#mic-limiter-preset {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.8rem; /* back to this per Nutzer-Feedback 2026-10-18 ("font
+                         wieder auf vorhrigen zurück der war gut") — the
+                         inherited larger size from the last attempt was
+                         wrong, the misalignment itself was never about the
+                         font */
+  padding: 0;
+  margin: 0;
+  /* align-items:center on .mic-limiter-row-wrap does NOT actually center
+     this against the checkbox's own text — measured live (getBoundingClientRect
+     on a Range around the "TX Mic Limiter" text node vs. the select's own
+     rect): the select's box sits ~7px above the text's real vertical center
+     regardless of font-size/appearance:none/flex alignment, a native
+     <select> cross-browser quirk, not fixable by the usual box-model
+     properties. Nudged down by the measured amount instead of guessing. */
+  position: relative;
+  top: 7px;
+}
+#mic-limiter-preset:hover,
+#mic-limiter-preset:focus {
+  color: var(--accent);
+}
+#mic-limiter-preset:disabled {
+  opacity: 0.4; /* same convention as .mic-limiter-tuning:has(input:disabled) below */
+  cursor: default;
+}
+
 .overlay-checkbox input {
   accent-color: var(--accent);
   cursor: pointer;

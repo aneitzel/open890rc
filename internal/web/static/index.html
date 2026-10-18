@@ -648,10 +648,16 @@
           <div class="mic-meter" id="mic-meter"></div>
           <span class="ctrl-max" id="mic-meter-value"></span>
         </div>
-        <label class="overlay-checkbox" id="mic-limiter-row" data-i18n-title title="Sanfte Pegel-Begrenzung vor dem Senden gegen vereinzelte Übersteuerungsspitzen bei hohem Mic Gain">
-          <input type="checkbox" id="mic-limiter">
-          TX Mic Limiter
-        </label>
+        <div class="mic-limiter-row-wrap">
+          <label class="overlay-checkbox" id="mic-limiter-row" data-i18n-title title="Sanfte Pegel-Begrenzung vor dem Senden gegen vereinzelte Übersteuerungsspitzen bei hohem Mic Gain">
+            <input type="checkbox" id="mic-limiter">
+            TX Mic Limiter
+          </label>
+          <select id="mic-limiter-preset" aria-label="Limiter-Voreinstellung" data-i18n-title title="Voreinstellung für Threshold/Ratio/Attack — danach über die Regler frei anpassbar">
+            <option value="soft">Sanft</option>
+            <option value="hard">Stark</option>
+          </select>
+        </div>
         <div class="mic-limiter-tuning" id="mic-limiter-tuning" data-i18n-title title="Testweise einstellbar — wirkt sofort, auch während einer laufenden Sendung">
           <label>
             <span>Limiter Threshold <span class="ctrl-max" id="mic-limiter-threshold-value"></span></span>
