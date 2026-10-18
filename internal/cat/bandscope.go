@@ -26,10 +26,13 @@ import (
 //
 // Span/mode aren't in the data payload at all; they're independent state
 // via "BS3" (scope mode: 0=center/1=fixed/2=auto-scroll) and "BS4" (span,
-// see bandScopeSpans below). This project only reads/sets BS4 for now,
-// leaving BS3 (and everything else in the BS* family — ref level,
-// attenuation, averaging) at whatever the radio's own front panel already
-// has configured, same policy as other settings we don't yet expose.
+// see bandScopeSpans below). BS3 is forced to center while a browser client
+// is around (2026-10-18, see applyBandScopeCenter in cmd/open890rc/main.go)
+// — the waterfall's VFO line and click-to-tune both assume center mode, see
+// waterfall.js's own comment — and put back to whatever the radio had once
+// the last client leaves. Everything else in the BS* family (ref level,
+// attenuation, averaging) stays at whatever the radio's own front panel
+// already has configured, same policy as other settings we don't yet expose.
 
 // BandScopeLineBytes is the number of signal-level bytes per scope line.
 const BandScopeLineBytes = 640
@@ -72,6 +75,25 @@ func ParseBandScopeSpan(msg string) (int, error) {
 		return 0, fmt.Errorf("BS4 index out of range: %q", msg)
 	}
 	return bandScopeSpans[idx], nil
+}
+
+// EncodeBandScopeMode builds the "BS3" command selecting the scope mode:
+// 0=center, 1=fixed, 2=auto-scroll.
+func EncodeBandScopeMode(mode int) string {
+	return fmt.Sprintf("BS3%d", mode)
+}
+
+// ParseBandScopeMode parses a "BS3<digit>" message into the mode (0=center,
+// 1=fixed, 2=auto-scroll).
+func ParseBandScopeMode(msg string) (int, error) {
+	if len(msg) != 4 || msg[:3] != "BS3" {
+		return 0, fmt.Errorf("not a BS3 message: %q", msg)
+	}
+	mode := int(msg[3] - '0')
+	if mode < 0 || mode > 2 {
+		return 0, fmt.Errorf("BS3 mode out of range: %q", msg)
+	}
+	return mode, nil
 }
 
 // ParseBandScopeLine decodes a "##DD2<hex>" message into raw signal-level

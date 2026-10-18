@@ -440,6 +440,8 @@ func main() {
 	eqRxReplies := make(chan string, 4)
 	// "MO0<n>" replies (TX monitor on/off), see forceTXMonOff.
 	txMonReplies := make(chan string, 4)
+	// "BS3<n>" replies (band scope mode), see applyBandScopeCenter.
+	bs3Replies := make(chan string, 4)
 	// Mode-change hook for the TX/RX equalizers (set further down, after the
 	// equalizer state exists).
 	var onModeChanged func()
@@ -483,6 +485,12 @@ func main() {
 		if len(msg) == 5 && strings.HasPrefix(msg, "MS0") {
 			select {
 			case msReplies <- msg:
+			default:
+			}
+		}
+		if len(msg) == 4 && strings.HasPrefix(msg, "BS3") {
+			select {
+			case bs3Replies <- msg:
 			default:
 			}
 		}
@@ -663,6 +671,59 @@ func main() {
 		if conn.Send("MS0"+orig) == nil {
 			time.Sleep(150 * time.Millisecond) // let it leave the socket before closing
 		}
+	}
+
+	// Band scope mode ("BS3"): the waterfall's VFO line and click-to-tune
+	// both assume the radio is in "center" mode (see waterfall.js), so the
+	// mode found at connect time is forced to center while a browser client
+	// is around and put back when we let go (Nutzer-Wunsch, 2026-10-18) —
+	// same remember/apply/restore shape as applyTXSource/restoreTXSource
+	// above. Default if unreadable: "0" (center) — a reasonable guess, and
+	// restoring to it is harmless even if wrong.
+	var bs3Mu sync.Mutex
+	bs3Orig := "0"
+	bs3Applied := false
+	applyBandScopeCenter := func(conn *radio.Conn) {
+		for len(bs3Replies) > 0 {
+			<-bs3Replies
+		}
+		if err := conn.Send("BS3"); err != nil {
+			return
+		}
+		var found string
+		select {
+		case m := <-bs3Replies:
+			found = m[3:]
+		case <-time.After(2 * time.Second):
+			log.Println("radio: band scope mode (BS3) not answered, assuming center as the original")
+		}
+		bs3Mu.Lock()
+		// After a reconnect without a restore in between, the radio still
+		// holds OUR setting: keep the original found earlier.
+		if found != "" && !bs3Applied {
+			bs3Orig = found
+		}
+		bs3Applied = true
+		orig := bs3Orig
+		bs3Mu.Unlock()
+		log.Printf("radio: band scope mode: center (original BS3%s)", orig)
+		if err := conn.Send("BS30"); err != nil {
+			log.Printf("main: setting band scope center mode failed: %v", err)
+		}
+	}
+	restoreBandScopeMode := func(conn *radio.Conn) {
+		if conn == nil {
+			return
+		}
+		bs3Mu.Lock()
+		applied, orig := bs3Applied, bs3Orig
+		bs3Applied = false
+		bs3Mu.Unlock()
+		if !applied {
+			return
+		}
+		log.Printf("radio: restoring band scope mode BS3%s", orig)
+		conn.Send("BS3" + orig)
 	}
 
 	// Speech processor (PROC): the PROC on/off state, input/output levels, and
@@ -1346,6 +1407,7 @@ func main() {
 		restoreTXMon(conn)
 		restoreProcSettings(conn)
 		restoreTXSource(conn)
+		restoreBandScopeMode(conn)
 	}
 
 	// The radio has no readback for the scope rate, so remember the last one
@@ -1434,7 +1496,7 @@ func main() {
 			_ = conn.Send("RM" + code + "1")
 		}
 		wantMeterMu.Unlock()
-		// Remote-operation overrides (MIC input/PROC/TX-EQ/RX-EQ/TX monitor) only belong
+		// Remote-operation overrides (MIC input/PROC/TX-EQ/RX-EQ/TX monitor/band scope mode) only belong
 		// here if a browser client was ALREADY connected at the moment this
 		// (re)dial happened — e.g. the radio power-cycled and redialled while
 		// people were using it. The far more common case, a plain KNS
@@ -1455,6 +1517,7 @@ func main() {
 			go applyTXSource(conn)
 			go applyProcSettings(conn)
 			go forceTXMonOff(conn)
+			go applyBandScopeCenter(conn)
 		}
 		scopeRateMu.Lock()
 		rate := scopeRate
@@ -2868,7 +2931,7 @@ func main() {
 			if conn == nil {
 				return
 			}
-			log.Println("radio: no browser clients left, restoring shack-normal PROC/MIC input/TX-EQ/RX-EQ/TX monitor")
+			log.Println("radio: no browser clients left, restoring shack-normal PROC/MIC input/TX-EQ/RX-EQ/TX monitor/band scope mode")
 			restoreRadioSettings(conn)
 			if err := conn.Send("##VP0"); err != nil {
 				log.Printf("main: stopping the idle VoIP stream failed: %v", err)
@@ -2896,7 +2959,7 @@ func main() {
 			if conn == nil {
 				return
 			}
-			log.Println("radio: first browser client connected, applying remote-operation PROC/MIC input/TX-EQ/RX-EQ/TX monitor")
+			log.Println("radio: first browser client connected, applying remote-operation PROC/MIC input/TX-EQ/RX-EQ/TX monitor/band scope mode")
 			// A fresh VoIP stream for the new listener (off/on cycle, so it
 			// also starts clean if it was still running, e.g. a page reload).
 			go func() {
@@ -2909,6 +2972,7 @@ func main() {
 			go applyTXSource(conn)
 			go applyProcSettings(conn)
 			go forceTXMonOff(conn)
+			go applyBandScopeCenter(conn)
 			onModeChanged()
 		},
 	}
