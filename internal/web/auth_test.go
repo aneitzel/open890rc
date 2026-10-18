@@ -235,3 +235,45 @@ func TestPAFlag(t *testing.T) {
 		t.Fatalf("pa flags after reload: %v", auth.pas)
 	}
 }
+
+func TestTXFlag(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "users.json")
+	SetUsersFile(path)
+	hdr := map[string]string{"X-Requested-With": "open890rc"}
+	for _, body := range []string{
+		`{"name":"listener","password":"secret1","tx":false,"create":true}`,
+		// "plain" deliberately omits "tx" entirely — the default-allow
+		// polarity (opposite of admin/pa) must still grant TX, not deny it.
+		`{"name":"plain","password":"secret2","create":true}`,
+		// An admin explicitly denied TX still gets it via the admin bypass.
+		`{"name":"boss","password":"secret3","admin":true,"tx":false,"create":true}`,
+	} {
+		w := httptest.NewRecorder()
+		requireAdmin(handleUsers)(w, req("POST", "192.168.1.10:1", body, hdr))
+		if w.Code != 200 {
+			t.Fatalf("add user: %d %s", w.Code, w.Body)
+		}
+	}
+	remote := func(user, pass string) bool {
+		w := httptest.NewRecorder()
+		handleLogin(w, req("POST", "100.81.1.1:1", `{"user":"`+user+`","pass":"`+pass+`"}`, nil))
+		if w.Code != 200 || len(w.Result().Cookies()) == 0 {
+			t.Fatalf("login %s: %d", user, w.Code)
+		}
+		r := req("GET", "100.81.1.1:1", "", nil)
+		r.AddCookie(w.Result().Cookies()[0])
+		return hasTX(r)
+	}
+	if remote("listener", "secret1") || !remote("plain", "secret2") || !remote("boss", "secret3") {
+		t.Fatal("TX access: want listener no, plain yes (default), admin yes (bypass)")
+	}
+	if !hasTX(req("GET", "192.168.1.10:1", "", nil)) || hasTX(req("GET", "100.81.1.1:1", "", nil)) {
+		t.Fatal("TX access: LAN yes, anonymous remote no")
+	}
+	SetUsersFile(path) // survives a reload
+	// boss's own noTX entry stays true in storage (that's what was saved;
+	// hasTX's admin bypass is what makes them transmit anyway, checked above).
+	if !auth.noTX["listener"] || auth.noTX["plain"] || !auth.noTX["boss"] {
+		t.Fatalf("noTX flags after reload: %v", auth.noTX)
+	}
+}

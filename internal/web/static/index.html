@@ -760,13 +760,17 @@
     </label>
     <div class="useredit-extra">
       <div class="useredit-flags">
-        <label class="overlay-checkbox" title="Admin: sieht die Einstellungen und die Benutzerverwaltung (und die PA)">
-          <input type="checkbox" id="useredit-admin">
-          Admin
+        <label class="overlay-checkbox" title="TX: darf senden (Mikrofon, TX-Button, Tune). Abgewählt: nur Mithören">
+          <input type="checkbox" id="useredit-tx" checked>
+          TX
         </label>
         <label class="overlay-checkbox" title="PA: sieht und bedient die PA (Admins immer)">
           <input type="checkbox" id="useredit-pa">
           PA
+        </label>
+        <label class="overlay-checkbox" title="Admin: sieht die Einstellungen und die Benutzerverwaltung (und die PA)">
+          <input type="checkbox" id="useredit-admin">
+          Admin
         </label>
       </div>
       <button type="button" id="useredit-delete" class="useredit-delete">Löschen</button>

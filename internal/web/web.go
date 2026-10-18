@@ -9,8 +9,8 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log"
-	"net"
 	"mime"
+	"net"
 	"net/http"
 	"sort"
 	"strings"
@@ -311,7 +311,7 @@ type serverError struct {
 // a failed "connect") back to handleWS's single writer goroutine — a second
 // writer here would race the broadcast writes already happening on the same
 // connection.
-func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte, remote string, paOK bool) {
+func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte, remote string, paOK, txOK bool) {
 	var msg clientMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		log.Printf("web: invalid client message: %v", err)
@@ -321,6 +321,16 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 	// PA commands only from clients that may see/use the PA (LAN, admins, PA flag)
 	if !paOK && (strings.HasPrefix(msg.Type, "amp") || msg.Type == "connectAmp" || msg.Type == "setAmpAuto" || msg.Type == "setAmpTxTimeout" || msg.Type == "setAmpMaxPower") {
 		log.Printf("web: %s ignored: client %s has no PA access", msg.Type, remote)
+		return
+	}
+
+	// setTX/setTune key the transmitter — only from clients allowed to
+	// transmit (LAN, admins, any user not on the noTX deny list). The
+	// client also hides/disables the TX and TUNE controls and never opens
+	// the microphone for such a user, this is the actual enforcement for
+	// anyone who bypasses that (Nutzer-Wunsch 2026-10-18).
+	if !txOK && (msg.Type == "setTX" || msg.Type == "setTune") {
+		log.Printf("web: %s ignored: client %s has no TX access", msg.Type, remote)
 		return
 	}
 
@@ -567,7 +577,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/ws", requireAuth(s.handleWS))
 	mux.HandleFunc("/serial-ports", requireAuth(s.handleSerialPorts))
 	mux.HandleFunc("/audio-ws", requireAuth(s.handleAudioWS))
-	mux.HandleFunc("/audio-tx-ws", requireAuth(s.handleTXAudioWS))
+	mux.HandleFunc("/audio-tx-ws", requireAuth(requireTX(s.handleTXAudioWS)))
 	mux.HandleFunc("/waterfall-ws", requireAuth(s.handleWaterfallWS))
 	mux.HandleFunc("/ca.crt", handleCACert)
 	mux.HandleFunc("/auth/status", handleAuthStatus)
@@ -800,7 +810,7 @@ type clientInfo struct {
 	IP    string `json:"ip"`
 	Host  string `json:"host,omitempty"`
 	Codec string `json:"codec,omitempty"` // "pcm"/"opus" while this client's RX audio plays, "" otherwise — self-reported, see "audioCodec" below
-	Since int64  `json:"since"` // unix milliseconds
+	Since int64  `json:"since"`           // unix milliseconds
 }
 
 func (s *Server) addClient(id uint64, ip, user, name string) {
@@ -912,6 +922,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	// the others. The address is the one the server sees: behind a reverse
 	// proxy/tunnel that is the proxy's, unless it forwards the real one.
 	paOK := hasPA(r)
+	txOK := hasTX(r)
 	ip := clientIP(r)
 	id := clientNoticeSeq.Add(1)
 	user := auth.sessionUser(r)
@@ -985,7 +996,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			_ = conn.SetReadDeadline(time.Now().Add(wsReadTimeout))
-			s.handleClientMessage(data, id, errCh, conn.RemoteAddr().String(), paOK)
+			s.handleClientMessage(data, id, errCh, conn.RemoteAddr().String(), paOK, txOK)
 		}
 	}()
 	pingTicker := time.NewTicker(wsPingInterval)

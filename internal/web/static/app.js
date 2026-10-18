@@ -1256,6 +1256,7 @@ const TUNE_MIC_SUPPRESS_TIMEOUT_MS = 15000;
 
 const tuneButton = document.getElementById("tune-button");
 tuneButton.addEventListener("click", () => {
+  if (!txAllowed) return; // the button is also .disabled, this covers e.g. a stray Enter/Space
   tuneSuppressMic = true;
   tuneSuppressSeenTxHigh = false;
   tuneSuppressDeadline = performance.now() + TUNE_MIC_SUPPRESS_TIMEOUT_MS;
@@ -1287,6 +1288,7 @@ function syncMicNow() {
   window.hamrcSetMicStreaming(want);
 }
 function setTX(enabling) {
+  if (enabling && !txAllowed) return; // no TX access (listen-only user) — releasing is always fine
   if (enabling) {
     myTX = true;
     myTXSeenHigh = false;
@@ -1335,6 +1337,7 @@ function pttBlocked(e) {
   if (e.ctrlKey || e.altKey || e.metaKey) return true;
   if (document.querySelector(".overlay:not([hidden])")) return true;
   if (!lastState || !lastState.connected || lastState.tuning) return true;
+  if (!txAllowed) return true;
   return false;
 }
 document.addEventListener("keydown", (e) => {
@@ -3116,7 +3119,11 @@ function applyAmpState(state) {
   paOn = !!state.ampOn;
   document.body.dataset.paOn = paOn ? "1" : "0"; // read by the PWR slider's label
   document.getElementById("at-button").disabled = paOn; // PA has its own tuner
-  tuneButton.disabled = paOn && !state.tuning; // internal TUNE unavailable too (a running tune can still be stopped)
+  // internal TUNE unavailable while the PA has its own tuner running (a
+  // running tune can still be stopped), and for anyone without TX access
+  // at all — but a tune genuinely in progress must stay stoppable even
+  // then (it was presumably started before TX was revoked mid-session).
+  tuneButton.disabled = (paOn && !state.tuning) || (!txAllowed && !state.tuning);
   pwrSlider.setMax(paOn ? PA_MAX_POWER_W : 100); // server-configurable cap while the PA is on, see setAmpMaxPower
   paPowerButton.textContent = "PA ON";
   paPowerButton.classList.toggle("active", paOn);
@@ -4180,6 +4187,14 @@ function setControlsDisabled(disabled) {
 // stripped from the state, so no PA row, meter scale, message or setting shows.
 // The server also drops their PA commands.
 let paAllowed = false;
+// TX access (LAN, admins, any logged-in user NOT explicitly denied it) —
+// opposite default from paAllowed, see hasTX's own comment (auth.go): most
+// users may transmit, so this starts true (same default initAuth/applyAdminUi
+// will confirm from /auth/status before the TX button can realistically be
+// used anyway). Gates the TX/TUNE buttons, PTT, and ever opening the
+// microphone — the server also drops setTX/setTune and refuses
+// /audio-tx-ws for anyone without it (Nutzer-Wunsch 2026-10-18).
+let txAllowed = true;
 const AMP_STATE_OFF = {
   ampPort: "",
   ampSavedPort: "",
@@ -4715,7 +4730,7 @@ loginForm.addEventListener("submit", async (e) => {
       // the admin flag only counts after the login: ask again
       try {
         const st = await (await fetch("/auth/status", { cache: "no-store" })).json();
-        applyAdminUi(st.admin, st.pa);
+        applyAdminUi(st.admin, st.pa, st.tx);
       } catch (err) {}
       connect();
     } else {
@@ -4773,7 +4788,7 @@ async function refreshUsers() {
             display.textContent = u.displayName || "";
             const admin = document.createElement("span");
             admin.className = "users-admin-mark";
-            admin.textContent = u.admin ? "Admin" : u.pa ? "PA" : "";
+            admin.textContent = [u.tx ? "" : "kein TX", u.pa ? "PA" : "", u.admin ? "Admin" : ""].filter(Boolean).join(", ");
             const edit = document.createElement("button");
             edit.type = "button";
             edit.textContent = "Edit";
@@ -4820,6 +4835,7 @@ const userEditName = document.getElementById("useredit-name");
 const userEditPass = document.getElementById("useredit-pass");
 const userEditAdmin = document.getElementById("useredit-admin");
 const userEditPA = document.getElementById("useredit-pa");
+const userEditTX = document.getElementById("useredit-tx");
 const userEditStatus = document.getElementById("useredit-status");
 const userEditDelete = document.getElementById("useredit-delete");
 let userEditTarget = null; // null = new user, else the user being edited
@@ -4832,6 +4848,7 @@ function openUserEdit(user) {
   userEditPass.value = "";
   userEditAdmin.checked = !!(user && user.admin);
   userEditPA.checked = !!(user && user.pa);
+  userEditTX.checked = user ? !!user.tx : true; // new user: TX allowed by default, see hasTX (auth.go)
   userEditDelete.hidden = !user;
   userEditStatus.textContent = "";
   userEditStatus.classList.remove("error");
@@ -4868,6 +4885,7 @@ document.getElementById("useredit-form").addEventListener("submit", async (e) =>
       password: userEditPass.value,
       admin: userEditAdmin.checked,
       pa: userEditPA.checked,
+      tx: userEditTX.checked,
     });
     closeUserEdit();
     setUsersStatus(target ? `${login}: gespeichert` : `${login} angelegt`, false);
@@ -4939,8 +4957,10 @@ debugFilterEl.addEventListener("keydown", (e) => {
 // only entry point, same as PA/Debug.
 // Settings (gear) only for admins: LAN clients and users carrying the admin
 // flag (Nutzer-Wunsch 2026-10-11).
-function applyAdminUi(isAdmin, hasPa) {
+function applyAdminUi(isAdmin, hasPa, hasTx) {
   paAllowed = !!hasPa;
+  txAllowed = !!hasTx;
+  txButton.disabled = !txAllowed;
   if (lastState) applyState(lastState);
   setupButton.hidden = !isAdmin;
 }
@@ -4951,7 +4971,7 @@ async function initAuth() {
   } catch (e) {
     // no answer: behave as before (connect and let the retry logic handle it)
   }
-  applyAdminUi(status.admin, status.pa);
+  applyAdminUi(status.admin, status.pa, status.tx);
   if (status.loginMessage) setLoginIntro(status.loginMessage);
   if (status.loginRequired) showLogin();
   else connect();

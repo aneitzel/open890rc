@@ -3479,7 +3479,12 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
   color: var(--accent);
 }
 .users-row .users-admin-mark {
-  flex: 0 0 2.6rem;
+  /* Widened from 2.6rem (Nutzer-Wunsch 2026-10-18: TX flag added, the mark
+     can now read "kein TX, PA, Admin" instead of just one word) */
+  flex: 0 0 5.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.75rem;
   color: var(--text-dim);
 }

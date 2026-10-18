@@ -34,26 +34,27 @@ Examples for Server Settings & Browser config:
 
 ## Features
 
-- TS-890 power off/on (via Wake-on-LAN) 
+- TS-890 power off/on (via Wake-on-LAN)
+- No client software required, all inside a webbrowser 
 - Frequency (digit wheel, direct entry, click/drag on the waterfall), mode, bands, VFO A/B
 - AGC, ATT, preamp, antenna, NR, NB1/NB2 with their settings, beat canceller, RX/TX equalizer,
   speech processor, antenna tuner
-- AI based noise reduction based on RNNoise project (the AI NR step of the NR button)
+- **AI based noise reduction based on RNNoise project** (the AI NR step of the NR button)
 - Audio filters: width/shift, hi/lo cut, APF (CW), live graph of the passband
 - S meter, power, SWR and ALC, as bars or as an analog needle instrument
 - Band scope: spectrum and waterfall with max hold, smoothing and level controls
 - RX audio in the browser (raw PCM or Opus), TX audio from the browser microphone
-- Multiclient (several browsers at the same time sharing one radio session)
-- Login for users outside the local network, admin and PA rights per user
-- Interface languages: English, German, Italian, Spanish (chosen per browser)
-- Optional SPE Expert 1.5K amplifier control over a serial port (on/off, standby/operate, power level, tune)
+- **Multiclient (several browsers at the same time sharing one radio session)**
+- Login for users outside the local network, rights per user for TX, PA & Admin
+- Interface languages: **English, German, Italian, Spanish** (chosen per client browser)
+- Optional SPE Expert 1.5K amplifier control over a serial port (on/off, tune, standby/operate, power level)
 
 ## What you need
 
-- A TS-890S with KNS enabled and a KNS account set up on the radio.
+- **A TS-890S** KNS enabled, KNS account set up on the radio.
   If the account is a KNS *administrator*, tick "KNS Admin" in the settings,
   otherwise the login is refused.
-- A computer that stays on in the same network (a Raspberry Pi4 is ideal).
+- **A computer** that stays on in the same network as TS890 (a Raspberry Pi4 is ideal).
   No other software is needed.
 
 ## Quick start

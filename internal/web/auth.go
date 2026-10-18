@@ -39,13 +39,21 @@ const (
 var validUserName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,8}$`)
 
 type authState struct {
-	mu       sync.Mutex
-	path     string
-	users    map[string]string // name -> "pbkdf2$iter$salt$hash"
-	names    map[string]string // name -> free-text display name ("André Neitzel")
-	admins   map[string]bool   // name -> admin flag (settings + user management)
-	pas      map[string]bool   // name -> may see/use the PA
-	loginMsg string            // text above the login fields ("" = default)
+	mu     sync.Mutex
+	path   string
+	users  map[string]string // name -> "pbkdf2$iter$salt$hash"
+	names  map[string]string // name -> free-text display name ("André Neitzel")
+	admins map[string]bool   // name -> admin flag (settings + user management)
+	pas    map[string]bool   // name -> may see/use the PA
+	// noTX is a DENY list, the opposite polarity of admins/pas: most users
+	// may transmit, so absence here (the Go zero value for a missing map
+	// key) means "may transmit" — only users explicitly marked here are
+	// restricted to listening (Nutzer-Wunsch 2026-10-18). Keeping it this
+	// way round, instead of a "txs" grant list like pas, also means an
+	// existing users file from before this flag existed needs no migration:
+	// every user already in it keeps transmitting exactly as before.
+	noTX     map[string]bool
+	loginMsg string // text above the login fields ("" = default)
 	sessions map[string]session
 	fails    map[string]*failState // by client address
 }
@@ -60,7 +68,7 @@ type failState struct {
 	until time.Time
 }
 
-var auth = &authState{users: map[string]string{}, names: map[string]string{}, admins: map[string]bool{}, pas: map[string]bool{}, sessions: map[string]session{}, fails: map[string]*failState{}}
+var auth = &authState{users: map[string]string{}, names: map[string]string{}, admins: map[string]bool{}, pas: map[string]bool{}, noTX: map[string]bool{}, sessions: map[string]session{}, fails: map[string]*failState{}}
 
 // SetUsersFile points the access control at its users file and loads it.
 func SetUsersFile(path string) {
@@ -71,6 +79,7 @@ func SetUsersFile(path string) {
 	auth.names = map[string]string{}
 	auth.admins = map[string]bool{}
 	auth.pas = map[string]bool{}
+	auth.noTX = map[string]bool{}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -83,6 +92,7 @@ func SetUsersFile(path string) {
 		Names  map[string]string `json:"names"`
 		Admins map[string]bool   `json:"admins"`
 		PA     map[string]bool   `json:"pa"`
+		NoTX   map[string]bool   `json:"noTx"`
 		Login  string            `json:"loginMessage"`
 	}
 	if err := json.Unmarshal(data, &f); err != nil {
@@ -101,6 +111,9 @@ func SetUsersFile(path string) {
 	if f.PA != nil {
 		auth.pas = f.PA
 	}
+	if f.NoTX != nil {
+		auth.noTX = f.NoTX
+	}
 	auth.loginMsg = f.Login
 }
 
@@ -115,7 +128,7 @@ func (a *authState) saveLocked() error {
 	if a.path == "" {
 		return errors.New("no users file configured")
 	}
-	data, err := json.MarshalIndent(map[string]any{"users": a.users, "names": a.names, "admins": a.admins, "pa": a.pas, "loginMessage": a.loginMsg}, "", "  ")
+	data, err := json.MarshalIndent(map[string]any{"users": a.users, "names": a.names, "admins": a.admins, "pa": a.pas, "noTx": a.noTX, "loginMessage": a.loginMsg}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -247,6 +260,29 @@ func hasPA(r *http.Request) bool {
 	return auth.admins[user] || auth.pas[user]
 }
 
+// hasTX: who may transmit (TX button, PTT, TUNE, the microphone) — LAN
+// clients, admins, and any logged-in user NOT on the noTX deny list. The
+// opposite default from hasPA/isAdmin: most users can transmit, so a
+// not-logged-in request is the only case that's denied outright here; a
+// logged-in user needs an explicit noTX entry to lose TX, not an explicit
+// grant to have it. Everybody else gets the TX controls hidden/disabled and
+// the server drops their setTX/setTune and refuses /audio-tx-ws.
+func hasTX(r *http.Request) bool {
+	if isLAN(r) {
+		return true
+	}
+	user := auth.sessionUser(r)
+	if user == "" {
+		return false
+	}
+	auth.mu.Lock()
+	defer auth.mu.Unlock()
+	if auth.admins[user] {
+		return true
+	}
+	return !auth.noTX[user]
+}
+
 // requireAuth lets LAN clients through; everybody else needs a valid session.
 func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -255,6 +291,19 @@ func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		http.Error(w, "login required", http.StatusUnauthorized)
+	}
+}
+
+// requireTX: /audio-tx-ws itself (not just the setTX control message) is
+// gated too, so a listen-only user's browser can't even open a mic-audio
+// socket to the server in the first place.
+func requireTX(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !hasTX(r) {
+			http.Error(w, "no TX access", http.StatusForbidden)
+			return
+		}
+		next(w, r)
 	}
 }
 
@@ -287,7 +336,7 @@ func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	auth.mu.Lock()
 	msg := auth.loginMsg
 	auth.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"loginRequired": !lan, "admin": isAdmin(r), "pa": hasPA(r), "loginMessage": msg})
+	writeJSON(w, http.StatusOK, map[string]any{"loginRequired": !lan, "admin": isAdmin(r), "pa": hasPA(r), "tx": hasTX(r), "loginMessage": msg})
 }
 
 // handleLoginMessage: GET returns the text shown above the login fields, POST
@@ -410,6 +459,7 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 		DisplayName string `json:"displayName"`
 		Admin       bool   `json:"admin"`
 		PA          bool   `json:"pa"`
+		TX          bool   `json:"tx"`
 	}
 	fail := func(status int, msg string) { writeJSON(w, status, map[string]any{"error": msg}) }
 	switch r.Method {
@@ -417,7 +467,7 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 		auth.mu.Lock()
 		rows := make([]userRow, 0, len(auth.users))
 		for n := range auth.users {
-			rows = append(rows, userRow{Name: n, DisplayName: auth.names[n], Admin: auth.admins[n], PA: auth.pas[n]})
+			rows = append(rows, userRow{Name: n, DisplayName: auth.names[n], Admin: auth.admins[n], PA: auth.pas[n], TX: !auth.noTX[n]})
 		}
 		auth.mu.Unlock()
 		sort.Slice(rows, func(i, j int) bool { return rows[i].Name < rows[j].Name })
@@ -429,8 +479,14 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 			Password    string `json:"password"`
 			Admin       bool   `json:"admin"`
 			PA          bool   `json:"pa"`
-			OldName     string `json:"oldName"` // set when the login is renamed
-			Create      bool   `json:"create"`  // new user: refuse an existing login
+			// Pointer, unlike Admin/PA: nil (omitted) must mean "allowed",
+			// matching noTX's own default-allow polarity — a plain bool
+			// would silently deny any caller that leaves "tx" out, the
+			// opposite of hasTX's documented default. The browser's own
+			// edit form always sends an explicit true/false either way.
+			TX      *bool  `json:"tx"`
+			OldName string `json:"oldName"` // set when the login is renamed
+			Create  bool   `json:"create"`  // new user: refuse an existing login
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
@@ -494,6 +550,7 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 			delete(auth.names, req.OldName)
 			delete(auth.admins, req.OldName)
 			delete(auth.pas, req.OldName)
+			delete(auth.noTX, req.OldName)
 			for t, sess := range auth.sessions {
 				if sess.user == req.OldName {
 					delete(auth.sessions, t)
@@ -524,6 +581,11 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 		} else {
 			delete(auth.pas, req.Name)
 		}
+		if req.TX == nil || *req.TX {
+			delete(auth.noTX, req.Name) // may transmit (default, or explicitly so): no deny entry needed
+		} else {
+			auth.noTX[req.Name] = true
+		}
 		err := auth.saveLocked()
 		auth.mu.Unlock()
 		if err != nil {
@@ -538,6 +600,7 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 		delete(auth.names, name)
 		delete(auth.admins, name)
 		delete(auth.pas, name)
+		delete(auth.noTX, name)
 		for t, s := range auth.sessions {
 			if s.user == name {
 				delete(auth.sessions, t)
