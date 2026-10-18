@@ -639,32 +639,39 @@ function analogTargetRaw() {
 // ALC "OK" limit in raw units (the thick bar's right end); above it the little
 // red LED at the end of the ALC scale lights while transmitting.
 const ANALOG_ALC_OK_RAW = ANALOG_ALC_ANGLES[1][0];
+// Gauges currently in the document that need their needle updated: the real
+// #meter-analog, plus, while the settings overlay (long press on the gauge)
+// is open, a live COPY of it — see mountMeterOverlayGauge further below.
+// The real node stays exactly where it is (Nutzer-Wunsch 2026-10-18: "das
+// meter soll nicht aus der gui herausspringen beim öffnen des overlay. wir
+// zeigen eine kopie an" — an earlier version relocated the real node into
+// the overlay instead, which this replaces). Looked up by CLASS within each
+// root rather than by id: id must stay unique per document, and the clone
+// duplicates its whole subtree including every id in it.
+const analogGaugeRoots = [document.getElementById("meter-analog")];
 function updateAnalogNeedle(raw) {
   syncAnalogPoScale();
   const tx = !!(lastState && lastState.tx);
-  document.getElementById("analog-alc-led").classList.toggle("on", tx && meterTarget.alc > ANALOG_ALC_OK_RAW);
   let tip;
   if (tx && analogMeterMode === "swr") tip = analogNeedleTip(analogSwrAngleDeg(raw), ANALOG_SWR_R);
   else if (tx && analogMeterMode === "id") tip = analogNeedleTip(analogIdAngleDeg(raw), ANALOG_IC_R);
   else if (tx && analogMeterMode === "alc") tip = analogNeedleTip(analogAlcAngleDeg(raw), ANALOG_ALC_R);
   else if (tx) tip = analogNeedleTip(analogPoAngleDeg(raw), ANALOG_PO_R);
   else tip = analogNeedleTip(analogAngleDeg(raw), ANALOG_S_R);
-  const needle = document.getElementById("analog-s-needle");
-  needle.setAttribute("x1", ANALOG_PIVOT.x);
-  needle.setAttribute("y1", ANALOG_PIVOT.y);
-  needle.setAttribute("x2", tip.x);
-  needle.setAttribute("y2", tip.y);
-  const shadow = document.getElementById("analog-s-needle-shadow");
-  shadow.setAttribute("x1", ANALOG_PIVOT.x);
-  shadow.setAttribute("y1", ANALOG_PIVOT.y);
-  shadow.setAttribute("x2", tip.x);
-  shadow.setAttribute("y2", tip.y);
-
-  const dbmEl = document.getElementById("analog-dbm");
-  if (lastState && lastState.tx) {
-    dbmEl.textContent = "";
-  } else {
-    dbmEl.textContent = `${Math.round(analogRawToDbm(raw))} dBm`;
+  const dbmText = tx ? "" : `${Math.round(analogRawToDbm(raw))} dBm`;
+  for (const root of analogGaugeRoots) {
+    root.querySelector(".analog-alc-led").classList.toggle("on", tx && meterTarget.alc > ANALOG_ALC_OK_RAW);
+    const needle = root.querySelector(".analog-needle");
+    needle.setAttribute("x1", ANALOG_PIVOT.x);
+    needle.setAttribute("y1", ANALOG_PIVOT.y);
+    needle.setAttribute("x2", tip.x);
+    needle.setAttribute("y2", tip.y);
+    const shadow = root.querySelector(".analog-needle-shadow");
+    shadow.setAttribute("x1", ANALOG_PIVOT.x);
+    shadow.setAttribute("y1", ANALOG_PIVOT.y);
+    shadow.setAttribute("x2", tip.x);
+    shadow.setAttribute("y2", tip.y);
+    root.querySelector(".analog-dbm").textContent = dbmText;
   }
 }
 
@@ -685,6 +692,100 @@ const ANALOG_SPRING_DAMPING = 25.0;
 let analogNeedleDisplayed = 0;
 let analogNeedleVelocity = 0;
 let analogLastFrame = performance.now();
+
+// User-adjustable needle feel (long press on the gauge → #meter-overlay,
+// wired further below, near the NB overlay). Nutzer-Wunsch 2026-10-18:
+// "schnell ansteigt (wie bisher), aber eine einstellbare hold gegen
+// abfallen". Two independent knobs:
+// - meterInertiaPct scales the spring's TIME CONSTANT: stiffness ∝ 1/k²,
+//   damping ∝ 1/k keeps the damping RATIO (and with it the overshoot
+//   shape) unchanged, only how fast the whole motion plays out — the
+//   standard trick for time-scaling a 2nd-order system, rather than
+//   tuning stiffness/damping independently and accidentally changing how
+//   much it overshoots. 100% = the original constants above, unchanged.
+//   Range 50-300% (not 0-∞): below 50% the spring is stiff enough that the
+//   explicit-Euler-ish integration below genuinely goes unstable at normal
+//   frame rates — reported live as "zwei Zeiger" (the needle double-imaging
+//   as it diverges instead of settling), confirmed by eigenvalue analysis
+//   of the update step, fixed by narrowing the slider's range rather than
+//   trying to out-clamp dt further.
+// - meterFallMs is a genuine PEAK HOLD (Nutzer-Wunsch 2026-10-18, after an
+//   earlier "just rate-limit the drop" version felt like it did nothing —
+//   on a real, noisy/fluctuating signal almost every reading is a "new"
+//   (even if tiny) peak, which kept re-arming a plain rate limiter before
+//   it could ever show): a new peak is tracked instantly as before, but
+//   then the value fed to the spring stays PINNED there — flat, ignoring
+//   any lower reading — for meterFallMs, and only once that expires does it
+//   start following the live value again. 0 = off, i.e. the original
+//   behaviour (target tracks the radio instantly both ways).
+// - meterReleasePct (Nutzer-Wunsch 2026-10-18, after the hold-then-release
+//   above: "nach Ablauf der Abfallzeit springt sie viel zu schnell zurück
+//   ... Besser wäre das zurück langsamer zu machen als das vor"): once
+//   released, the spring used to chase the lower value with the SAME
+//   stiffness/damping as a rise, which reads as a snap. Applied only while
+//   the needle is actually moving DOWN (target < displayed, every frame —
+//   covers the hold's release AND any ordinary downward signal step, not
+//   just the hold case), it multiplies meterInertiaPct's time-scale factor
+//   k by this on top, same "scale stiffness/damping together to keep the
+//   damping ratio (and so the overshoot shape) unchanged" trick as
+//   meterInertiaPct itself — a rise is completely unaffected. 100% = no
+//   extra slowdown (symmetric, today's behaviour); default 250% so release
+//   reads as a deliberate, weighted sink rather than a snap-back.
+const METER_INERTIA_DEFAULT = 100;
+const METER_FALL_MS_DEFAULT = 0;
+const METER_RELEASE_DEFAULT = 250;
+function loadMeterInertiaPct() {
+  try {
+    // Clamped (not just range-checked) rather than falling back to the
+    // default on an out-of-range value: a value saved before the range was
+    // tightened to 50-300% (2026-10-18, see the slider's min/max — below
+    // 50% the explicit-Euler spring genuinely goes unstable and the needle
+    // visibly double-images, "zwei Zeiger" bug report) should land on the
+    // nearest now-valid value, not silently jump back to 100%.
+    const v = Number(localStorage.getItem("open890rc.meterInertiaPct"));
+    if (Number.isFinite(v) && v > 0) return Math.max(50, Math.min(300, v));
+  } catch (e) {
+    // localStorage unavailable — use the default.
+  }
+  return METER_INERTIA_DEFAULT;
+}
+function loadMeterFallMs() {
+  try {
+    // Clamped like loadMeterInertiaPct: range tightened from 0-3000 to
+    // 0-1000 (Nutzer-Wunsch 2026-10-18), a value saved before that should
+    // land on the new max rather than falling back to the default.
+    const v = Number(localStorage.getItem("open890rc.meterFallMs"));
+    if (Number.isFinite(v) && v >= 0) return Math.min(1000, v);
+  } catch (e) {
+    // localStorage unavailable — use the default.
+  }
+  return METER_FALL_MS_DEFAULT;
+}
+function loadMeterReleasePct() {
+  try {
+    const v = Number(localStorage.getItem("open890rc.meterReleasePct"));
+    if (Number.isFinite(v) && v > 0) return Math.max(100, Math.min(500, v));
+  } catch (e) {
+    // localStorage unavailable — use the default.
+  }
+  return METER_RELEASE_DEFAULT;
+}
+let meterInertiaPct = loadMeterInertiaPct();
+let meterFallMs = loadMeterFallMs();
+let meterReleasePct = loadMeterReleasePct();
+// The value actually fed into the spring: the live raw value, except while
+// a hold is active (see meterFallMs above), when it stays pinned at the
+// held peak. analogHoldUntil is the performance.now() timestamp the current
+// hold expires at — once "now" passes it, the very next lower reading falls
+// through to the "track the live value" branch below and stays there
+// (recomputed every frame) until a genuinely new peak arrives and pins it
+// again. Both tracked together with WHICH source the value came from
+// (receive S vs. TX PWR/SWR/ALC/IC, see analogTargetRaw) so a TX edge or a
+// meter-mode click snaps straight to the new source's raw value instead of
+// holding/falling from a leftover peak that belonged to a different scale.
+let analogHeldTarget = 0;
+let analogHoldUntil = 0;
+let analogFallingSourceKey = null;
 function animateAnalogNeedle(now) {
   // Clamp dt: an explicit-Euler spring this stiff can overshoot into
   // instability for very large steps (a backgrounded tab resuming, etc.) —
@@ -693,8 +794,32 @@ function animateAnalogNeedle(now) {
   // needs this guard for the same reason.
   const dt = Math.min(0.05, (now - analogLastFrame) / 1000);
   analogLastFrame = now;
-  const target = analogTargetRaw();
-  const accel = ANALOG_SPRING_STIFFNESS * (target - analogNeedleDisplayed) - ANALOG_SPRING_DAMPING * analogNeedleVelocity;
+  const raw = analogTargetRaw();
+  const sourceKey = lastState && lastState.tx ? analogMeterMode : "s";
+  if (sourceKey !== analogFallingSourceKey) {
+    analogFallingSourceKey = sourceKey;
+    analogHeldTarget = raw;
+    analogHoldUntil = now; // no hold carried over from a different source
+  } else if (raw >= analogHeldTarget) {
+    // A new (or equal) peak always wins immediately — attack stays exactly
+    // as fast as with no hold at all — and gets its own fresh hold window.
+    analogHeldTarget = raw;
+    analogHoldUntil = now + meterFallMs; // meterFallMs 0 ⇒ already expired
+  } else if (now >= analogHoldUntil) {
+    // Not holding (expired, or never started): follow the live value.
+    analogHeldTarget = raw;
+  }
+  // else: still within the hold window — stay pinned at analogHeldTarget,
+  // the current (lower) raw reading is ignored for now.
+  const target = analogHeldTarget;
+  // Falling (needle needs to move DOWN towards target) gets the extra
+  // meterReleasePct slowdown on top of meterInertiaPct; rising does not —
+  // see meterReleasePct's own comment above for why.
+  const falling = target < analogNeedleDisplayed;
+  const k = (meterInertiaPct / 100) * (falling ? meterReleasePct / 100 : 1);
+  const stiffness = ANALOG_SPRING_STIFFNESS / (k * k);
+  const damping = ANALOG_SPRING_DAMPING / k;
+  const accel = stiffness * (target - analogNeedleDisplayed) - damping * analogNeedleVelocity;
   analogNeedleVelocity += accel * dt;
   analogNeedleDisplayed += analogNeedleVelocity * dt;
   if (Math.abs(target - analogNeedleDisplayed) < 0.01 && Math.abs(analogNeedleVelocity) < 0.01) {
@@ -919,7 +1044,7 @@ const AI_NR_PENDING_MS = 2500;
 const nrCycle = makeCycleButton(
   "nr-button",
   [
-    { value: 0, label: "NR OFF" },
+    { value: 0, label: "NR OFF", title: "Rauschreduzierung aktivieren / mehrmals drücken für AI NR" },
     { value: 1, label: "NR1" },
     { value: 2, label: "NR2" },
     { value: "ai", label: "AI NR", title: "RNNoise - AI based noise reduction" },
@@ -2651,6 +2776,123 @@ nbOverlay.addEventListener("click", (e) => {
     onLongPress(btn, () => openNbOverlay(i + 1));
   });
 }
+
+// Analog needle settings (Trägheit/Abfallzeit): long press on the gauge
+// itself opens this — purely browser-local display tuning (see
+// meterInertiaPct/meterFallMs up at animateAnalogNeedle), no WS round trip,
+// so plain makeSlider + localStorage like the mic gain/limiter sliders
+// rather than the live-sender pattern the NB/PROC overlays above use.
+const meterOverlay = document.getElementById("meter-overlay");
+const meterOverlayGauge = document.getElementById("meter-overlay-gauge");
+// A live COPY of the gauge is shown while the overlay is open (Nutzer-Wunsch
+// 2026-10-18: "das meter soll nicht aus der gui herausspringen beim öffnen
+// des overlay. wir zeigen eine kopie an" — an earlier version relocated the
+// real node into the overlay instead, which this replaces). The clone is
+// added to analogGaugeRoots (see updateAnalogNeedle above) so the very same
+// animation loop keeps it in sync frame by frame, no separate update path.
+// Duplicate ids inside the clone (gradient/filter defs, the needle itself)
+// are harmless — updateAnalogNeedle looks elements up by class within each
+// root, never by id, and the one remaining id-based lookup in this file
+// (the long-press binding below) ran once at load, on the original only.
+let meterOverlayClone = null;
+function openMeterOverlay() {
+  if (!meterOverlayClone) {
+    const original = document.getElementById("meter-analog");
+    meterOverlayClone = original.cloneNode(true);
+    meterOverlayClone.removeAttribute("id"); // avoid a second #meter-analog in the document
+    meterOverlayClone.classList.remove("longpress"); // the copy isn't itself a long-press target (no cursor:pointer, no cloned listener anyway)
+    meterOverlayClone.querySelector(":scope > title")?.remove(); // ditto for the hover tooltip — misleading on a copy that doesn't respond to long press
+    meterOverlayGauge.appendChild(meterOverlayClone);
+    analogGaugeRoots.push(meterOverlayClone);
+    updateAnalogNeedle(analogNeedleDisplayed); // paint it immediately, not just on the next rAF tick
+    // The original stays in the layout (same box, nothing else in the page
+    // reflows/reshuffles) but renders empty while its live copy is shown in
+    // the overlay — two visible needles for the one value would just be
+    // confusing (Nutzer-Wunsch 2026-10-18: "an seiner Stelle ... leeren
+    // Hintergrund anzeigen ... keine Elemente resizen"). visibility:hidden
+    // rather than display:none/removing it: it keeps its exact layout box
+    // (size/position), only the rendered content disappears — no reflow.
+    original.classList.add("meter-overlay-source-hidden");
+  }
+  meterOverlay.hidden = false;
+}
+function closeMeterOverlay() {
+  meterOverlay.hidden = true;
+  if (meterOverlayClone) {
+    analogGaugeRoots.splice(analogGaugeRoots.indexOf(meterOverlayClone), 1);
+    meterOverlayClone.remove();
+    meterOverlayClone = null;
+    document.getElementById("meter-analog").classList.remove("meter-overlay-source-hidden");
+  }
+}
+document.getElementById("meter-overlay-close").addEventListener("click", closeMeterOverlay);
+meterOverlay.addEventListener("click", (e) => {
+  if (e.target === meterOverlay) closeMeterOverlay();
+});
+const meterInertiaSlider = makeSlider(
+  "meter-inertia-slider",
+  (value) => {
+    meterInertiaPct = value;
+    try {
+      localStorage.setItem("open890rc.meterInertiaPct", String(value));
+    } catch (e) {
+      // localStorage unavailable — setting just won't persist across reloads.
+    }
+  },
+  300,
+  "meter-inertia-value",
+  (v) => `${v}%`,
+  "meter-inertia-fill"
+);
+meterInertiaSlider.applyValue(meterInertiaPct);
+const meterFallSlider = makeSlider(
+  "meter-fall-slider",
+  (value) => {
+    meterFallMs = value;
+    try {
+      localStorage.setItem("open890rc.meterFallMs", String(value));
+    } catch (e) {
+      // localStorage unavailable — setting just won't persist across reloads.
+    }
+  },
+  1000,
+  "meter-fall-value",
+  (v) => `${(v / 1000).toFixed(1)} s`,
+  "meter-fall-fill"
+);
+meterFallSlider.applyValue(meterFallMs);
+const meterReleaseSlider = makeSlider(
+  "meter-release-slider",
+  (value) => {
+    meterReleasePct = value;
+    try {
+      localStorage.setItem("open890rc.meterReleasePct", String(value));
+    } catch (e) {
+      // localStorage unavailable — setting just won't persist across reloads.
+    }
+  },
+  500,
+  "meter-release-value",
+  (v) => `${v}%`,
+  "meter-release-fill"
+);
+meterReleaseSlider.applyValue(meterReleasePct);
+document.getElementById("meter-overlay-reset").addEventListener("click", () => {
+  meterInertiaPct = METER_INERTIA_DEFAULT;
+  meterFallMs = METER_FALL_MS_DEFAULT;
+  meterReleasePct = METER_RELEASE_DEFAULT;
+  try {
+    localStorage.setItem("open890rc.meterInertiaPct", String(meterInertiaPct));
+    localStorage.setItem("open890rc.meterFallMs", String(meterFallMs));
+    localStorage.setItem("open890rc.meterReleasePct", String(meterReleasePct));
+  } catch (e) {
+    // localStorage unavailable — reset is still applied, just won't persist.
+  }
+  meterInertiaSlider.applyValue(meterInertiaPct);
+  meterFallSlider.applyValue(meterFallMs);
+  meterReleaseSlider.applyValue(meterReleasePct);
+});
+onLongPress(document.getElementById("meter-analog"), openMeterOverlay);
 
 // Setup overlay: lets the browser tell the server which radio to dial,
 // instead of that being fixed by CLI flags at server startup. Opened by the

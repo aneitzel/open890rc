@@ -1596,6 +1596,13 @@ main {
   justify-content: space-between;
 }
 
+/* Zeigerinstrument (Trägheit/Spitzenwert halten/Rückgang): "Standard" at the
+   far left, "Schliessen" at the far right (Nutzer-Wunsch 2026-10-18) — same
+   reasoning/same scoping as #connect-actions above. */
+#meter-overlay .overlay-actions {
+  justify-content: space-between;
+}
+
 .overlay-actions button {
   background: var(--key-face);
   border: none;
@@ -3545,12 +3552,41 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
   justify-content: center;
   display: none;
 }
-/* no text selection / iOS callout while long-pressing */
-button.longpress {
+/* no text selection / iOS callout while long-pressing (not just buttons —
+   #meter-analog, an <svg>, uses onLongPress too, 2026-10-18) */
+.longpress {
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
   touch-action: manipulation;
+}
+#meter-analog {
+  cursor: pointer;
+}
+/* Wider than the default 280px overlay-panel (see .overlay-panel) so the
+   cloned gauge (see openMeterOverlay, app.js) has room to read clearly;
+   same pattern as #connect-overlay/#audio-overlay's own width override. */
+#meter-overlay .overlay-panel {
+  width: min(90vw, 360px);
+}
+/* The gauge normally gets its size from the desktop grid column it lives in
+   (fixed 150px height, see the min-width:800px block above) — the CLONE
+   mounted in here (the original stays where it is, see openMeterOverlay)
+   needs its own rule, same "let the SVG's own aspect ratio govern" approach
+   as .analog-panel .meter-analog (phone's "Analog" view) uses for the same
+   reason. */
+#meter-overlay .meter-analog {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  margin-bottom: 0.8rem;
+}
+/* The real #meter-analog while its live copy is shown in #meter-overlay
+   (see openMeterOverlay, app.js) — same box/size, just nothing drawn, so
+   the main layout never reflows for this. */
+.meter-overlay-source-hidden {
+  visibility: hidden;
 }
 .eq-effects {
   display: grid;

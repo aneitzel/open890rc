@@ -127,7 +127,14 @@
        so 100 W (full drive) sits at ~2/3 of the sweep (see ANALOG_PO_ANGLES, app.js). Only #analog-s-needle and #analog-dbm are driven from JS
        (needle physics unchanged, see app.js). SWR is the digital bar below.
        Hidden on phone, see style.css. -->
-  <svg class="meter-svg meter-analog" id="meter-analog" viewBox="0 0 512 240">
+  <svg class="meter-svg meter-analog longpress" id="meter-analog" viewBox="0 0 512 240">
+    <!-- An SVG <title> child, not an HTML title="" attribute: the latter
+         isn't reliably shown as a hover tooltip for inline SVG root
+         elements by browsers (Nutzer-Report 2026-10-18, "tooltip meter geht
+         nicht") — this is the SVG-spec way to get one. Stripped from the
+         overlay's clone (see openMeterOverlay, app.js) since that copy
+         isn't itself a long-press target. -->
+    <title>Meter - Lange drücken für Einstellungen</title>
     <defs>
       <linearGradient id="analog-band-gradient" gradientUnits="userSpaceOnUse" x1="262" y1="0" x2="478" y2="0">
         <stop offset="0" stop-color="#fcd500" />
@@ -282,7 +289,7 @@
          same grid column as the Band/Mode/Filter dropdowns above and is
          otherwise empty on desktop now that TX EQ/RX EQ moved next to PROC. -->
     <div class="rit-knob-wrap" id="rit-knob-wrap">
-      <button type="button" id="rit-knob" class="rit-knob">
+      <button type="button" id="rit-knob" class="rit-knob" title="Ein/Aus - drehen zum Einstellen / lange drücken für reset">
         <svg viewBox="0 0 100 100" class="rit-knob-svg" aria-hidden="true">
           <defs>
             <radialGradient id="rit-disc-grad" cx="50%" cy="34%" r="85%">
@@ -301,7 +308,7 @@
       <div class="rit-knob-label">RIT</div>
     </div>
     <div class="rit-knob-wrap" id="xit-knob-wrap">
-      <button type="button" id="xit-knob" class="rit-knob">
+      <button type="button" id="xit-knob" class="rit-knob" title="Ein/Aus - drehen zum Einstellen / lange drücken für reset">
         <svg viewBox="0 0 100 100" class="rit-knob-svg" aria-hidden="true">
           <defs>
             <radialGradient id="xit-disc-grad" cx="50%" cy="34%" r="85%">
@@ -574,7 +581,7 @@
           <div class="audio-sync" data-i18n-title title="Der Server startet den VoIP-Strom des TS890 in diesem Abstand selbst neu (wirkt auf alle Clients, wartet während Senden/Tunen)">
             <label class="overlay-checkbox">
               <input type="checkbox" id="voip-auto-sync">
-              Auto sync
+              Auto
             </label>
             <select id="voip-auto-sync-min" aria-label="Abstand in Minuten">
               <option value="1">1 min</option><option value="2">2 min</option><option value="3">3 min</option><option value="4">4 min</option><option value="5">5 min</option><option value="6">6 min</option><option value="7">7 min</option><option value="8">8 min</option><option value="9">9 min</option><option value="10">10 min</option>
@@ -898,6 +905,51 @@
     <div class="eq-effects" id="eq-effects"></div>
     <div class="overlay-actions">
       <button type="button" id="eq-overlay-close">Schliessen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Zeigerinstrument-Nadel: lange drücken auf den Zeiger (#meter-analog)
+     öffnet dies (Nutzer-Wunsch 2026-10-18). Rein browser-lokale Darstellungs-
+     Einstellung, kein WS-Roundtrip — siehe analogMeterInertia/-FallMs in
+     app.js. -->
+<div id="meter-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>Zeigerinstrument</h2>
+    <!-- A live CLONE of #meter-analog is mounted in here while the overlay
+         is open, kept in sync by the same needle animation (see
+         openMeterOverlay/updateAnalogNeedle in app.js) — the real gauge
+         stays in place in the main UI, only a copy appears here, so
+         Trägheit/Abfallzeit can be tuned while watching the actual needle,
+         not just the numbers (Nutzer-Wunsch 2026-10-18). -->
+    <div id="meter-overlay-gauge"></div>
+    <label data-i18n-title title="Wie schwer/träge sich die Nadel bewegt (Feder-Dämpfung) — 100% = Standard">
+      <span>Trägheit der Nadel <span class="ctrl-max" id="meter-inertia-value"></span></span>
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="meter-inertia-fill"></div>
+        <input type="range" id="meter-inertia-slider" min="50" max="300" step="25" value="100">
+      </div>
+    </label>
+    <label data-i18n-title title="Zeit, die die Nadel auf einem neuen Spitzenwert verharrt, bevor sie absinkt — 0 = aus (folgt sofort)">
+      <span>Spitzenwert halten <span class="ctrl-max" id="meter-fall-value"></span></span>
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="meter-fall-fill"></div>
+        <input type="range" id="meter-fall-slider" min="0" max="1000" step="100" value="0">
+      </div>
+    </label>
+    <label data-i18n-title title="Wie viel langsamer die Nadel sinkt als sie steigt (Vielfaches der Trägheit) — 100% = gleich schnell">
+      <span>Rückgang <span class="ctrl-max" id="meter-release-value"></span></span>
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="meter-release-fill"></div>
+        <input type="range" id="meter-release-slider" min="100" max="500" step="25" value="250">
+      </div>
+    </label>
+    <div class="overlay-actions">
+      <button type="button" id="meter-overlay-reset">Standard</button>
+      <button type="button" id="meter-overlay-close">Schliessen</button>
     </div>
   </div>
 </div>
