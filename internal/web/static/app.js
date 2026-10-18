@@ -4788,7 +4788,7 @@ async function refreshUsers() {
             display.textContent = u.displayName || "";
             const admin = document.createElement("span");
             admin.className = "users-admin-mark";
-            admin.textContent = [u.tx ? "" : "kein TX", u.pa ? "PA" : "", u.admin ? "Admin" : ""].filter(Boolean).join(", ");
+            admin.textContent = [u.tx ? "TX" : "kein TX", u.pa ? "PA" : "", u.admin ? "Admin" : ""].filter(Boolean).join(", ");
             const edit = document.createElement("button");
             edit.type = "button";
             edit.textContent = "Edit";
