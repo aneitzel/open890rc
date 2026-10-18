@@ -1037,6 +1037,7 @@
   const MIC_GAIN_MAX = 2.5; // keep in sync with app.js's own MIC_GAIN_MAX (tenths)
   let micCtx = null;
   let micStream = null;
+  let micSourceNode = null; // the MediaStreamAudioSourceNode built from micStream — kept so releaseMicCapture can disconnect just this, see its own comment
   let micWorklet = null;
   let micGainNode = null;
   let micChainOutNode = null; // final mic-chain node before micWorklet (gain, or the limiter when on) — tapped for recording, see "Recording" below
@@ -1129,6 +1130,17 @@
   window.hamrcSetMicLimiter = (enabled) => {
     micLimiterEnabled = !!enabled;
     if (meterCtx) buildMeterChain();
+    // The TX chain's own limiter node is only ever created inside
+    // ensureMicPlumbing, which (since 2026-10-18) no longer reruns on every
+    // TX press — so unlike before, toggling this while already-warm
+    // plumbing exists would otherwise never take effect. Rebuilding is only
+    // safe while idle (mid-TX, this is deferred: see releaseMicPlumbing).
+    if (micCtx && !micActive) {
+      micChain = micChain
+        .then(() => releaseMicPlumbing())
+        .then(() => (micKeepWarm ? warmMic() : undefined))
+        .catch((e) => console.error("audio: rebuilding the mic chain for the limiter change failed", e));
+    }
     try {
       localStorage.setItem(MIC_LIMITER_KEY, micLimiterEnabled ? "1" : "0");
     } catch {
@@ -1371,41 +1383,39 @@
     await applyOutputDevice();
   };
 
-  async function ensureMicCapture() {
+  // Split in two (2026-10-18, "Nadel/Wasserfall stocken kurz bei TX-Druck"):
+  // the AudioContext/worklet/gain/limiter graph ("plumbing") used to be
+  // built fresh on every single TX press and torn down again at every TX
+  // end (see releaseMicCapture's old comment, now split below) — rebuilding
+  // it (in particular registering the AudioWorklet module into a brand new
+  // context) is real main-thread work, enough to visibly stall the needle's
+  // and waterfall's requestAnimationFrame callbacks for a beat since they
+  // run on the same thread. The actual microphone access (getUserMedia,
+  // the live track) is now the ONLY thing still acquired/released per TX
+  // cycle — ensureMicPlumbing builds the rest once and leaves it running
+  // indefinitely afterward, same idea as the RX side's AudioContext already
+  // staying up for the page's whole life.
+  //
+  // This is deliberately NOT the same thing "Mikrofon dauerhaft offenhalten"
+  // (micKeepWarm) already did: that flag also kept the STREAM itself (the
+  // actual hardware mic access) alive between transmissions, which on iOS
+  // was reported (2026-10-18) to leave the speaker permanently ducked —
+  // iOS seems to duck playback for as long as the browser holds a live
+  // microphone track, not for as long as an AudioContext merely exists
+  // that once had one connected. Here the stream is still fully released
+  // (see releaseMicCapture below) at every TX end regardless of this split,
+  // same as the default (non-keepWarm) behaviour always has been — only
+  // the surrounding plumbing now survives that release. Unverified on real
+  // iOS hardware (this sandbox has no microphone access at all); if RX ever
+  // comes back stuck quiet after TX with this change, ensureMicPlumbing is
+  // the first place to revert (make it close micCtx again, like
+  // releaseMicCapture used to).
+  async function ensureMicPlumbing() {
     if (micCtx) {
       // a context built without a user gesture (warm-up) may sit suspended
       if (micCtx.state === "suspended") await micCtx.resume().catch(() => {});
       return;
     }
-    // Otherwise the first gap measurement after rebuilding mic capture (every
-    // TX press, see releaseMicCapture) compares against the last chunk of the
-    // PREVIOUS TX session, logging the silent time between transmissions as a
-    // bogus multi-second "GAP" instead of a real main-thread stall.
-    micGapLast = 0;
-
-    micStream = await getMicStream({
-      audio: {
-        channelCount: 1,
-        echoCancellation: false,
-        noiseSuppression: false,
-        // Off again. Was turned on suspecting it'd prevent hot mic input
-        // from hard-clipping in handleMicChunk's Math.max(-1, Math.min(1,
-        // ...)) — but the diagnostic test tone that "proved" the pipeline
-        // clean afterward is generated server-side and never touches
-        // getUserMedia/AGC at all, so that never actually tested this
-        // setting; the real fix that test validated was the architecture
-        // rebuild (native-rate context, removing the buggy custom
-        // resampler/anti-aliasing filters). With AGC on, the operator
-        // found a new, worse problem: obvious gain-hunting on silence —
-        // the browser's WebRTC AGC continuously chases a target loudness,
-        // so with no speech to lock onto it keeps raising gain and
-        // amplifying the noise floor, audible as rising hiss. Fixed,
-        // non-adaptive gain (the Mic Gain slider's GainNode below) doesn't
-        // have that failure mode: silence just stays silent.
-        autoGainControl: false,
-      },
-    });
-
     // Forced to the radio's own rate, same as RX's AudioContext — removes
     // the need for any resampling or anti-aliasing filtering of our own
     // (both since deleted from this file): the browser's native capture
@@ -1472,6 +1482,9 @@
     // full scale (stays transparent for normal speech, only engages near
     // genuine clipping), soft knee and a moderate ratio instead of a near-
     // brickwall one, to avoid the same audible pumping. Not live-verified.
+    // NOTE: built once here, not reconsidered per TX press any more — see
+    // hamrcSetMicLimiter further below for how a change to this setting now
+    // takes effect.
     let micChainOut = micGainNode;
     micLimiterNode = null;
     if (micLimiterEnabled) {
@@ -1485,11 +1498,52 @@
       micChainOut = limiter;
       micLimiterNode = limiter;
     }
-
-    micCtx.createMediaStreamSource(micStream).connect(micGainNode);
     micChainOut.connect(micWorklet);
     micChainOutNode = micChainOut;
     micWorklet.port.onmessage = (event) => handleMicChunk(event.data);
+  }
+
+  // The actual microphone hardware access — acquired fresh every TX press
+  // and released at every TX end (releaseMicCapture below) regardless of
+  // ensureMicPlumbing now staying warm, see that function's own comment for
+  // why this part specifically must stay TX-scoped (iOS speaker ducking).
+  async function ensureMicStream() {
+    if (micStream) return; // already attached (e.g. micKeepWarm kept it live)
+    // Otherwise the first gap measurement after reattaching the mic compares
+    // against the last chunk of the PREVIOUS TX session, logging the silent
+    // time between transmissions as a bogus multi-second "GAP" instead of a
+    // real main-thread stall.
+    micGapLast = 0;
+
+    micStream = await getMicStream({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        // Off again. Was turned on suspecting it'd prevent hot mic input
+        // from hard-clipping in handleMicChunk's Math.max(-1, Math.min(1,
+        // ...)) — but the diagnostic test tone that "proved" the pipeline
+        // clean afterward is generated server-side and never touches
+        // getUserMedia/AGC at all, so that never actually tested this
+        // setting; the real fix that test validated was the architecture
+        // rebuild (native-rate context, removing the buggy custom
+        // resampler/anti-aliasing filters). With AGC on, the operator
+        // found a new, worse problem: obvious gain-hunting on silence —
+        // the browser's WebRTC AGC continuously chases a target loudness,
+        // so with no speech to lock onto it keeps raising gain and
+        // amplifying the noise floor, audible as rising hiss. Fixed,
+        // non-adaptive gain (the Mic Gain slider's GainNode below) doesn't
+        // have that failure mode: silence just stays silent.
+        autoGainControl: false,
+      },
+    });
+    micSourceNode = micCtx.createMediaStreamSource(micStream);
+    micSourceNode.connect(micGainNode);
+  }
+
+  async function ensureMicCapture() {
+    await ensureMicPlumbing();
+    await ensureMicStream();
   }
 
   // Diagnostic only: measures how regularly the worklet's postMessage calls
@@ -1634,33 +1688,50 @@
       micPending = new Float32Array(0);
       return;
     }
-    releaseMicCapture();
+    // forceRelease (a half-built capture after a failed start, see
+    // applyMicState's catch) tears down the plumbing too, not just the
+    // stream — safer to start completely fresh next time than to guess at
+    // whatever in-between state a failed addModule/getUserMedia left behind.
+    if (forceRelease) releaseMicPlumbing();
+    else releaseMicCapture();
   }
 
-  // Fully tears down mic capture — releases the actual microphone hardware
-  // (stream.getTracks().forEach(stop), not just closing the WS/encoder
-  // above) and closes micCtx so the next TX press rebuilds everything via
-  // ensureMicCapture's `if (micCtx) return` guard. This used to be left
-  // running permanently after the first TX press (only the WS/encoder were
-  // torn down), on the theory that avoiding a fresh getUserMedia call each
-  // time saved noticeable latency/re-prompting — but the operator found RX
-  // playback gets stuck very quiet specifically after transmitting (TX or
-  // TUNE), on an iPhone, and recovering only with a full browser restart.
-  // A live "recording" indicator staying on forever likely keeps iOS's Web
-  // Audio session in its play-and-record mode for the rest of the page's
-  // life instead of reverting to plain playback between transmissions,
-  // which iOS is known to apply different (often quieter) output routing/
-  // volume behavior under — matching exactly what was reported. Permission
+  // Releases the actual microphone hardware (stream.getTracks().forEach(
+  // stop), not just closing the WS/encoder above) at every TX end — but, as
+  // of 2026-10-18 (see ensureMicPlumbing's own comment), leaves the
+  // surrounding AudioContext/worklet/graph running. This used to close
+  // micCtx too, forcing ensureMicCapture to rebuild everything from scratch
+  // on the next TX press; that was itself a deliberate fix for an earlier
+  // bug (see git history) where leaving a live "recording" indicator on
+  // forever left RX playback stuck quiet on iPhone. That fix is still
+  // fully in effect here for the part it actually needed — the live
+  // microphone TRACK still stops here exactly as before, every time —
+  // only the plumbing around it no longer gets rebuilt from zero. Permission
   // is already granted after the first request, so re-acquiring the stream
   // on each subsequent TX press doesn't reprompt, just re-negotiates
-  // hardware — worth the small extra latency to let iOS's audio session
-  // actually reset between transmissions.
+  // hardware.
   function releaseMicCapture() {
-    detachMicFromRecording(); // before micCtx goes away below
+    detachMicFromRecording();
+    if (micSourceNode) {
+      micSourceNode.disconnect();
+      micSourceNode = null;
+    }
     if (micStream) {
       micStream.getTracks().forEach((t) => t.stop());
       micStream = null;
     }
+    micPending = new Float32Array(0);
+  }
+
+  // Full teardown of BOTH layers (plumbing included) — unlike the normal
+  // per-TX releaseMicCapture above, only used for genuine error recovery
+  // (a half-built ensureMicPlumbing/ensureMicStream) and when the user
+  // explicitly changes a setting that the already-built graph can't apply
+  // live (the limiter on/off switch, see hamrcSetMicLimiter), where
+  // starting completely fresh next time is safer than guessing at the
+  // in-between state.
+  function releaseMicPlumbing() {
+    releaseMicCapture();
     if (micWorklet) {
       micWorklet.disconnect();
       micWorklet = null;
@@ -1672,7 +1743,6 @@
       micCtx.close();
       micCtx = null;
     }
-    micPending = new Float32Array(0);
   }
 
   // Manual counterpart to the automatic post-TX restart above, for the
@@ -1766,7 +1836,7 @@
           await ensureMicCapture();
         } catch (e) {
           console.warn("audio: warming up the mic failed", e);
-          releaseMicCapture();
+          releaseMicPlumbing(); // a half-built attempt — start fresh next time
         }
       })
       .catch((e) => console.error("audio: mic warm-up failed", e));
@@ -1800,9 +1870,10 @@
   // transmitting — this browser's own TX/mic audio too, mixed into one
   // file. The mix bus is a MediaStreamDestination created in RX's
   // AudioContext (audioCtx): it's the long-lived context, always present
-  // whenever recording would make sense, unlike micCtx which is torn down
-  // and rebuilt on every single TX press (see ensureMicCapture/
-  // releaseMicCapture above). A node from a DIFFERENT AudioContext can't be
+  // whenever recording would make sense — micCtx now also stays around
+  // across TX presses (see ensureMicPlumbing, 2026-10-18), but isn't
+  // guaranteed to exist yet the moment a recording starts. A node from a
+  // DIFFERENT AudioContext can't be
   // connected directly — Web Audio nodes only ever connect within their own
   // context — so the mic chain is tapped into its OWN MediaStreamDestination
   // (living in micCtx) and that stream is re-imported into audioCtx via
