@@ -77,6 +77,18 @@ type Receiver struct {
 	// readLoop goroutine that already owned them, instead of a second
 	// goroutine reaching in and racing with it directly.
 	resetRequested atomic.Bool
+
+	// suppressNextGap is the same idea as resetRequested, for the OTHER
+	// diagnostic in readLoop (the arrival-time gap log further below) —
+	// needs its own flag rather than reusing resetRequested because the two
+	// are consumed at different points in the loop body (the gap check
+	// runs before trackSequence). Nutzer-Report 2026-10-18: every VOIP auto
+	// sync logged a ~266ms gap a few seconds later — a real gap, but an
+	// EXPECTED one (the radio stops sending for a beat on "##VP0" before
+	// "##VP1" restarts it, see resetRXAudio in main.go), not a network
+	// problem; logging it as one every 5 minutes is just noise that risks
+	// burying a genuine gap later.
+	suppressNextGap atomic.Bool
 }
 
 // Listen opens a UDP socket on port and starts reading in the background.
@@ -127,7 +139,13 @@ func (r *Receiver) readLoop(onPCM func(pcm []byte)) {
 		if !last.IsZero() {
 			// a pause of several seconds is the stream being switched off and on (no browser client
 			// connected), not a network gap
-			if g := now.Sub(last); g > gapWarn && g < 5*time.Second {
+			g := now.Sub(last)
+			if r.suppressNextGap.CompareAndSwap(true, false) {
+				// The expected pause from a deliberate ##VP0/##VP1 cycle
+				// (manual reset button or auto sync) — see
+				// suppressNextGap's own comment. Not counted or logged,
+				// regardless of how long it actually was.
+			} else if g > gapWarn && g < 5*time.Second {
 				gaps++
 				if g > maxGap {
 					maxGap = g
@@ -242,17 +260,21 @@ func (r *Receiver) LostPackets() uint64 { return r.lost.Load() }
 // duplicate) — see the reordered field's own comment.
 func (r *Receiver) ReorderedPackets() uint64 { return r.reordered.Load() }
 
-// ResetLoss zeroes the lost-packet and reordered-packet counters and re-arms
-// sequence tracking to treat the next packet as the first one seen — for a
-// deliberate stream restart (e.g. the "##VP0" then "##VP1" reset button
-// toggling the radio's own RTP sender off and on), where the resulting
-// sequence-number jump is expected and not a real loss, and any older
-// accumulated count is no longer relevant to "is there a problem right
-// now". Safe to call from any goroutine — see resetRequested's comment.
+// ResetLoss zeroes the lost-packet and reordered-packet counters, re-arms
+// sequence tracking to treat the next packet as the first one seen, and
+// suppresses the next arrival-time gap log — for a deliberate stream
+// restart (e.g. the "##VP0" then "##VP1" reset button or the VOIP auto
+// sync toggling the radio's own RTP sender off and on), where the
+// resulting sequence-number jump AND the brief pause while the radio's
+// sender is off are both expected, not a real loss or a network problem,
+// and any older accumulated count is no longer relevant to "is there a
+// problem right now". Safe to call from any goroutine — see
+// resetRequested's comment.
 func (r *Receiver) ResetLoss() {
 	r.lost.Store(0)
 	r.reordered.Store(0)
 	r.resetRequested.Store(true)
+	r.suppressNextGap.Store(true)
 }
 
 // Close stops the receiver.
