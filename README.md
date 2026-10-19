@@ -9,7 +9,12 @@ Go is a language optimized for high performance, networking and scaling. It runs
 happily on a Raspberry Pi next to the radio or your shack PC (Mac, Linux, Windows).
 
 Open890RC expands the TS-890 with new features like AI based noise cancellation and seamless
-integration of an SPE amplifier. Test it out!
+integration of an SPE amplifier (more to come). A lot of hams reported problems getting ARCP890
+to work over the internet, since it needs both KNS ports (60000 and 60001) forwarded. Open890RC
+solves that limitation: **only one port needs to be open, the web server itself** (TCP, default
+8080, changeable via `-web`). Browser ↔ server runs entirely over this one HTTPS port (including
+the WebSockets for control, RX/TX audio, and the waterfall) — none of that needs a separate port
+exposed.
 
 ![How Open890RC fits together: TS-890S, computer running the web server, browsers on laptop and phone](docs/overview.svg)
 
