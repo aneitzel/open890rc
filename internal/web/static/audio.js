@@ -1349,9 +1349,37 @@
     // default device
   }
   window.hamrcOutputSelectable = typeof streamAudioEl.setSinkId === "function";
-  // A device that is gone (unplugged, Bluetooth off) falls back to the default.
+  // A device that is gone (unplugged, Bluetooth off, a car's CarPlay chosen
+  // while in the car and the page then reopened at home — Nutzer-Report
+  // 2026-10-19) falls back to the default. The try/catch below alone isn't
+  // enough: setSinkId() on an <audio> element with nothing actively playing
+  // yet (the common case here — this runs once at page load, before the
+  // user has started RX audio at all) can resolve successfully without
+  // actually validating the device, deferring the real failure to whenever
+  // playback starts — silently, with no exception here to catch. So the
+  // stored id is checked against the CURRENT device list first and dropped
+  // (clearing localStorage too, same as choosing "system default" by hand)
+  // if it's no longer there, instead of relying on setSinkId alone to
+  // notice.
   async function applyOutputDevice() {
     if (!window.hamrcOutputSelectable) return;
+    if (outputDeviceId && navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      try {
+        const all = await navigator.mediaDevices.enumerateDevices();
+        if (!all.some((d) => d.kind === "audiooutput" && d.deviceId === outputDeviceId)) {
+          console.warn("audio: chosen output device no longer present, using the default");
+          outputDeviceId = "";
+          try {
+            localStorage.removeItem(OUTPUT_DEVICE_KEY);
+          } catch {
+            // valid for this page only
+          }
+        }
+      } catch (e) {
+        // enumerateDevices itself failing is rare and unrelated to which
+        // sink to use — fall through to the setSinkId attempt/catch below.
+      }
+    }
     try {
       await streamAudioEl.setSinkId(outputDeviceId);
     } catch (e) {
