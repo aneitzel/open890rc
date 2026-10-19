@@ -1110,7 +1110,7 @@
   } catch {
     // defaults
   }
-  // "Mikrofon dauerhaft offenhalten" (opt-in, per browser): keeps the microphone chain
+  // "Bluetooth-/CarPlay-Mikrofon warmhalten" (opt-in, per browser): keeps the microphone chain
   // open between transmissions so a TX press only has to open the WebSocket.
   // Off = the old behaviour (mic released after every TX). Needed because
   // opening a Bluetooth mic makes the device switch to its headset profile,
@@ -1424,7 +1424,7 @@
   // indefinitely afterward, same idea as the RX side's AudioContext already
   // staying up for the page's whole life.
   //
-  // This is deliberately NOT the same thing "Mikrofon dauerhaft offenhalten"
+  // This is deliberately NOT the same thing "Bluetooth-/CarPlay-Mikrofon warmhalten"
   // (micKeepWarm) already did: that flag also kept the STREAM itself (the
   // actual hardware mic access) alive between transmissions, which on iOS
   // was reported (2026-10-18) to leave the speaker permanently ducked —
