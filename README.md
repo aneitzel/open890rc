@@ -93,8 +93,9 @@ so the server uses HTTPS. On first start it creates its own certificate authorit
 and a server certificate for the host name and all IP addresses of the machine.
 To get rid of the browser warning, install that CA once on each device: open
 **Settings** (gear next to AUDIO) → **HTTPS**, download the certificate and add
-it to the trusted certificates of your system or browser. After that the warning
-stays away, even when the server certificate is renewed (new IP address, expiry).
+it to the trusted certificates of your system or browser. After import the cert
+must be manually set to trusted on some platforms. After that the warning stays
+away, even when the server certificate is renewed (new IP address, expiry).
 
 Keep `open890rc-ca.pem` and `open890rc-ca-key.pem` (created next to the program).
 If they are lost, a new CA is made and has to be installed again.
