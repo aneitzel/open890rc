@@ -798,7 +798,7 @@
       <tr><td>Spektrum</td><td id="traf-scope"></td></tr>
       <tr class="latency-sum"><td>Summe</td><td id="traf-total"></td></tr>
     </table>
-    <div class="overlay-caption">Verbundene Clients am Server</div>
+    <div class="overlay-caption">Clients am Server:</div>
     <div class="client-list" id="client-list"></div>
     <div class="overlay-actions">
       <button type="button" id="traffic-close" class="primary">Schließen</button>
@@ -863,6 +863,23 @@
     </label>
     <div class="overlay-actions">
       <button type="button" id="filter-settings-close">Schliessen</button>
+    </div>
+  </div>
+</div>
+
+<div id="nr-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>Noise Reduction</h2>
+    <label>
+      <span>NR1 Level <span class="ctrl-max" id="nr1-level-value"></span></span>
+      <input type="range" class="slider" id="nr1-level-slider" min="1" max="10" step="1" value="1">
+    </label>
+    <label>
+      <span>NR2 Time Constant <span class="ctrl-max" id="nr2-tc-value"></span></span>
+      <input type="range" class="slider" id="nr2-tc-slider" min="0" max="9" step="1" value="0">
+    </label>
+    <div class="overlay-actions">
+      <button type="button" id="nr-overlay-close">Schliessen</button>
     </div>
   </div>
 </div>

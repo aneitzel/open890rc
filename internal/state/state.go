@@ -40,6 +40,8 @@ type State struct {
 	busy               bool
 	tx                 bool
 	bc                 int
+	nr1Level           int
+	nr2Tc              int
 	nb1Level           int
 	nb2Level           int
 	nb2TypeB           bool
@@ -304,6 +306,8 @@ type Snapshot struct {
 	Busy                 bool           `json:"busy"`
 	TX                   bool           `json:"tx"`
 	BC                   int            `json:"bc"`
+	NR1Level             int            `json:"nr1Level"`
+	NR2Tc                int            `json:"nr2Tc"`
 	NB1Level             int            `json:"nb1Level"`
 	NB2Level             int            `json:"nb2Level"`
 	NB2TypeB             bool           `json:"nb2TypeB"`
@@ -652,6 +656,17 @@ func (s *State) Update(msg string) bool {
 		return true
 	}
 
+	if which, v, err := cat.ParseNRSetting(msg); err == nil {
+		cur := &s.nr1Level
+		if which == 2 {
+			cur = &s.nr2Tc
+		}
+		if *cur == v {
+			return false
+		}
+		*cur = v
+		return true
+	}
 	if which, level, err := cat.ParseNBLevel(msg); err == nil {
 		cur := &s.nb1Level
 		if which == 2 {
@@ -994,6 +1009,8 @@ func (s *State) Snapshot() Snapshot {
 		Busy:                 s.busy,
 		TX:                   s.tx,
 		BC:                   s.bc,
+		NR1Level:             s.nr1Level,
+		NR2Tc:                s.nr2Tc,
 		NB1Level:             s.nb1Level,
 		NB2Level:             s.nb2Level,
 		NB2TypeB:             s.nb2TypeB,

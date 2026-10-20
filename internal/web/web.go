@@ -65,6 +65,7 @@ type Controls struct {
 	SetSquelch        func(value int) error
 	SetBC             func(value int) error
 	SetVFO            func(vfo string) error
+	SetNRSetting      func(which, v int) error
 	SetNBLevel        func(which, level int) error
 	SetNBType         func(typeB bool) error
 	SetNBDepth        func(v int) error
@@ -438,6 +439,10 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 			vfo = "B"
 		}
 		err = s.controls.SetVFO(vfo)
+	case "setNr1Level":
+		err = s.controls.SetNRSetting(1, msg.Value)
+	case "setNr2Tc":
+		err = s.controls.SetNRSetting(2, msg.Value)
 	case "setNb1Level":
 		err = s.controls.SetNBLevel(1, msg.Value)
 	case "setNb2Level":

@@ -85,7 +85,7 @@ func meterCode(mode string) string {
 // happens at startup (via flags) or later from the browser's setup dialog.
 var initialQueries = []string{
 	"AI2", "FR", "FA", "FB", "OM0", "RM21", "GC", "NR", "NB1", "NB2", "RG",
-	"SQ", "BY", "BC", "NL1", "NL2", "NBT", "NBD", "NBW", "EQR0", "EQR1", "PR0", "PR1", "AN", "PC", "MG", "PL", "AC", "FL0", "RA", "PA",
+	"SQ", "BY", "BC", "RL1", "RL2", "NL1", "NL2", "NBT", "NBD", "NBW", "EQR0", "EQR1", "PR0", "PR1", "AN", "PC", "MG", "PL", "AC", "FL0", "RA", "PA",
 	"FL10", "FL11", "FL12", "EX00611", "EX00612", "SH0", "SL0", "##KN4", "##KN30", "##KN31", "PT", "AP0", "AP1", "AP2", "AP3", "BS4", "DD01",
 	"RT", "RF", "XT", "MO0", "ML",
 }
@@ -2477,6 +2477,20 @@ func main() {
 		// what moves the UI (frequency, indicator, scope).
 		SetVFO: func(vfo string) error {
 			return sendEncoded(func() (string, error) { return cat.EncodeActiveReceiver(cat.VFO(vfo)) })
+		},
+		SetNRSetting: func(which, v int) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			cmd, err := cat.EncodeNRSetting(which, v)
+			if err != nil {
+				return err
+			}
+			if err := conn.Send(cmd); err != nil {
+				return err
+			}
+			return conn.Send(fmt.Sprintf("RL%d", which))
 		},
 		SetNBLevel: func(which, level int) error {
 			conn := rm.current()

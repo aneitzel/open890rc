@@ -2780,6 +2780,47 @@ nbOverlay.addEventListener("click", (e) => {
   });
 }
 
+// Noise reduction settings: a long press on NR opens them (RL1 = NR1 level 1-10,
+// RL2 = NR2 time constant 0-9 = 2-20 ms). Same live-slider pattern as the NB window.
+const nrOverlay = document.getElementById("nr-overlay");
+const nr1Slider = document.getElementById("nr1-level-slider");
+const nr1ValueEl = document.getElementById("nr1-level-value");
+const nr2Slider = document.getElementById("nr2-tc-slider");
+const nr2ValueEl = document.getElementById("nr2-tc-value");
+const nr1Sender = makeLiveSender("setNr1Level");
+const nr2Sender = makeLiveSender("setNr2Tc");
+const nr2Text = (v) => `${v} (${(v + 1) * 2} ms)`;
+wireNbSlider(nr1Slider, nr1ValueEl, () => nr1Sender);
+wireNbSlider(nr2Slider, nr2ValueEl, () => nr2Sender);
+nr2Slider.addEventListener("input", () => {
+  nr2ValueEl.textContent = nr2Text(Number(nr2Slider.value));
+});
+let nrOverlayOpen = false;
+function refreshNrOverlay() {
+  if (!nrOverlayOpen || !lastState) return;
+  nr1Slider.value = lastState.nr1Level;
+  nr1ValueEl.textContent = lastState.nr1Level;
+  nr2Slider.value = lastState.nr2Tc;
+  nr2ValueEl.textContent = nr2Text(lastState.nr2Tc);
+}
+function closeNrOverlay() {
+  nrOverlay.hidden = true;
+  nrOverlayOpen = false;
+}
+document.getElementById("nr-overlay-close").addEventListener("click", closeNrOverlay);
+nrOverlay.addEventListener("click", (e) => {
+  if (e.target === nrOverlay) closeNrOverlay();
+});
+{
+  const nrBtn = document.getElementById("nr-button");
+  nrBtn.classList.add("longpress");
+  onLongPress(nrBtn, () => {
+    nrOverlayOpen = true;
+    refreshNrOverlay();
+    nrOverlay.hidden = false;
+  });
+}
+
 // Analog needle settings (Trägheit/Abfallzeit): long press on the gauge
 // itself opens this — purely browser-local display tuning (see
 // meterInertiaPct/meterFallMs up at animateAnalogNeedle), no WS round trip,
@@ -4551,6 +4592,7 @@ function applyState(state) {
   applyRitState(state);
   applyXitState(state);
   if (nbOverlayKind && !filterWidthDragging) refreshNbOverlay();
+  if (nrOverlayOpen && !filterWidthDragging) refreshNrOverlay();
 
   if (radioOff) {
     // Off (or still shutting down). While an active shutdown tween is

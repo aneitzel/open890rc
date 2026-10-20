@@ -3236,7 +3236,7 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
    font as the table above; a line wider than the window scrolls sideways. */
 .client-list {
   font-family: inherit;
-  font-size: 0.7rem;
+  font-size: 0.85rem;
   line-height: 1.5;
   max-height: 9rem;
   overflow: auto;
@@ -3255,6 +3255,10 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
 }
 .client-list .cl-me {
   color: var(--text);
+}
+
+#traffic-overlay .overlay-caption {
+  font-size: 0.85rem;
 }
 
 /* Traffic window: wider (room for the client list), close key centred below it. */
@@ -3684,6 +3688,7 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
 
 /* Noise blanker window: Schliessen centred (like the equalizer window); the [hidden]
    sections must really disappear (author display rules would win otherwise). */
+#nr-overlay .overlay-actions,
 #nb-overlay .overlay-actions {
   justify-content: center;
 }
