@@ -2585,7 +2585,8 @@ func main() {
 			if err := conn.Send(cmd); err != nil {
 				return err
 			}
-			return conn.Send("EQT1")
+			conn.Send("EQT1")
+			return conn.Send("UT")
 		},
 		// Same "operator's ON choice stays for this session in that mode" rule
 		// as SetTXEQ above, via eqRxUserOn (forceRXEQOff checks it the same
@@ -2627,7 +2628,36 @@ func main() {
 			if err := conn.Send(cmd); err != nil {
 				return err
 			}
-			return conn.Send("EQR1")
+			conn.Send("EQR1")
+			return conn.Send("UR")
+		},
+		SetEQBands: func(tx bool, raw []int) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			cmd, err := cat.EncodeEQBands(tx, raw)
+			if err != nil {
+				return err
+			}
+			if err := conn.Send(cmd); err != nil {
+				return err
+			}
+			// the radio's own reading shows what it really took (also after a 99 reset)
+			if tx {
+				return conn.Send("UT")
+			}
+			return conn.Send("UR")
+		},
+		QueryEQBands: func(tx bool) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			if tx {
+				return conn.Send("UT")
+			}
+			return conn.Send("UR")
 		},
 		// TX Monitor ("MO0" on/off, "ML" level 0-20, Kenwood PC Command
 		// Reference). Same "operator's ON choice stays for this session, and

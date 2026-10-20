@@ -1321,6 +1321,7 @@ txButton.addEventListener("click", toggleTX);
 // no PTT while typing in a field, with a dialog open, without radio, during a tune,
 // with Ctrl/Alt/Cmd held (browser shortcuts such as Ctrl+T = new tab), or when TX
 // was already started with the mouse.
+const PTT_OVERLAYS = ["eq-overlay", "eqedit-overlay", "nr-overlay", "nb-overlay", "txmon-overlay", "proc-settings-overlay", "filter-settings-overlay", "audio-overlay"];
 const isPttKey = (e) => typeof e.key === "string" && e.key.toLowerCase() === "t";
 let pttHeld = false; // the key is down and started this TX
 function pttRelease() {
@@ -1333,9 +1334,14 @@ function pttRelease() {
 function pttBlocked(e) {
   const t = e.target;
   const tag = (t && t.tagName) || "";
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return true;
+  // sliders and checkboxes keep focus after a click/drag but take no text
+  const nonText = tag === "INPUT" && ["range", "checkbox", "radio", "button"].includes(t.type);
+  if ((tag === "INPUT" && !nonText) || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return true;
   if (e.ctrlKey || e.altKey || e.metaKey) return true;
-  if (document.querySelector(".overlay:not([hidden])")) return true;
+  // Sound-related setting windows leave PTT working, so a change can be heard live
+  // while transmitting; every other open window (connection, users, login, ...) blocks it.
+  const open = document.querySelectorAll(".overlay:not([hidden])");
+  for (const o of open) if (!PTT_OVERLAYS.includes(o.id)) return true;
   if (!lastState || !lastState.connected || lastState.tuning) return true;
   if (!txAllowed) return true;
   return false;
@@ -2389,6 +2395,7 @@ function eqEffectButtons(kind) {
   );
 }
 function refreshEqOverlay() {
+  if (eqEditKind) refreshEqEdit();
   if (!eqOverlayKind || !lastState) return;
   const current = eqOverlayKind === "tx" ? lastState.txEqEffect : lastState.rxEqEffect;
   for (const b of eqEffectsEl.children) b.classList.toggle("active", Number(b.dataset.effect) === current);
@@ -2440,6 +2447,167 @@ function onLongPress(button, handler, ms = 500) {
 onLongPress(document.getElementById("txeq-button"), () => openEqOverlay("tx"));
 onLongPress(document.getElementById("rxeq-button"), () => openEqOverlay("rx"));
 document.getElementById("eq-overlay-close").addEventListener("click", closeEqOverlay);
+
+// Equalizer curve editor ("UT"/"UR": 18 bands, 0..5100 Hz in 300 Hz steps, raw value
+// 0 = +6 dB ... 30 = -24 dB, 1 dB per step). The radio takes the whole curve with
+// every set, so the 18 values are kept here and all sent together. Vertical sliders
+// are plain divs (pointer events), a rotated <input type=range> is unreliable on iOS.
+const EQ_BAND_COUNT = 18;
+const EQ_RAW_MAX = 30;
+const eqEditOverlay = document.getElementById("eqedit-overlay");
+const eqEditBandsEl = document.getElementById("eqedit-bands");
+let eqEditKind = null; // "tx" | "rx" while open
+let eqEditRaw = null; // 18 raw values being shown
+let eqEditActive = 0; // sliders currently held; the radio's answer must not move them meanwhile
+let eqEditTimer = null;
+const eqEditBandEls = [];
+function eqBandHz(i) {
+  return i * 300;
+}
+function eqBandDb(raw) {
+  return 6 - raw;
+}
+function eqBandDbText(raw) {
+  const db = eqBandDb(raw);
+  return (db > 0 ? "+" : "") + db + " dB";
+}
+function eqEditPaint(i) {
+  const el = eqEditBandEls[i];
+  const frac = eqEditRaw[i] / EQ_RAW_MAX; // 0 = top (+6 dB)
+  el.thumb.style.top = `${frac * 100}%`;
+  const db = eqBandDb(eqEditRaw[i]);
+  el.db.textContent = db > 0 ? `+${db}` : String(db);
+  el.track.setAttribute("aria-valuenow", String(eqBandDb(eqEditRaw[i])));
+  el.track.setAttribute("aria-valuetext", eqBandDbText(eqEditRaw[i]));
+}
+function eqEditSend() {
+  eqEditTimer = null;
+  if (!eqEditKind || !eqEditRaw) return;
+  send({ type: eqEditKind === "tx" ? "setTxEqBands" : "setRxEqBands", values: eqEditRaw.slice() });
+}
+function eqEditQueueSend() {
+  if (!eqEditTimer) eqEditTimer = setTimeout(eqEditSend, 150);
+}
+function eqEditSet(i, raw, { final = false } = {}) {
+  raw = Math.max(0, Math.min(EQ_RAW_MAX, raw));
+  if (raw !== eqEditRaw[i]) {
+    eqEditRaw[i] = raw;
+    eqEditPaint(i);
+    eqEditQueueSend();
+  }
+  if (final && eqEditTimer) {
+    clearTimeout(eqEditTimer);
+    eqEditSend();
+  }
+}
+function buildEqEditBands() {
+  eqEditBandsEl.replaceChildren();
+  eqEditBandEls.length = 0;
+  for (let i = 0; i < EQ_BAND_COUNT; i++) {
+    const col = document.createElement("div");
+    col.className = "eqedit-band";
+    const track = document.createElement("div");
+    track.className = "eqedit-track";
+    track.tabIndex = 0;
+    track.setAttribute("role", "slider");
+    track.setAttribute("aria-label", `${eqBandHz(i)} Hz`);
+    track.setAttribute("aria-valuemin", "-24");
+    track.setAttribute("aria-valuemax", "6");
+    const thumb = document.createElement("div");
+    thumb.className = "eqedit-thumb";
+    track.append(thumb);
+    const label = document.createElement("div");
+    label.className = "eqedit-freq";
+    label.textContent = i === 0 ? "0" : String(eqBandHz(i) / 1000).replace(/^0\./, ".");
+    const db = document.createElement("div");
+    db.className = "eqedit-db";
+    col.append(label, track, db);
+    eqEditBandsEl.append(col);
+    eqEditBandEls.push({ track, thumb, db });
+    const fromPointer = (e) => {
+      const r = track.getBoundingClientRect();
+      return Math.round(((e.clientY - r.top) / r.height) * EQ_RAW_MAX);
+    };
+    track.addEventListener("pointerdown", (e) => {
+      if (e.button > 0) return;
+      track.setPointerCapture(e.pointerId);
+      eqEditActive++;
+      track.dataset.held = "1";
+      eqEditSet(i, fromPointer(e));
+    });
+    track.addEventListener("pointermove", (e) => {
+      if (track.dataset.held) eqEditSet(i, fromPointer(e));
+    });
+    const release = (e) => {
+      if (!track.dataset.held) return;
+      delete track.dataset.held;
+      eqEditActive = Math.max(0, eqEditActive - 1);
+      eqEditSet(i, fromPointer(e), { final: true });
+    };
+    track.addEventListener("pointerup", release);
+    track.addEventListener("pointercancel", release);
+    // double click / double tap: this band back to 0 dB
+    track.addEventListener("dblclick", () => eqEditSet(i, 6, { final: true }));
+    track.addEventListener("keydown", (e) => {
+      const step = { ArrowUp: -1, ArrowRight: -1, ArrowDown: 1, ArrowLeft: 1 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      eqEditSet(i, eqEditRaw[i] + step, { final: true });
+    });
+  }
+}
+function refreshEqEdit() {
+  if (!eqEditKind || !lastState || eqEditActive || eqEditTimer) return;
+  const bands = eqEditKind === "tx" ? lastState.txEqBands : lastState.rxEqBands;
+  if (!Array.isArray(bands) || bands.length !== EQ_BAND_COUNT) return;
+  eqEditRaw = bands.slice();
+  for (let i = 0; i < EQ_BAND_COUNT; i++) eqEditPaint(i);
+}
+function openEqEdit(kind) {
+  eqEditKind = kind;
+  document.getElementById("eqedit-title").textContent = (kind === "tx" ? "TX Equalizer - " : "RX Equalizer - ") + eqEffectName(kind);
+  if (!eqEditBandEls.length) buildEqEditBands();
+  // until the radio has answered, show a flat curve rather than stale numbers
+  eqEditRaw = new Array(EQ_BAND_COUNT).fill(6);
+  for (let i = 0; i < EQ_BAND_COUNT; i++) eqEditPaint(i);
+  refreshEqEdit();
+  send({ type: kind === "tx" ? "queryTxEqBands" : "queryRxEqBands" });
+  eqEditOverlay.hidden = false;
+}
+function eqEffectName(kind) {
+  const names = kind === "tx" ? EQ_EFFECTS_TX : EQ_EFFECTS_RX;
+  const cur = lastState ? (kind === "tx" ? lastState.txEqEffect : lastState.rxEqEffect) : 0;
+  return names[cur] || "";
+}
+function closeEqEdit() {
+  if (eqEditTimer) {
+    clearTimeout(eqEditTimer);
+    eqEditSend();
+  }
+  eqEditOverlay.hidden = true;
+  eqEditKind = null;
+  eqEditActive = 0;
+}
+document.getElementById("eq-overlay-adjust").addEventListener("click", () => {
+  const kind = eqOverlayKind;
+  closeEqOverlay();
+  if (kind) openEqEdit(kind);
+});
+document.getElementById("eqedit-ok").addEventListener("click", () => {
+  const kind = eqEditKind;
+  closeEqEdit();
+  if (kind) openEqOverlay(kind); // back to the effect choice
+});
+document.getElementById("eqedit-reset").addEventListener("click", () => {
+  if (!eqEditKind) return;
+  clearTimeout(eqEditTimer);
+  eqEditTimer = null;
+  // 99 = "initial value" for every band; the radio's answer then shows the real curve
+  send({ type: eqEditKind === "tx" ? "setTxEqBands" : "setRxEqBands", values: new Array(EQ_BAND_COUNT).fill(99) });
+});
+eqEditOverlay.addEventListener("click", (e) => {
+  if (e.target === eqEditOverlay) closeEqEdit();
+});
 eqOverlay.addEventListener("click", (e) => {
   if (e.target === eqOverlay) closeEqOverlay();
 });

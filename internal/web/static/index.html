@@ -684,9 +684,9 @@
             </div>
           </label>
         </div>
-        <label class="overlay-checkbox" id="mic-keep-warm-row" data-i18n-title title="Mikrofon zwischen Sendungen warmhalten (v. a. für Bluetooth- oder CarPlay-Mikrofone, die sonst bei jedem TX-Druck neu verbinden): Bluetooth-Gerät bleibt dafür im (HFP) Headset-Profil (evtl. schmalbandiger Ton), aber ohne Umschaltzeit zwischen den Profilen">
+        <label class="overlay-checkbox" id="mic-keep-warm-row" data-i18n-title title="Hält HFP aktiv/offen um lange Umschaltzeiten zwischen Profilen bei TX zu vermeiden.">
           <input type="checkbox" id="mic-keep-warm">
-          <span data-i18n>Bluetooth-/CarPlay-Mikrofon warmhalten</span>
+          <span data-i18n>Halte Bluetooth-/CarPlay Hands-Free Profile aktiv</span>
         </label>
       </div>
       <div class="overlay-tabpanel" data-tab="lang" hidden>
@@ -925,13 +925,25 @@
   </div>
 </div>
 
+<div id="eqedit-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2 id="eqedit-title">Equalizer</h2>
+    <div class="eqedit-bands" id="eqedit-bands"></div>
+    <div class="overlay-actions">
+      <button type="button" id="eqedit-reset" data-i18n data-i18n-title title="Alle Bänder auf Ausgangswert zurücksetzen">Zurücksetzen</button>
+      <button type="button" id="eqedit-ok">OK</button>
+    </div>
+  </div>
+</div>
+
 <div id="eq-overlay" class="overlay" hidden>
   <div class="overlay-panel">
     <h2 id="eq-overlay-title">Equalizer</h2>
     <div class="overlay-caption">Effekt</div>
     <div class="eq-effects" id="eq-effects"></div>
     <div class="overlay-actions">
-      <button type="button" id="eq-overlay-close">Schliessen</button>
+      <button type="button" id="eq-overlay-adjust" data-i18n>Einstellen</button>
+      <button type="button" id="eq-overlay-close" data-i18n>Schliessen</button>
     </div>
   </div>
 </div>

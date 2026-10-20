@@ -74,6 +74,8 @@ type Controls struct {
 	SetTXEQEffect     func(effect int) error
 	SetRXEQ           func(on bool) error
 	SetRXEQEffect     func(effect int) error
+	SetEQBands        func(tx bool, raw []int) error
+	QueryEQBands      func(tx bool) error
 	SetTXMonitor      func(on bool) error
 	SetTXMonitorLevel func(level int) error
 	SetProc           func(enabled bool) error
@@ -292,6 +294,7 @@ type clientMessage struct {
 	Before     float64 `json:"before"` // rxTrim: backlog before the cut, seconds
 	After      float64 `json:"after"`  // rxTrim: backlog after the cut, seconds
 	N          int     `json:"n"`      // rxTrim: how many cuts this page has made so far
+	Values     []int   `json:"values"` // setTxEqBands/setRxEqBands: 18 raw band values
 	Codec      string  `json:"codec"`  // audioCodec: "pcm"/"opus" while RX audio plays, "" once stopped
 }
 
@@ -461,6 +464,14 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 		err = s.controls.SetRXEQ(msg.Enabled)
 	case "setRxEqEffect":
 		err = s.controls.SetRXEQEffect(msg.Value)
+	case "setTxEqBands":
+		err = s.controls.SetEQBands(true, msg.Values)
+	case "setRxEqBands":
+		err = s.controls.SetEQBands(false, msg.Values)
+	case "queryTxEqBands":
+		err = s.controls.QueryEQBands(true)
+	case "queryRxEqBands":
+		err = s.controls.QueryEQBands(false)
 	case "setTxMonitor":
 		err = s.controls.SetTXMonitor(msg.Enabled)
 	case "setTxMonitorLevel":

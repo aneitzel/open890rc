@@ -3,6 +3,7 @@
 package state
 
 import (
+	"slices"
 	"sync"
 
 	"open890rc/internal/cat"
@@ -51,6 +52,8 @@ type State struct {
 	txEqEffect         int
 	rxEq               bool
 	rxEqEffect         int
+	txEqBands          []int
+	rxEqBands          []int
 	txMonitor          bool
 	txMonitorLevel     int
 	proc               bool
@@ -317,6 +320,8 @@ type Snapshot struct {
 	TXEqEffect           int            `json:"txEqEffect"`
 	RXEq                 bool           `json:"rxEq"`
 	RXEqEffect           int            `json:"rxEqEffect"`
+	TXEqBands            []int          `json:"txEqBands"`
+	RXEqBands            []int          `json:"rxEqBands"`
 	TXMonitor            bool           `json:"txMonitor"`
 	TXMonitorLevel       int            `json:"txMonitorLevel"`
 	Proc                 bool           `json:"proc"`
@@ -728,6 +733,17 @@ func (s *State) Update(msg string) bool {
 		s.rxEqEffect = val
 		return true
 	}
+	if tx, bands, err := cat.ParseEQBands(msg); err == nil {
+		cur := &s.rxEqBands
+		if tx {
+			cur = &s.txEqBands
+		}
+		if slices.Equal(*cur, bands) {
+			return false
+		}
+		*cur = bands
+		return true
+	}
 	if val, err := cat.ParseTXMonitor(msg); err == nil {
 		if s.txMonitor == val {
 			return false
@@ -1020,6 +1036,8 @@ func (s *State) Snapshot() Snapshot {
 		TXEqEffect:           s.txEqEffect,
 		RXEq:                 s.rxEq,
 		RXEqEffect:           s.rxEqEffect,
+		TXEqBands:            s.txEqBands,
+		RXEqBands:            s.rxEqBands,
 		TXMonitor:            s.txMonitor,
 		TXMonitorLevel:       s.txMonitorLevel,
 		Proc:                 s.proc,

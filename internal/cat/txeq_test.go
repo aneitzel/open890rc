@@ -1,6 +1,9 @@
 package cat
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestTXEQ(t *testing.T) {
 	if EncodeTXEQ(true) != "EQT01" || EncodeTXEQ(false) != "EQT00" {
@@ -61,5 +64,33 @@ func TestEncodeActiveReceiver(t *testing.T) {
 	}
 	if _, err := EncodeActiveReceiver("C"); err == nil {
 		t.Fatal("C must fail")
+	}
+}
+
+func TestEQBands(t *testing.T) {
+	raw := make([]int, EQBands)
+	raw[0], raw[1], raw[17] = 0, 6, 30
+	for i := 2; i < 17; i++ {
+		raw[i] = 99
+	}
+	cmd, err := EncodeEQBands(true, raw)
+	if err != nil || cmd != "UT0006"+strings.Repeat("99", 15)+"30" {
+		t.Fatalf("EncodeEQBands = %q, %v", cmd, err)
+	}
+	if _, err := EncodeEQBands(false, raw[:5]); err == nil {
+		t.Error("short slice accepted")
+	}
+	if _, err := EncodeEQBands(false, append([]int{31}, raw[1:]...)); err == nil {
+		t.Error("out of range accepted")
+	}
+	tx, got, err := ParseEQBands("UR" + strings.Repeat("06", 18))
+	if err != nil || tx || len(got) != 18 || got[5] != 6 {
+		t.Fatalf("ParseEQBands = %v %v %v", tx, got, err)
+	}
+	if tx, _, err := ParseEQBands("UT" + strings.Repeat("30", 18)); err != nil || !tx {
+		t.Fatalf("UT parse: %v %v", tx, err)
+	}
+	if _, _, err := ParseEQBands("UT" + strings.Repeat("99", 18)); err == nil {
+		t.Error("99 in an answer accepted")
 	}
 }

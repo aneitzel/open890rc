@@ -95,3 +95,54 @@ func parseEQEffect(msg, prefix string) (int, error) {
 	}
 	return int(msg[4] - '0'), nil
 }
+
+// Equalizer curve ("UT" = TX, "UR" = RX): 18 bands, 0 Hz to 5100 Hz in 300 Hz
+// steps. Set and answer are "U<T|R>" + 18 two-digit values + ";" (the whole
+// curve every time), query is "UT;"/"UR;". Each value is 00..30 with 00 = +6 dB,
+// 06 = 0 dB, 30 = -24 dB (1 dB per step); 99 resets that band to its initial
+// value. The curve belongs to the currently selected effect.
+const (
+	EQBands       = 18
+	EQBandMaxRaw  = 30
+	EQBandInitial = 99
+)
+
+// EncodeEQBands builds "UT<36 digits>" / "UR<36 digits>" (without the ';').
+func EncodeEQBands(tx bool, raw []int) (string, error) {
+	if len(raw) != EQBands {
+		return "", fmt.Errorf("equalizer needs %d band values, got %d", EQBands, len(raw))
+	}
+	var b strings.Builder
+	if tx {
+		b.WriteString("UT")
+	} else {
+		b.WriteString("UR")
+	}
+	for i, v := range raw {
+		if (v < 0 || v > EQBandMaxRaw) && v != EQBandInitial {
+			return "", fmt.Errorf("equalizer band %d value %d out of range 0-%d", i+1, v, EQBandMaxRaw)
+		}
+		fmt.Fprintf(&b, "%02d", v)
+	}
+	return b.String(), nil
+}
+
+// ParseEQBands parses a "UT"/"UR" answer into the 18 raw values (0 = +6 dB ...
+// 30 = -24 dB). tx tells which of the two it was.
+func ParseEQBands(msg string) (tx bool, raw []int, err error) {
+	if len(msg) != 2+2*EQBands || (!strings.HasPrefix(msg, "UT") && !strings.HasPrefix(msg, "UR")) {
+		return false, nil, fmt.Errorf("not an equalizer curve message: %q", msg)
+	}
+	raw = make([]int, EQBands)
+	for i := range raw {
+		a, c := msg[2+2*i], msg[3+2*i]
+		if a < '0' || a > '9' || c < '0' || c > '9' {
+			return false, nil, fmt.Errorf("equalizer curve message has non-digits: %q", msg)
+		}
+		raw[i] = int(a-'0')*10 + int(c-'0')
+		if raw[i] > EQBandMaxRaw {
+			return false, nil, fmt.Errorf("equalizer band %d value %d out of range: %q", i+1, raw[i], msg)
+		}
+	}
+	return msg[1] == 'T', raw, nil
+}

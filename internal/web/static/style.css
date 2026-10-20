@@ -4022,3 +4022,81 @@ main.controls-off .slider::-moz-range-thumb {
   padding-top: 0.75rem;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
+
+/* Equalizer curve editor: 18 vertical sliders (+6 dB at the top, -24 dB at the bottom). */
+#eqedit-overlay .overlay-panel {
+  width: min(96vw, 560px);
+  padding: 1.2rem 0.8rem;
+}
+#eqedit-overlay .overlay-actions,
+#eq-overlay .overlay-actions {
+  justify-content: center;
+  gap: 0.8rem;
+}
+.eqedit-bands {
+  display: flex;
+  justify-content: space-between;
+  gap: 1px;
+  margin-bottom: 1rem;
+}
+.eqedit-band {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.eqedit-track {
+  position: relative;
+  width: 100%;
+  height: 180px;
+  touch-action: none;
+  cursor: pointer;
+  outline: none;
+}
+/* groove and the 0 dB mark (raw 6 of 30 = 20% from the top) */
+.eqedit-track::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: #0b0b0d;
+}
+.eqedit-track::after {
+  content: "";
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  top: 20%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.35);
+}
+.eqedit-track:focus-visible::before {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.eqedit-thumb {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 3px;
+  background: var(--key-face);
+  border: 1px solid var(--accent);
+  z-index: 1;
+}
+.eqedit-freq {
+  margin-bottom: 0.3rem;
+  font-size: 0.55rem;
+  color: var(--key-text);
+  opacity: 0.8;
+}
+.eqedit-db {
+  margin-top: 0.3rem;
+  font-size: 0.55rem;
+  color: var(--accent);
+}
