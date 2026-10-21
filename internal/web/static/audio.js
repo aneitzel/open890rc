@@ -212,7 +212,7 @@
       // Reuses the same icon already embedded for the site favicon/home-
       // screen icon (apple-touch-icon.png, 180x180) rather than a separate
       // asset.
-      artwork: [{ src: "apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+      artwork: [{ src: "apple-touch-icon.png?v=3", sizes: "180x180", type: "image/png" }],
     });
   }
   window.hamrcSetNowPlaying = function (title, subtitle, nr) {
