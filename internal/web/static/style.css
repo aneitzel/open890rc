@@ -1524,7 +1524,7 @@ main {
   color: var(--accent);
 }
 #mic-limiter-preset:disabled {
-  opacity: 0.4; /* same convention as .mic-limiter-tuning:has(input:disabled) below */
+  opacity: 0.4;
   cursor: default;
 }
 
@@ -1847,22 +1847,6 @@ main {
   opacity: 0.4;
 }
 
-/* TX Mic Limiter's threshold/ratio/attack: a testweise-Regler (Nutzer-Wunsch,
-   2026-10-14 — the fixed values weren't audibly catching mic peaks, make
-   them live-adjustable to find better ones) in the same dashed-border
-   "not part of the final UI, just for diagnosing" convention this project
-   used for the earlier TX-Dämpfung/Testton controls. Dimmed (not hidden,
-   same convention as the admin-gated VoIP sliders above) while the limiter
-   itself is off, since the values are meaningless without it. */
-.mic-limiter-tuning {
-  border: 1px dashed var(--text-dim);
-  border-radius: 6px;
-  padding: 0.5rem 0.6rem 0.1rem;
-  margin-bottom: 0.75rem;
-}
-.mic-limiter-tuning:has(input:disabled) {
-  opacity: 0.4;
-}
 .amp-actions button {
   background: var(--key-face);
   border: none;
@@ -4098,5 +4082,36 @@ main.controls-off .slider::-moz-range-thumb {
 .eqedit-db {
   margin-top: 0.3rem;
   font-size: 0.55rem;
+  color: var(--accent);
+}
+
+/* "hold to talk" TX button: no text selection, no iOS callout, no scroll/zoom gesture
+   stealing the touch while it is held */
+#tx-button.tx-hold {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.tx-mode-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12); /* same divider as .overlay-section-divider */
+}
+#tx-button-mode {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  padding: 0;
+  margin: 0;
+}
+#tx-button-mode:hover,
+#tx-button-mode:focus {
   color: var(--accent);
 }

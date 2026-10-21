@@ -653,41 +653,22 @@
             <input type="checkbox" id="mic-limiter">
             TX Mic Limiter
           </label>
-          <select id="mic-limiter-preset" aria-label="Limiter-Voreinstellung" data-i18n-title title="Voreinstellung für Threshold/Ratio/Attack — danach über die Regler frei anpassbar">
+          <select id="mic-limiter-preset" aria-label="Limiter-Voreinstellung" data-i18n-title title="Voreinstellung des Limiters: sanft oder stark">
             <option value="soft">Sanft</option>
             <option value="hard">Stark</option>
           </select>
-        </div>
-        <div class="mic-limiter-tuning" id="mic-limiter-tuning" data-i18n-title title="Testweise einstellbar — wirkt sofort, auch während einer laufenden Sendung">
-          <label>
-            <span>Limiter Threshold <span class="ctrl-max" id="mic-limiter-threshold-value"></span></span>
-            <div class="level-slider">
-              <div class="level-slider-track"></div>
-              <div class="level-slider-fill" id="mic-limiter-threshold-fill"></div>
-              <input type="range" id="mic-limiter-threshold-slider" min="-24" max="0" step="1" value="-1" data-i18n-title title="Ab welchem Pegel der Limiter eingreift (dB, näher an 0 = greift erst später/seltener ein)">
-            </div>
-          </label>
-          <label>
-            <span>Limiter Ratio <span class="ctrl-max" id="mic-limiter-ratio-value"></span></span>
-            <div class="level-slider">
-              <div class="level-slider-track"></div>
-              <div class="level-slider-fill" id="mic-limiter-ratio-fill"></div>
-              <input type="range" id="mic-limiter-ratio-slider" min="2" max="20" step="1" value="6" data-i18n-title title="Wie stark oberhalb der Schwelle gedämpft wird (höher = härter)">
-            </div>
-          </label>
-          <label>
-            <span>Limiter Attack <span class="ctrl-max" id="mic-limiter-attack-value"></span></span>
-            <div class="level-slider">
-              <div class="level-slider-track"></div>
-              <div class="level-slider-fill" id="mic-limiter-attack-fill"></div>
-              <input type="range" id="mic-limiter-attack-slider" min="0" max="50" step="1" value="10" data-i18n-title title="Wie schnell der Limiter auf eine Spitze reagiert (ms, niedriger = fängt kurze Spitzen eher ab)">
-            </div>
-          </label>
         </div>
         <label class="overlay-checkbox" id="mic-keep-warm-row" data-i18n-title title="Hält HFP aktiv/offen um lange Umschaltzeiten zwischen Profilen bei TX zu vermeiden.">
           <input type="checkbox" id="mic-keep-warm">
           <span data-i18n>Halte Bluetooth-/CarPlay Hands-Free Profile aktiv</span>
         </label>
+        <div class="tx-mode-row">
+          <span data-i18n>TX-Button Funktionsweise:</span>
+          <select id="tx-button-mode" aria-label="TX-Button" data-i18n-title title="TX wenn gedrückt: TX läuft nur, solange die Taste gehalten wird. TX/RX umschalten: ein Druck schaltet ein, der nächste aus. Die Taste T funktioniert immer als TX wenn gedrückt.">
+            <option value="hold" data-i18n>TX wenn gedrückt</option>
+            <option value="toggle" data-i18n>TX/RX umschalten</option>
+          </select>
+        </div>
       </div>
       <div class="overlay-tabpanel" data-tab="lang" hidden>
         <label data-i18n-title title="Sprache der Oberfläche (nur dieser Browser)">

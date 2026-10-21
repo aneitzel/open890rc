@@ -1311,7 +1311,37 @@ function toggleTX() {
   if (currentTX && !myTX) return; // someone else is transmitting: do not cut in
   setTX(!currentTX);
 }
-txButton.addEventListener("click", toggleTX);
+// Optional "hold to talk" for the TX button (per browser): TX runs while the button is
+// held, like the T key. Pointer capture keeps the touch on the button even when the
+// finger slides off it; losing the pointer for any reason (lift, cancel, tab hidden)
+// ends TX via pttRelease. Dropdown "TX/RX umschalten" = the plain toggle.
+const TX_HOLD_KEY = "open890rc.txHold";
+let txHoldMode = true; // default: TX only while held; only a stored "0" means toggle
+try {
+  if (localStorage.getItem(TX_HOLD_KEY) === "0") txHoldMode = false;
+} catch (_) {}
+txButton.addEventListener("click", (e) => {
+  if (txHoldMode) return; // handled by the pointer events below
+  toggleTX();
+});
+txButton.addEventListener("pointerdown", (e) => {
+  if (!txHoldMode || e.button > 0 || txButton.disabled) return;
+  e.preventDefault();
+  if ((currentTX && !myTX) || currentTX || pttHeld) return;
+  try {
+    txButton.setPointerCapture(e.pointerId);
+  } catch (_) {}
+  pttHeld = true;
+  setTX(true);
+});
+for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  txButton.addEventListener(ev, () => {
+    if (txHoldMode) pttRelease();
+  });
+}
+txButton.addEventListener("contextmenu", (e) => {
+  if (txHoldMode) e.preventDefault(); // long press on iOS/Android must not open a menu
+});
 
 // Push-to-talk on the T key (the letter, whatever the keyboard layout): transmit
 // while it is held, back to receive on release (Nutzer-Wunsch 2026-10-10; Ctrl and
@@ -3487,15 +3517,31 @@ const rxServoSlipInput = document.getElementById("rx-servo-slip");
 rxServoSlipInput.addEventListener("change", () => {
   if (window.hamrcSetRxServoSlip) window.hamrcSetRxServoSlip(rxServoSlipInput.checked);
 });
+function updateTxButtonTitle() {
+  txButton.title = txHoldMode
+    ? 'Senden, solange gedrückt (Alternativ "t" auf Tastatur gedrückt halten)'
+    : 'Senden/Empfangen umschalten (Alternativ "t" auf Tastatur drücken)';
+}
+const txModeSelect = document.getElementById("tx-button-mode");
+txModeSelect.value = txHoldMode ? "hold" : "toggle";
+txModeSelect.addEventListener("change", () => {
+  if (txHoldMode) pttRelease();
+  txHoldMode = txModeSelect.value === "hold";
+  txButton.classList.toggle("tx-hold", txHoldMode);
+  updateTxButtonTitle();
+  try {
+    localStorage.setItem(TX_HOLD_KEY, txHoldMode ? "1" : "0");
+  } catch (_) {}
+});
+txButton.classList.toggle("tx-hold", txHoldMode);
+updateTxButtonTitle();
 const micKeepWarmInput = document.getElementById("mic-keep-warm");
 micKeepWarmInput.addEventListener("change", () => {
   if (window.hamrcSetMicKeepWarm) window.hamrcSetMicKeepWarm(micKeepWarmInput.checked);
 });
 const micLimiterInput = document.getElementById("mic-limiter");
-const micLimiterTuningInputs = document.querySelectorAll("#mic-limiter-tuning input");
 const micLimiterPresetSelectEl = document.getElementById("mic-limiter-preset");
 function syncMicLimiterTuningEnabled() {
-  for (const el of micLimiterTuningInputs) el.disabled = !micLimiterInput.checked;
   micLimiterPresetSelectEl.disabled = !micLimiterInput.checked;
 }
 micLimiterInput.addEventListener("change", () => {
@@ -3503,50 +3549,12 @@ micLimiterInput.addEventListener("change", () => {
   syncMicLimiterTuningEnabled();
 });
 
-// Testweise-Regler for the limiter's threshold/ratio/attack (Nutzer-Wunsch,
-// 2026-10-14: the fixed defaults weren't audibly catching mic peaks) —
-// live-adjustable via window.hamrcSetMicLimiterXxx, which apply immediately
-// even mid-transmission (see audio.js's micLimiterNode).
-const micLimiterThresholdSlider = makeSlider(
-  "mic-limiter-threshold-slider",
-  (value) => {
-    if (window.hamrcSetMicLimiterThreshold) window.hamrcSetMicLimiterThreshold(value);
-  },
-  0,
-  "mic-limiter-threshold-value",
-  (v) => `${v} dB`,
-  "mic-limiter-threshold-fill"
-);
-const micLimiterRatioSlider = makeSlider(
-  "mic-limiter-ratio-slider",
-  (value) => {
-    if (window.hamrcSetMicLimiterRatio) window.hamrcSetMicLimiterRatio(value);
-  },
-  20,
-  "mic-limiter-ratio-value",
-  (v) => `${v}:1`,
-  "mic-limiter-ratio-fill"
-);
-const micLimiterAttackSlider = makeSlider(
-  "mic-limiter-attack-slider",
-  (value) => {
-    if (window.hamrcSetMicLimiterAttack) window.hamrcSetMicLimiterAttack(value);
-  },
-  50,
-  "mic-limiter-attack-value",
-  (v) => `${v} ms`,
-  "mic-limiter-attack-fill"
-);
-
 // Limiter presets (Nutzer-Wunsch 2026-10-18): "Sanft" is the original
 // shipped default (barely audible, only catches genuine peaks); "Stark" is
 // a deliberately harder setting (lower threshold, higher ratio, faster
 // attack) for whoever wants more aggressive levelling and accepts some
-// audible pumping for it. Picking one just applies its three slider values
-// immediately — there's no third "custom" state in the dropdown, dragging
-// a slider afterward simply leaves it showing whichever preset was last
-// picked even if the values no longer match exactly (synced back only on
-// the next overlay open, see syncMicLimiterPreset in loadTrimSliders).
+// audible pumping for it. Picking one applies its three values immediately,
+// also mid-transmission (the former free sliders were removed, 2026-10-21).
 const MIC_LIMITER_PRESETS = {
   soft: { threshold: -1, ratio: 6, attack: 10 },
   hard: { threshold: -8, ratio: 12, attack: 3 },
@@ -3555,9 +3563,6 @@ const micLimiterPresetSelect = document.getElementById("mic-limiter-preset");
 micLimiterPresetSelect.addEventListener("change", () => {
   const p = MIC_LIMITER_PRESETS[micLimiterPresetSelect.value];
   if (!p) return;
-  micLimiterThresholdSlider.applyValue(p.threshold);
-  micLimiterRatioSlider.applyValue(p.ratio);
-  micLimiterAttackSlider.applyValue(p.attack);
   if (window.hamrcSetMicLimiterThreshold) window.hamrcSetMicLimiterThreshold(p.threshold);
   if (window.hamrcSetMicLimiterRatio) window.hamrcSetMicLimiterRatio(p.ratio);
   if (window.hamrcSetMicLimiterAttack) window.hamrcSetMicLimiterAttack(p.attack);
@@ -3572,8 +3577,6 @@ function syncMicLimiterPreset() {
       return;
     }
   }
-  // current values match neither preset (manually tuned) — leave the
-  // dropdown showing whatever it last did rather than guessing
 }
 
 // Browser-local volume for mithören another client's TX relay (Nutzer-
@@ -3595,9 +3598,6 @@ function loadTrimSliders() {
   if (window.hamrcGetMicKeepWarm) micKeepWarmInput.checked = window.hamrcGetMicKeepWarm();
   if (window.hamrcGetMicLimiter) micLimiterInput.checked = window.hamrcGetMicLimiter();
   syncMicLimiterTuningEnabled();
-  if (window.hamrcGetMicLimiterThreshold) micLimiterThresholdSlider.applyValue(window.hamrcGetMicLimiterThreshold());
-  if (window.hamrcGetMicLimiterRatio) micLimiterRatioSlider.applyValue(window.hamrcGetMicLimiterRatio());
-  if (window.hamrcGetMicLimiterAttack) micLimiterAttackSlider.applyValue(window.hamrcGetMicLimiterAttack());
   syncMicLimiterPreset();
   if (window.hamrcGetTxRelayVolume) txRelayVolumeSlider.applyValue(window.hamrcGetTxRelayVolume());
   const t = window.hamrcGetRxTrim && window.hamrcGetRxTrim();
