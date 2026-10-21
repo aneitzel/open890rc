@@ -438,6 +438,9 @@ func main() {
 	eqReplies := make(chan string, 4)
 	// "EQR0<n>" replies (RX equalizer on/off), see forceRXEQOff.
 	eqRxReplies := make(chan string, 4)
+	// "EQT1<n>" / "EQR1<n>" replies (selected TX/RX equalizer effect), see syncEQEffect.
+	eqEffReplies := make(chan string, 4)
+	eqRxEffReplies := make(chan string, 4)
 	// "MO0<n>" replies (TX monitor on/off), see forceTXMonOff.
 	txMonReplies := make(chan string, 4)
 	// "BS3<n>" replies (band scope mode), see applyBandScopeCenter.
@@ -449,6 +452,18 @@ func main() {
 		if len(msg) == 5 && strings.HasPrefix(msg, "EQT0") {
 			select {
 			case eqReplies <- msg:
+			default:
+			}
+		}
+		if len(msg) == 5 && strings.HasPrefix(msg, "EQT1") {
+			select {
+			case eqEffReplies <- msg:
+			default:
+			}
+		}
+		if len(msg) == 5 && strings.HasPrefix(msg, "EQR1") {
+			select {
+			case eqRxEffReplies <- msg:
 			default:
 			}
 		}
@@ -986,6 +1001,9 @@ func main() {
 		TXEq  map[string]bool `json:"txEq"`
 		RXEq  map[string]bool `json:"rxEq"`
 		TXMon *bool           `json:"txMon"`
+		// last equalizer EFFECT (0-8) chosen in this tool, per mode (the curve itself is not stored)
+		TXEffect map[string]int `json:"txEffect"`
+		RXEffect map[string]int `json:"rxEffect"`
 	}
 	if data, ok := cfgStore.Read("eq"); ok {
 		json.Unmarshal(data, &eqCfg)
@@ -995,6 +1013,12 @@ func main() {
 	}
 	if eqCfg.RXEq == nil {
 		eqCfg.RXEq = map[string]bool{}
+	}
+	if eqCfg.TXEffect == nil {
+		eqCfg.TXEffect = map[string]int{}
+	}
+	if eqCfg.RXEffect == nil {
+		eqCfg.RXEffect = map[string]int{}
 	}
 	var eqCfgMu sync.Mutex
 	writeEQConfig := func() {
@@ -1015,6 +1039,30 @@ func main() {
 		defer eqCfgMu.Unlock()
 		eqCfg.RXEq[mode] = on
 		writeEQConfig()
+	}
+	saveTXEffectPref := func(mode string, effect int) {
+		eqCfgMu.Lock()
+		defer eqCfgMu.Unlock()
+		eqCfg.TXEffect[mode] = effect
+		writeEQConfig()
+	}
+	saveRXEffectPref := func(mode string, effect int) {
+		eqCfgMu.Lock()
+		defer eqCfgMu.Unlock()
+		eqCfg.RXEffect[mode] = effect
+		writeEQConfig()
+	}
+	txEffectWant := func(mode string) (int, bool) {
+		eqCfgMu.Lock()
+		defer eqCfgMu.Unlock()
+		v, ok := eqCfg.TXEffect[mode]
+		return v, ok
+	}
+	rxEffectWant := func(mode string) (int, bool) {
+		eqCfgMu.Lock()
+		defer eqCfgMu.Unlock()
+		v, ok := eqCfg.RXEffect[mode]
+		return v, ok
 	}
 	saveTXMonPref := func(on bool) {
 		eqCfgMu.Lock()
@@ -1065,6 +1113,95 @@ func main() {
 		}
 		return "OFF"
 	}
+	// Selected equalizer EFFECT ("EQT1"/"EQR1", 0-8) per mode: the effect found at
+	// connect is remembered, the effect last chosen in this tool is applied, and the
+	// remembered original is put back when we let go (Nutzer-Wunsch 2026-10-21). The
+	// curve of an effect ("UT"/"UR") is deliberately NOT saved or restored.
+	type effectState struct {
+		mu      sync.Mutex
+		orig    map[string]int  // mode -> effect found before we touched it
+		touched map[string]bool // modes where WE (or the operator) changed it
+	}
+	newEffectState := func() *effectState {
+		return &effectState{orig: map[string]int{}, touched: map[string]bool{}}
+	}
+	txEff, rxEff := newEffectState(), newEffectState()
+	// reset hands back what was remembered and starts the next session empty.
+	resetEffects := func(es *effectState) (map[string]int, map[string]bool) {
+		es.mu.Lock()
+		defer es.mu.Unlock()
+		o, t := es.orig, es.touched
+		es.orig, es.touched = map[string]int{}, map[string]bool{}
+		return o, t
+	}
+	// markEffectChanged is called when the operator picks an effect in the UI.
+	markEffectChanged := func(es *effectState, mode string) {
+		es.mu.Lock()
+		es.touched[mode] = true
+		es.mu.Unlock()
+	}
+	// syncEQEffect reads the effect of the current mode, remembers the original and
+	// applies the effect last chosen in this tool, if there is one and it differs.
+	syncEQEffect := func(conn *radio.Conn, es *effectState, label, query string, replies chan string,
+		parse func(string) (int, error), encode func(int) (string, error), want func(string) (int, bool), mode string) {
+		for len(replies) > 0 {
+			<-replies
+		}
+		if conn.Send(query) != nil {
+			return
+		}
+		var cur int
+		select {
+		case m := <-replies:
+			v, err := parse(m)
+			if err != nil {
+				return
+			}
+			cur = v
+		case <-time.After(2 * time.Second):
+			log.Printf("radio: %s equalizer effect (%s) not answered in mode %s", label, query, mode)
+			return
+		}
+		es.mu.Lock()
+		if _, seen := es.orig[mode]; !seen {
+			es.orig[mode] = cur
+		}
+		es.mu.Unlock()
+		w, ok := want(mode)
+		if !ok || w == cur {
+			return
+		}
+		cmd, err := encode(w)
+		if err != nil {
+			return
+		}
+		log.Printf("radio: applying %s equalizer effect remembered from this tool: %d (found %d) in mode %s", label, w, cur, mode)
+		if conn.Send(cmd) != nil {
+			return
+		}
+		markEffectChanged(es, mode)
+		conn.Send(query) // let the UI show the new effect
+	}
+	// restoreEffects puts the original effect back for the radio's current mode;
+	// other modes cannot be reached without changing the radio's mode.
+	restoreEffects := func(conn *radio.Conn, es *effectState, label string, applies func(string) bool, encode func(int) (string, error)) {
+		orig, touched := resetEffects(es)
+		if conn == nil {
+			return
+		}
+		mode := st.Mode()
+		for m := range touched {
+			if _, ok := orig[m]; ok && m != mode {
+				log.Printf("radio: %s equalizer effect of mode %s could not be restored to %d (radio is in mode %s)", label, m, orig[m], mode)
+			}
+		}
+		if o, ok := orig[mode]; ok && touched[mode] && applies(mode) {
+			if cmd, err := encode(o); err == nil {
+				log.Printf("radio: restoring %s equalizer effect %d in mode %s", label, o, mode)
+				conn.Send(cmd)
+			}
+		}
+	}
 	forceTXEQOff := func(conn *radio.Conn, mode string) {
 		if conn == nil || !cat.TXEQApplies(mode) {
 			return
@@ -1098,8 +1235,9 @@ func main() {
 		}
 		orig := eqOrig[mode]
 		eqMu.Unlock()
-		// effect shown in the UI (voice modes only, like EQT0 itself)
-		conn.Send("EQT1")
+		// effect shown in the UI (voice modes only, like EQT0 itself); the one chosen
+		// last in this tool is applied here
+		syncEQEffect(conn, txEff, "TX", "EQT1", eqEffReplies, cat.ParseTXEQEffect, cat.EncodeTXEQEffect, txEffectWant, mode)
 		// A remembered preference (Nutzer-Wunsch, 2026-10-14: "wie PROC
 		// persistieren") wins over both "leave as found" and "force off
 		// unless chosen this session" below — applied unconditionally
@@ -1180,8 +1318,9 @@ func main() {
 		}
 		orig := eqRxOrig[mode]
 		eqRxMu.Unlock()
-		// effect shown in the UI (voice modes only, like EQR0 itself)
-		conn.Send("EQR1")
+		// effect shown in the UI (voice modes only, like EQR0 itself); the one chosen
+		// last in this tool is applied here
+		syncEQEffect(conn, rxEff, "RX", "EQR1", eqRxEffReplies, cat.ParseRXEQEffect, cat.EncodeRXEQEffect, rxEffectWant, mode)
 		if want, ok := rxEqWant(mode); ok {
 			if want != on {
 				log.Printf("radio: applying RX equalizer preference remembered from this tool: %s in mode %s", onOffWord(want), mode)
@@ -1404,6 +1543,8 @@ func main() {
 		}
 		restoreTXEQ(conn)
 		restoreRXEQ(conn)
+		restoreEffects(conn, txEff, "TX", cat.TXEQApplies, cat.EncodeTXEQEffect)
+		restoreEffects(conn, rxEff, "RX", cat.RXEQApplies, cat.EncodeRXEQEffect)
 		restoreTXMon(conn)
 		restoreProcSettings(conn)
 		restoreTXSource(conn)
@@ -2585,6 +2726,8 @@ func main() {
 			if err := conn.Send(cmd); err != nil {
 				return err
 			}
+			saveTXEffectPref(st.Mode(), effect)
+			markEffectChanged(txEff, st.Mode())
 			conn.Send("EQT1")
 			return conn.Send("UT")
 		},
@@ -2628,6 +2771,8 @@ func main() {
 			if err := conn.Send(cmd); err != nil {
 				return err
 			}
+			saveRXEffectPref(st.Mode(), effect)
+			markEffectChanged(rxEff, st.Mode())
 			conn.Send("EQR1")
 			return conn.Send("UR")
 		},

@@ -2505,6 +2505,7 @@ function eqEditPaint(i) {
   const el = eqEditBandEls[i];
   const frac = eqEditRaw[i] / EQ_RAW_MAX; // 0 = top (+6 dB)
   el.thumb.style.top = `${frac * 100}%`;
+  el.fill.style.height = `${(1 - frac) * 100}%`; // orange from the bottom up to the thumb, like the NR sliders
   const db = eqBandDb(eqEditRaw[i]);
   el.db.textContent = db > 0 ? `+${db}` : String(db);
   el.track.setAttribute("aria-valuenow", String(eqBandDb(eqEditRaw[i])));
@@ -2543,9 +2544,11 @@ function buildEqEditBands() {
     track.setAttribute("aria-label", `${eqBandHz(i)} Hz`);
     track.setAttribute("aria-valuemin", "-24");
     track.setAttribute("aria-valuemax", "6");
+    const fill = document.createElement("div");
+    fill.className = "eqedit-fill";
     const thumb = document.createElement("div");
     thumb.className = "eqedit-thumb";
-    track.append(thumb);
+    track.append(fill, thumb);
     const label = document.createElement("div");
     label.className = "eqedit-freq";
     label.textContent = i === 0 ? "0" : String(eqBandHz(i) / 1000).replace(/^0\./, ".");
@@ -2553,7 +2556,7 @@ function buildEqEditBands() {
     db.className = "eqedit-db";
     col.append(label, track, db);
     eqEditBandsEl.append(col);
-    eqEditBandEls.push({ track, thumb, db });
+    eqEditBandEls.push({ track, thumb, fill, db });
     const fromPointer = (e) => {
       const r = track.getBoundingClientRect();
       return Math.round(((e.clientY - r.top) / r.height) * EQ_RAW_MAX);

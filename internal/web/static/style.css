@@ -4045,10 +4045,21 @@ main.controls-off .slider::-moz-range-thumb {
   left: 50%;
   top: 0;
   bottom: 0;
-  width: 4px;
-  margin-left: -2px;
-  border-radius: 2px;
-  background: #0b0b0d;
+  width: 6px;
+  margin-left: -3px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #0d0d0f, #1c1c20);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.eqedit-fill {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 6px;
+  margin-left: -3px;
+  border-radius: 3px;
+  background: rgba(232, 129, 42, 0.45); /* same orange as .level-slider-fill */
+  pointer-events: none;
 }
 .eqedit-track::after {
   content: "";
