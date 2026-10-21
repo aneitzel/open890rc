@@ -57,6 +57,9 @@ Examples for Server Settings & Browser config:
 
 https://github.com/aneitzel/open890rc/releases
 
+Please consider supporting! If you find it useful and want to support development (I’m collecting for a Pi 5, or just buy me a coffee). You will be mentioned on the Supporters list. Thank you!
+
+[<img src="docs/donate.png" alt="Donate via PayPal" height="32">](https://www.paypal.com/donate/?hosted_button_id=5FCTSTA468NJ6)
 
 ## What you need
 
