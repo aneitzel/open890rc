@@ -1287,15 +1287,33 @@ function syncMicNow() {
   currentMicStreaming = want;
   window.hamrcSetMicStreaming(want);
 }
+// The TX button turns red as soon as THIS client asks for TX (we assume the command
+// reaches the radio, Nutzer-Wunsch 2026-10-21) and does not wait for the radio's
+// confirmation; real transmitting is shown by the Busy/TX LED. It also follows
+// state.tx, so another client's TX still lights it.
+function paintTxButton() {
+  const on = currentTX || myTX;
+  txButton.classList.toggle("active", on);
+  meterTxToggle.classList.toggle("active", on);
+}
 function setTX(enabling) {
   if (enabling && !txAllowed) return; // no TX access (listen-only user) — releasing is always fine
   if (enabling) {
     myTX = true;
     myTXSeenHigh = false;
     myTXDeadline = performance.now() + 5000; // dropped if the radio never confirms
+    // if the radio never confirms (not connected, command lost) the optimistic red must not stay
+    setTimeout(() => {
+      if (myTX && !currentTX && performance.now() >= myTXDeadline) {
+        myTX = false;
+        paintTxButton();
+        syncMicNow();
+      }
+    }, 5100);
   } else {
     myTX = false;
   }
+  paintTxButton();
   if (enabling && window.hamrcMuteRx && !(lastState && isCwMode(lastState.mode))) {
     // Cut RX playback at the click, not only once the radio confirms TX.
     window.hamrcMuteRx(true);
@@ -1358,6 +1376,7 @@ function pttRelease() {
   if (!pttHeld) return;
   pttHeld = false;
   myTX = false;
+  paintTxButton();
   send({ type: "setTX", enabled: false }); // also when TX is not confirmed yet
   syncMicNow();
 }
@@ -4683,8 +4702,7 @@ function applyState(state) {
   // for just that audio (Nutzer-Wunsch, 2026-10-15).
   if (window.hamrcSetRemoteTxActive) window.hamrcSetRemoteTxActive(state.tx && !myTX);
   currentTX = state.tx;
-  txButton.classList.toggle("active", state.tx);
-  meterTxToggle.classList.toggle("active", state.tx);
+  paintTxButton();
 
   atCycle.setCurrent(state.tunerOn);
   tuneButton.classList.toggle("active", state.tuning);
