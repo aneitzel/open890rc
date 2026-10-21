@@ -54,6 +54,11 @@ Examples for Server Settings & Browser config:
 - Interface languages: **English, German, Italian, Spanish** (chosen per client browser)
 - Optional SPE Expert 1.5K amplifier control over a serial port (on/off, tune, standby/operate, power level)
 
+## Download latest  
+
+https://github.com/aneitzel/open890rc/releases
+
+
 ## What you need
 
 - **A TS-890S** KNS enabled, KNS account set up on the radio.
