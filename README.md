@@ -21,16 +21,16 @@ We recommend connecting the TS-890 to the Pi/PC running the Open890RC server wit
 a cable. This ensures the fastest UDP/VoIP audio and reliable Wake-on-LAN.
 
 ![Open890RC in the browser](docs/browser.png)<br>
-<sub>Desktop browser on a PC</sub>
+<sub>Desktop browser on PC</sub>
 
 <img src="docs/ipad.png" width="640" alt="Open890RC as a web app on an iPad"><br>
-<sub>Tablet / iPad web app</sub>
+<sub>Tablet / iPad web app mode</sub>
 
 <p>
   <img src="docs/iphone1.png" width="200" alt="Open890RC on a phone, analog meter">
   <img src="docs/iphone2.png" width="200" alt="Open890RC on a phone">
   <img src="docs/iphone3.png" width="200" alt="Open890RC on a phone, spectrum and keypad"><br>
-  <sub>Android / iPhone web app</sub>
+  <sub>Android / iPhone web app mode</sub>
 </p>
 
 Examples for Server Settings & Browser config:
