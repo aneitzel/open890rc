@@ -12,6 +12,7 @@
   const KEY = "open890rc.lang";
   const DICT = {
     en: {
+    "Signal anklicken oder rechts/links wischen": "Click the signal or swipe right/left",
     "Einstellungen": "Settings",
     "Sprache": "Language",
     "Sprache der Oberfläche (nur dieser Browser)": "Interface language (this browser only)",
@@ -173,6 +174,7 @@
     "Mikrofonzugriff fehlgeschlagen": "Microphone access failed"
     },
     it: {
+    "Signal anklicken oder rechts/links wischen": "Tocca il segnale o scorri a destra/sinistra",
     "Einstellungen": "Impostazioni",
     "Sprache": "Lingua",
     "Sprache der Oberfläche (nur dieser Browser)": "Lingua dell'interfaccia (solo questo browser)",
@@ -351,6 +353,7 @@
     "MAC (Wake-on-LAN)": "MAC (Wake-on-LAN)"
     },
     es: {
+    "Signal anklicken oder rechts/links wischen": "Toca la señal o desliza a la derecha/izquierda",
     "Einstellungen": "Ajustes",
     "Sprache": "Idioma",
     "Sprache der Oberfläche (nur dieser Browser)": "Idioma de la interfaz (solo este navegador)",
