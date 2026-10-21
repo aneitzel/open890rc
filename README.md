@@ -117,6 +117,37 @@ away, even when the server certificate is renewed (new IP address, expiry).
 Keep `open890rc-ca.pem` and `open890rc-ca-key.pem` (created next to the program).
 If they are lost, a new CA is made and has to be installed again.
 
+## Use it as a web app on the iPhone
+
+Open Open890RC from the Home Screen like a normal app, without the Safari address bar.
+Once the HTTPS certificate is installed (see above):
+
+1. Open `https://<address-of-the-computer>:8080` in **Safari** (not in another browser app).
+   Install and trust the HTTPS certificate first, see [HTTPS](#https).
+2. Tap the **Share** button (square with arrow) in the toolbar.
+3. Scroll down and choose **Add to Home Screen**.
+4. Keep the name or change it, switch **Open as Web App** on, then tap **Add**.
+5. Start Open890RC from the new icon on the Home Screen.
+
+Audio keeps playing when the screen is locked. Media buttons (headset, lock screen, CarPlay) are connected:
+play/pause, and the skip buttons tune the frequency up or down by 1 kHz.
+
+## Use it as a web app on Android (Chrome)
+
+1. Install the HTTPS certificate first, see [HTTPS](#https) (Open890RC Settings, HTTPS page).
+2. Open `https://<address-of-the-computer>:8080` in **Chrome** and tap the browser menu (three dots).
+3. Choose **Install app** (or **Add to Home screen** and then **Install**). A shortcut on the Home Screen is created.
+4. Start Open890RC from the new icon on the Home Screen.
+
+## Users and access
+
+Browsers in the local network need no login and count as administrators.
+Everybody else (for example over a VPN or the internet) has to log in with a user
+that an administrator creates in the settings. Put the server behind your own
+protection (VPN such as Tailscale, or a reverse proxy) before exposing it to the
+internet, and use at least a strong password. There is no further authentication
+inside the local network.
+
 ## Building
 
 You need Go (see `go.mod`). The program has no C dependencies, so it can be
@@ -130,29 +161,6 @@ GOOS=linux   GOARCH=amd64 go build -o open890rc-linux ./cmd/open890rc
 GOOS=windows GOARCH=amd64 go build -o open890rc.exe ./cmd/open890rc
 GOOS=darwin  GOARCH=arm64 go build -o open890rc-mac ./cmd/open890rc
 ```
-
-## Use it as a web app on the iPhone
-
-Open Open890RC from the Home Screen like a normal app, without the Safari address bar:
-
-1. Open `https://<address-of-the-computer>:8080` in **Safari** (not in another browser app).
-   Install and trust the HTTPS certificate first, see [HTTPS](#https).
-2. Tap the **Share** button (square with arrow) in the toolbar.
-3. Scroll down and choose **Add to Home Screen**.
-4. Keep the name or change it, switch **Open as Web App** on, then tap **Add**.
-5. Start Open890RC from the new icon on the Home Screen.
-
-Audio keeps playing when the screen is locked. Media buttons (headset, lock screen, CarPlay) are connected:
-play/pause, and the skip buttons tune the frequency up or down by 1 kHz.
-
-## Users and access
-
-Browsers in the local network need no login and count as administrators.
-Everybody else (for example over a VPN or the internet) has to log in with a user
-that an administrator creates in the settings. Put the server behind your own
-protection (VPN such as Tailscale, or a reverse proxy) before exposing it to the
-internet, and use at least a strong password. There is no further authentication
-inside the local network.
 
 ## License
 
