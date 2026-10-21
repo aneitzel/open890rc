@@ -4551,6 +4551,23 @@ function applyState(state) {
   applyVfoIndicator(state.activeReceiver === "B" ? "B" : "A");
   applyVfoOtherFreq(state);
   setControlsDisabled(radioOff);
+  // The keypad lives inside .waterfall-wrap (index.html), which is
+  // deliberately exempt from both the inert-dim above and the
+  // playShutdownAnimation dim-and-stay (see setControlsDisabled's own
+  // comment) so it can show its own fully-visible "Spektrum aus" end
+  // state. Bug (Nutzer-Report, 2026-10-21): if the keypad happened to be
+  // showing (spectrum off, analog off) when the radio went off, it rode
+  // along with the wrap's opacity — faded out with it during the
+  // animation, then popped back to full visibility, fully clickable, the
+  // moment finishShutdownFade snapped the wrap's opacity back to 1,
+  // because nothing had ever set `hidden` on it. Entering a frequency
+  // makes no sense with the radio off anyway (same reasoning as the
+  // frequency digits going to "OFF" and the dropdowns to "--" above), so
+  // it is force-hidden here independently of the wrap's own opacity —
+  // recomputed every call (not just when radioOff just became true) so it
+  // also correctly un-hides again on reconnect, same formula
+  // setAnalogView/setScopeControlsAvailable already use for the non-off case.
+  freqKeypad.hidden = radioOff || !scopeRateOff || analogOn;
   // Power button: red while the radio is off (also while powering on), the
   // usual active color once it's on.
   powerButton.classList.toggle("power-off", radioOff);
