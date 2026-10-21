@@ -4086,7 +4086,16 @@ main.controls-off .slider::-moz-range-thumb {
   width: 6px;
   margin-left: -3px;
   border-radius: 3px;
-  background: rgba(232, 129, 42, 0.45); /* same orange as .level-slider-fill */
+  /* same green as the power button when on (.audio-btn.power-on), as a
+     repeating horizontal-stripe pattern instead of a flat fill (Nutzer-Wunsch
+     2026-10-21). */
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(110, 190, 60, 0.65) 0,
+    rgba(110, 190, 60, 0.65) 2px,
+    transparent 2px,
+    transparent 4px
+  );
   pointer-events: none;
 }
 .eqedit-track::after {
