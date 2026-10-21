@@ -22,11 +22,19 @@ a cable. This ensures the fastest UDP/VoIP audio and reliable Wake-on-LAN.
 
 ![Open890RC in the browser](docs/browser.png)
 
+<sub>Desktop browser on a PC</sub>
+
+<img src="docs/ipad.png" width="640" alt="Open890RC as a web app on an iPad">
+
+<sub>Tablet / iPad web app</sub>
+
 <p>
-  <img src="docs/iphone1.png" width="260" alt="Open890RC on a phone, analog meter">
-  <img src="docs/iphone2.png" width="260" alt="Open890RC on a phone">
-  <img src="docs/iphone3.png" width="260" alt="Open890RC on a phone, spectrum and keypad">
+  <img src="docs/iphone1.png" width="200" alt="Open890RC on a phone, analog meter">
+  <img src="docs/iphone2.png" width="200" alt="Open890RC on a phone">
+  <img src="docs/iphone3.png" width="200" alt="Open890RC on a phone, spectrum and keypad">
 </p>
+
+<sub>Android / iPhone web app</sub>
 
 Examples for Server Settings & Browser config:
 
