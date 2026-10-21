@@ -24,13 +24,13 @@ a cable. This ensures the fastest UDP/VoIP audio and reliable Wake-on-LAN.
 <sub>Desktop browser on PC</sub>
 
 <img src="docs/ipad.png" width="640" alt="Open890RC as a web app on an iPad"><br>
-<sub>Tablet / iPad web app mode</sub>
+<sub>Tablet/iPad web app mode</sub>
 
 <p>
   <img src="docs/iphone1.png" width="200" alt="Open890RC on a phone, analog meter">
   <img src="docs/iphone2.png" width="200" alt="Open890RC on a phone">
   <img src="docs/iphone3.png" width="200" alt="Open890RC on a phone, spectrum and keypad"><br>
-  <sub>Android / iPhone web app mode</sub>
+  <sub>Android/iPhone web app mode</sub>
 </p>
 
 Examples for Server Settings & Browser config:
@@ -131,7 +131,7 @@ GOOS=windows GOARCH=amd64 go build -o open890rc.exe ./cmd/open890rc
 GOOS=darwin  GOARCH=arm64 go build -o open890rc-mac ./cmd/open890rc
 ```
 
-## Use it as an app on the iPhone
+## Use it as a web app on the iPhone
 
 Open Open890RC from the Home Screen like a normal app, without the Safari address bar:
 
