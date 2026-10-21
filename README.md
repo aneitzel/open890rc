@@ -13,8 +13,7 @@ integration of an SPE amplifier (more to come). A lot of hams reported problems 
 to work over the internet, since it needs both KNS ports (60000 and 60001) forwarded. Open890RC
 solves that limitation: **only one port needs to be open, the web server itself** (TCP, default
 8080, changeable via `-web`). Browser ↔ server runs entirely over this one HTTPS port (including
-the WebSockets for control, RX/TX audio, and the waterfall) — none of that needs a separate port
-exposed.
+the WebSockets for control, RX/TX audio, and the waterfall).
 
 ![How Open890RC fits together: TS-890S, computer running the web server, browsers on laptop and phone](docs/overview.svg)
 
