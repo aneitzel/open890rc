@@ -783,6 +783,8 @@
   }
   overlay.addEventListener("pointerup", endDrag);
   overlay.addEventListener("pointercancel", endDrag);
+  // long press / right click on the scope: no context or callout menu
+  overlay.addEventListener("contextmenu", (event) => event.preventDefault());
 
   // A very faint grid over the spectrum trace only (the top spectrumHeight rows of the
   // overlay), not over the waterfall below: 8 horizontal and 11 vertical lines
