@@ -43,8 +43,10 @@ Examples for Server Settings & Browser config:
 
 ## Features
 
-- TS-890 power off/on (via Wake-on-LAN)
-- No client software required, all inside a webbrowser 
+- Remote TS-890 power on/off (via Wake-on-LAN)
+- **No client software required, your station inside a webbrowser**
+- **Multiclient (optional share station with friends/club)** Several users at same time!
+- Granular users rights for TX, PA & Admin (ideal for new radio amateurs who dont own proper trx/antenna yet)
 - Frequency (digit wheel, direct entry, click/drag on the waterfall), mode, bands, VFO A/B
 - AGC, ATT, preamp, antenna, NR, NB1/NB2 with their settings, beat canceller, RX/TX equalizer,
   speech processor, antenna tuner
@@ -53,8 +55,6 @@ Examples for Server Settings & Browser config:
 - S meter, power, SWR and ALC, as bars or as an analog needle instrument
 - Band scope: spectrum and waterfall with max hold, smoothing and level controls
 - RX audio in the browser (raw PCM or Opus), TX audio from the browser microphone
-- **Multiclient (several browsers at the same time sharing one radio session)**
-- Login for users outside the local network, rights per user for TX, PA & Admin
 - Interface languages: **English, German, Italian, Spanish** (chosen per client browser)
 - Optional SPE Expert 1.5K amplifier control over a serial port (on/off, tune, standby/operate, power level)
 
@@ -110,8 +110,7 @@ so the server uses HTTPS. On first start it creates its own certificate authorit
 and a server certificate for the host name and all IP addresses of the machine.
 To get rid of the browser warning, install that CA once on each device: open
 **Settings** (gear next to AUDIO) → **HTTPS**, download the certificate and add
-it to the trusted certificates of your system or browser. After import the cert
-must be manually set to trusted on some platforms. After that the warning stays
+it to the trusted certificates of your browser or system. After that the warning stays
 away, even when the server certificate is renewed (new IP address, expiry).
 
 Keep `open890rc-ca.pem` and `open890rc-ca-key.pem` (created next to the program).
@@ -145,8 +144,7 @@ Browsers in the local network need no login and count as administrators.
 Everybody else (for example over a VPN or the internet) has to log in with a user
 that an administrator creates in the settings. Put the server behind your own
 protection (VPN such as Tailscale, or a reverse proxy) before exposing it to the
-internet, and use at least a strong password. There is no further authentication
-inside the local network.
+internet, and use at least a strong password.
 
 ## Building
 
