@@ -1042,13 +1042,6 @@
   let micGainNode = null;
   let micChainOutNode = null; // final mic-chain node before micWorklet (gain, or the limiter when on) — tapped for recording, see "Recording" below
   let micGainValue = MIC_GAIN_DEFAULT;
-  try {
-    // Same key/format as app.js's mic gain slider (tenths).
-    const saved = Number(localStorage.getItem("open890rc.micGain"));
-    if (saved >= 1) micGainValue = Math.min(saved / 10, MIC_GAIN_MAX);
-  } catch (e) {
-    // localStorage unavailable — keep the default.
-  }
   let micWs = null;
   let micOpusEncoder = null;
   let micTimestamp = 0;
@@ -1059,6 +1052,7 @@
   // just updates the stored value; the node picks it up once created).
   window.hamrcSetMicGain = function (value) {
     micGainValue = Math.min(value, MIC_GAIN_MAX);
+    saveMicGainForDevice(micDeviceId, Math.round(micGainValue * 10));
     if (micGainNode) micGainNode.gain.value = micGainValue;
     if (meterGainNode) meterGainNode.gain.value = micGainValue;
   };
@@ -1276,11 +1270,38 @@
   // playback profile (no switch to the headset profile). Per browser.
   const MIC_DEVICE_KEY = "open890rc.micDevice";
   let micDeviceId = "";
+  // Every microphone needs its own gain, so the gain is remembered per
+  // device id ("" = system default): a JSON map {deviceId: tenths}. The old
+  // single "open890rc.micGain" value stays as fallback for devices without an
+  // entry yet.
+  const MIC_GAIN_MAP_KEY = "open890rc.micGainByDevice";
+  function loadMicGainForDevice(id) {
+    try {
+      const map = JSON.parse(localStorage.getItem(MIC_GAIN_MAP_KEY) || "{}");
+      const v = Number(map[id]);
+      if (v >= 1) return Math.min(v / 10, MIC_GAIN_MAX);
+      const legacy = Number(localStorage.getItem("open890rc.micGain"));
+      if (legacy >= 1) return Math.min(legacy / 10, MIC_GAIN_MAX);
+    } catch (e) {
+      // localStorage unavailable or damaged — use the default.
+    }
+    return MIC_GAIN_DEFAULT;
+  }
+  function saveMicGainForDevice(id, tenths) {
+    try {
+      const map = JSON.parse(localStorage.getItem(MIC_GAIN_MAP_KEY) || "{}");
+      map[id] = tenths;
+      localStorage.setItem(MIC_GAIN_MAP_KEY, JSON.stringify(map));
+    } catch (e) {
+      // not remembered, still applied
+    }
+  }
   try {
     micDeviceId = localStorage.getItem(MIC_DEVICE_KEY) || "";
   } catch {
     // default device
   }
+  micGainValue = loadMicGainForDevice(micDeviceId);
   // getUserMedia with the chosen device; a device that is gone (unplugged,
   // Bluetooth off) falls back to the default instead of blocking TX.
   async function getMicStream(constraints) {
@@ -1305,6 +1326,20 @@
     const devices = all
       .filter((d) => d.kind === "audioinput" && d.deviceId !== "default" && d.deviceId !== "communications")
       .map((d, i) => ({ id: d.deviceId, label: d.label || `Mikrofon ${i + 1}` }));
+    // The stored microphone is gone (ids are only real once permission exists):
+    // capture already falls back to the default, so show and use it as such.
+    if (micDeviceId && devices.some((d) => d.id) && !devices.some((d) => d.id === micDeviceId)) {
+      micDeviceId = "";
+      try {
+        localStorage.removeItem(MIC_DEVICE_KEY);
+      } catch {
+        // valid for this page only
+      }
+      micGainValue = loadMicGainForDevice("");
+      if (micGainNode) micGainNode.gain.value = micGainValue;
+      if (meterGainNode) meterGainNode.gain.value = micGainValue;
+      if (window.hamrcOnMicGainChanged) window.hamrcOnMicGainChanged(Math.round(micGainValue * 10));
+    }
     return { devices, selected: micDeviceId };
   };
   window.hamrcSetMicDevice = async function (id) {
@@ -1315,6 +1350,11 @@
     } catch {
       // valid for this page only
     }
+    // each microphone has its own gain: switch to the remembered one
+    micGainValue = loadMicGainForDevice(micDeviceId);
+    if (micGainNode) micGainNode.gain.value = micGainValue;
+    if (meterGainNode) meterGainNode.gain.value = micGainValue;
+    if (window.hamrcOnMicGainChanged) window.hamrcOnMicGainChanged(Math.round(micGainValue * 10));
     // level meter: rebuild on the new device (no RX restart, it keeps running)
     const cb = meterCb;
     if (cb && stopMeterCapture()) await window.hamrcStartMicMeter(cb);

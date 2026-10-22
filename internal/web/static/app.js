@@ -119,7 +119,10 @@ const PROC_LEVEL_MAX = 100;
 const MIC_GAIN_STORAGE_KEY = "open890rc.micGain";
 function loadMicGainRaw() {
   try {
-    const v = Number(localStorage.getItem(MIC_GAIN_STORAGE_KEY));
+    // per-microphone map written by audio.js, legacy single value as fallback
+    const map = JSON.parse(localStorage.getItem("open890rc.micGainByDevice") || "{}");
+    const dev = localStorage.getItem("open890rc.micDevice") || "";
+    const v = Number(map[dev]) >= 1 ? Number(map[dev]) : Number(localStorage.getItem(MIC_GAIN_STORAGE_KEY));
     if (v >= 1) return Math.min(Math.round(v), MIC_GAIN_MAX);
   } catch (e) {
     // localStorage unavailable — use the default.
@@ -1706,11 +1709,7 @@ const micGainSlider = makeSlider(
   "mic-gain-slider",
   (value) => {
     browserMicGainRaw = value;
-    try {
-      localStorage.setItem(MIC_GAIN_STORAGE_KEY, String(value));
-    } catch (e) {
-      // not remembered, still applied
-    }
+    // audio.js remembers it for the selected microphone
     window.hamrcSetMicGain(value / 10);
   },
   MIC_GAIN_MAX,
@@ -1722,6 +1721,11 @@ const micGainSlider = makeSlider(
 // (audio.js loads after this script, so it wouldn't exist yet); audio.js reads
 // the same localStorage key for its own starting gain.
 micGainSlider.applyValue(browserMicGainRaw);
+// Switching the microphone loads that microphone's remembered gain.
+window.hamrcOnMicGainChanged = (raw) => {
+  browserMicGainRaw = raw;
+  micGainSlider.applyValue(raw);
+};
 
 // A click-to-open dropdown (used for both mode and band): shows `items` as a
 // menu under `buttonId`, calls onSelect with the clicked one's value, and
