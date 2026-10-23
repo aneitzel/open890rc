@@ -1267,6 +1267,12 @@ tuneButton.addEventListener("click", () => {
 });
 
 const txButton = document.getElementById("tx-button");
+// Big TX button inside Simple Mode (Nutzer-Wunsch 2026-10-24, see
+// #simple-mode-overlay/setSimpleMode further down) — shares every bit of
+// txButton's click/hold-to-talk/title/disabled wiring below via txButtons,
+// rather than a second parallel implementation that could drift out of sync.
+const txAreaButton = document.getElementById("tx-area-button");
+const txButtons = [txButton, txAreaButton];
 function isCwMode(mode) {
   return mode === "CW" || mode === "CW-R";
 }
@@ -1296,7 +1302,7 @@ function syncMicNow() {
 // state.tx, so another client's TX still lights it.
 function paintTxButton() {
   const on = currentTX || myTX;
-  txButton.classList.toggle("active", on);
+  for (const b of txButtons) b.classList.toggle("active", on);
   meterTxToggle.classList.toggle("active", on);
 }
 function setTX(enabling) {
@@ -1341,28 +1347,30 @@ let txHoldMode = true; // default: TX only while held; only a stored "0" means t
 try {
   if (localStorage.getItem(TX_HOLD_KEY) === "0") txHoldMode = false;
 } catch (_) {}
-txButton.addEventListener("click", (e) => {
-  if (txHoldMode) return; // handled by the pointer events below
-  toggleTX();
-});
-txButton.addEventListener("pointerdown", (e) => {
-  if (!txHoldMode || e.button > 0 || txButton.disabled) return;
-  e.preventDefault();
-  if ((currentTX && !myTX) || currentTX || pttHeld) return;
-  try {
-    txButton.setPointerCapture(e.pointerId);
-  } catch (_) {}
-  pttHeld = true;
-  setTX(true);
-});
-for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) {
-  txButton.addEventListener(ev, () => {
-    if (txHoldMode) pttRelease();
+for (const btn of txButtons) {
+  btn.addEventListener("click", (e) => {
+    if (txHoldMode) return; // handled by the pointer events below
+    toggleTX();
+  });
+  btn.addEventListener("pointerdown", (e) => {
+    if (!txHoldMode || e.button > 0 || btn.disabled) return;
+    e.preventDefault();
+    if ((currentTX && !myTX) || currentTX || pttHeld) return;
+    try {
+      btn.setPointerCapture(e.pointerId);
+    } catch (_) {}
+    pttHeld = true;
+    setTX(true);
+  });
+  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    btn.addEventListener(ev, () => {
+      if (txHoldMode) pttRelease();
+    });
+  }
+  btn.addEventListener("contextmenu", (e) => {
+    if (txHoldMode) e.preventDefault(); // long press on iOS/Android must not open a menu
   });
 }
-txButton.addEventListener("contextmenu", (e) => {
-  if (txHoldMode) e.preventDefault(); // long press on iOS/Android must not open a menu
-});
 
 // Push-to-talk on the T key (the letter, whatever the keyboard layout): transmit
 // while it is held, back to receive on release (Nutzer-Wunsch 2026-10-10; Ctrl and
@@ -3555,22 +3563,23 @@ rxServoSlipInput.addEventListener("change", () => {
   if (window.hamrcSetRxServoSlip) window.hamrcSetRxServoSlip(rxServoSlipInput.checked);
 });
 function updateTxButtonTitle() {
-  txButton.title = txHoldMode
+  const title = txHoldMode
     ? 'Senden, solange gedrückt (Alternativ "t" auf Tastatur gedrückt halten)'
     : 'Senden/Empfangen umschalten (Alternativ "t" auf Tastatur drücken)';
+  for (const b of txButtons) b.title = title;
 }
 const txModeSelect = document.getElementById("tx-button-mode");
 txModeSelect.value = txHoldMode ? "hold" : "toggle";
 txModeSelect.addEventListener("change", () => {
   if (txHoldMode) pttRelease();
   txHoldMode = txModeSelect.value === "hold";
-  txButton.classList.toggle("tx-hold", txHoldMode);
+  for (const b of txButtons) b.classList.toggle("tx-hold", txHoldMode);
   updateTxButtonTitle();
   try {
     localStorage.setItem(TX_HOLD_KEY, txHoldMode ? "1" : "0");
   } catch (_) {}
 });
-txButton.classList.toggle("tx-hold", txHoldMode);
+for (const b of txButtons) b.classList.toggle("tx-hold", txHoldMode);
 updateTxButtonTitle();
 const micKeepWarmInput = document.getElementById("mic-keep-warm");
 micKeepWarmInput.addEventListener("change", () => {
@@ -4153,54 +4162,52 @@ document.addEventListener("keydown", (e) => {
   kpPress(key);
 });
 
-// "Analog" (phone only, next to SPEC): shows the analog gauge + its mode keys in
-// the spectrum area instead of the spectrum/keypad. The gauge and keys live in
-// the (phone-hidden) desktop markup; while shown, those very nodes are moved into
-// #analog-panel (ids, needle animation and key handlers keep working) and put
-// back when it is switched off. Turning it on switches the spectrum off (and
-// SPEC back on turns it off), so only one of the three views is ever visible.
-const analogPanel = document.getElementById("analog-panel");
-const analogToggleButton = document.getElementById("analog-toggle-button");
-let analogOn = false;
-let analogHome = null; // [{node, parent, next}]
-function setAnalogView(on) {
-  if (on === analogOn) return;
-  analogOn = on;
+// Simple Mode (phone only, Nutzer-Wunsch 2026-10-24): one big overlay with
+// the frequency on top, the analog gauge + its mode keys below that, and the
+// big TX button at the bottom, replacing the earlier separate "Analog"/"TX"
+// spectrum-area swaps. #freq, the gauge and the mode keys all live in their
+// normal spot (#freq always in the main layout; the gauge/keys in the
+// phone-hidden desktop markup); while shown, those very nodes are moved into
+// their own container here (ids, needle animation, digit tap-to-set and key
+// handlers all keep working, since they're the SAME elements, just
+// relocated) and put back when it closes — same relocate-don't-clone trick
+// those swaps already used. Unlike those, this is a real modal overlay (see
+// #simple-mode-overlay), so it does NOT touch scopeRateOff/freqKeypad/SPEC
+// at all — the spectrum and the keypad just keep doing whatever they were
+// doing underneath.
+const simpleModeOverlay = document.getElementById("simple-mode-overlay");
+const simpleModeFreq = document.getElementById("simple-mode-freq");
+const simpleModeGauge = document.getElementById("simple-mode-gauge");
+const simpleModeButton = document.getElementById("simple-mode-button");
+let simpleModeOn = false;
+let simpleModeHome = null; // [{node, dest, parent, next}]
+function setSimpleMode(on) {
+  if (on === simpleModeOn) return;
+  simpleModeOn = on;
   if (on) {
-    analogHome = [document.getElementById("meter-analog"), document.querySelector(".meter-mode-row")].map((node) => ({
-      node,
-      parent: node.parentNode,
-      next: node.nextSibling,
-    }));
-    for (const h of analogHome) analogPanel.appendChild(h.node);
+    simpleModeHome = [
+      { node: freqEl, dest: simpleModeFreq },
+      { node: document.getElementById("meter-analog"), dest: simpleModeGauge },
+      { node: document.querySelector(".meter-mode-row"), dest: simpleModeGauge },
+    ].map(({ node, dest }) => ({ node, dest, parent: node.parentNode, next: node.nextSibling }));
+    for (const h of simpleModeHome) h.dest.appendChild(h.node);
   } else {
     // reverse order so each node's remembered "next" sibling is already in place
-    for (const h of [...analogHome].reverse()) h.parent.insertBefore(h.node, h.next);
-    analogHome = null;
+    for (const h of [...simpleModeHome].reverse()) h.parent.insertBefore(h.node, h.next);
+    simpleModeHome = null;
   }
-  analogPanel.hidden = !on;
-  analogToggleButton.classList.toggle("active", on);
-  freqKeypad.hidden = !scopeRateOff || on;
+  simpleModeOverlay.hidden = !on;
 }
-analogToggleButton.addEventListener("click", () => {
-  if (analogOn) {
-    setAnalogView(false); // back to the keypad (spectrum is off)
-    return;
-  }
-  if (!scopeRateOff) {
-    scopeRateOff = true;
-    scopeToggleButton.classList.remove("active");
-    setScopeControlsAvailable(false);
-    if (window.hamrcSetWaterfallEnabled) window.hamrcSetWaterfallEnabled(false);
-  }
-  setAnalogView(true);
+simpleModeButton.addEventListener("click", () => setSimpleMode(true));
+simpleModeOverlay.addEventListener("click", (e) => {
+  if (e.target === simpleModeOverlay) setSimpleMode(false); // backdrop click
 });
 window.matchMedia("(max-width: 799px)").addEventListener("change", (e) => {
-  if (!e.matches) setAnalogView(false);
+  if (!e.matches) setSimpleMode(false);
 });
 
 function setScopeControlsAvailable(available) {
-  freqKeypad.hidden = available || analogOn;
+  freqKeypad.hidden = available;
   document.querySelector(".waterfall-row").classList.toggle("scope-is-off", !available);
   if (available) {
     kpEntry = "";
@@ -4220,7 +4227,6 @@ const scopeToggleButton = document.getElementById("scope-toggle-button");
 scopeToggleButton.classList.add("active");
 scopeToggleButton.addEventListener("click", () => {
   scopeRateOff = !scopeRateOff;
-  if (!scopeRateOff && analogOn) setAnalogView(false); // SPEC on replaces the gauge
   scopeToggleButton.classList.toggle("active", !scopeRateOff);
   setScopeControlsAvailable(!scopeRateOff);
   if (window.hamrcSetWaterfallEnabled) window.hamrcSetWaterfallEnabled(!scopeRateOff);
@@ -4503,6 +4509,19 @@ function setControlsDisabled(disabled) {
   // <button>, so this also blocks the click without touching audio.js at
   // all — .audio-btn:disabled already has the usual dimmed/no-pointer look).
   document.getElementById("audio-button").disabled = disabled;
+  // #tx-area-button (the big TX button in #simple-mode-overlay, 2026-10-24)
+  // lives in an overlay, a sibling of <main> entirely outside it — the
+  // generic loop above only ever walks <main>'s own children, so it never
+  // reaches ANY overlay's content (by design: a trigger button inside
+  // <main>, e.g. #simple-mode-button itself, already goes inert normally,
+  // which is enough to stop a NEW overlay from opening; this only matters if
+  // the radio drops while one is already open). Unlike #audio-button this
+  // button already has its OWN disabled attribute for a different reason
+  // (txAllowed, see applyAdminUi) — inert instead of disabled here keeps the
+  // two reasons independent, same split #tx-button itself has (inert from
+  // the generic loop, disabled from applyAdminUi) since it IS reached by
+  // that loop, living inside <main> itself.
+  document.getElementById("tx-area-button").inert = disabled;
 }
 
 // PA access (LAN, admins, users with the PA flag): everybody else gets the PA
@@ -4615,8 +4634,8 @@ function applyState(state) {
   // it is force-hidden here independently of the wrap's own opacity —
   // recomputed every call (not just when radioOff just became true) so it
   // also correctly un-hides again on reconnect, same formula
-  // setAnalogView/setScopeControlsAvailable already use for the non-off case.
-  freqKeypad.hidden = radioOff || !scopeRateOff || analogOn;
+  // setScopeControlsAvailable already uses for the non-off case.
+  freqKeypad.hidden = radioOff || !scopeRateOff;
   // Power button: red while the radio is off (also while powering on), the
   // usual active color once it's on.
   powerButton.classList.toggle("power-off", radioOff);
@@ -5298,7 +5317,7 @@ debugFilterEl.addEventListener("keydown", (e) => {
 function applyAdminUi(isAdmin, hasPa, hasTx) {
   paAllowed = !!hasPa;
   txAllowed = !!hasTx;
-  txButton.disabled = !txAllowed;
+  for (const b of txButtons) b.disabled = !txAllowed;
   if (lastState) applyState(lastState);
   setupButton.hidden = !isAdmin;
 }

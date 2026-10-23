@@ -3215,55 +3215,85 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
   display: none;
 }
 
-/* Phone: the "Analog" key in the spectrum config row swaps the spectrum area for
-   the analog gauge with its PWR/SWR/ALC/IC keys (moved here from the hidden
-   desktop markup by app.js while shown). With the spectrum off, the config row
-   shrinks to SPEC + Analog. */
-.analog-toggle-group {
+/* Phone: the "Simple Mode" key in the spectrum config row opens
+   #simple-mode-overlay (Nutzer-Wunsch 2026-10-24) — shown only once the
+   spectrum itself is off (Nutzer-Wunsch 2026-10-24, revised: initially this
+   was always visible since it is a full overlay, not a spectrum-area swap
+   like the old separate Analog/TX keys it replaces — reverted back to the
+   same scope-is-off gating those had). */
+.simple-mode-group {
   display: none;
-}
-.analog-panel {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  background: #141414;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  padding: 0 0.6rem 0.3rem;
-}
-.analog-panel[hidden] {
-  display: none;
-}
-.analog-panel .meter-analog {
-  display: block;
-  width: 100%;
-  height: auto;
-  min-height: 0;
-}
-.analog-panel .meter-mode-row {
-  display: flex;
-  justify-content: center;
-  gap: 1.2rem;
-  margin-top: 0.4rem;
 }
 @media (max-width: 799px) {
-  .analog-toggle-group {
+  .simple-mode-group {
     display: flex;
   }
   .waterfall-row.scope-is-off > :not(.scope-keep) {
     display: none;
   }
-  /* SPEC on = the user chose the spectrum: no Analog key then */
-  .waterfall-row:not(.scope-is-off) .analog-toggle-group {
+  /* SPEC on = the user chose the spectrum: no Simple Mode key then */
+  .waterfall-row:not(.scope-is-off) .simple-mode-group {
     display: none;
   }
-  /* SPEC and Analog keep their place whatever else is shown in the row */
   .waterfall-row {
     justify-content: flex-start;
     width: 100%; /* full width, not shrink-to-fit + centred by the parent */
-    gap: 0.3rem; /* with the Analog key the full row has to fit the phone width */
+    gap: 0.3rem;
   }
+}
+
+/* Simple Mode overlay (Nutzer-Wunsch 2026-10-24): analog meter (+ PWR/SWR/
+   ALC/IC mode keys) on top, a big TX button well below it. Wider/taller than
+   the default 280px .overlay-panel — this one is meant to fill most of the
+   phone screen, not sit as a small dialog. No explicit close button — a
+   click on the backdrop (the dimmed area outside the panel) closes it, see
+   the click handler on #simple-mode-overlay itself in app.js; overflow-y
+   just in case a short viewport can't fit the now much taller TX button. */
+#simple-mode-overlay .overlay-panel.simple-mode-panel {
+  width: min(94vw, 420px);
+  max-height: 90dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+/* #freq relocated in here (Nutzer-Wunsch 2026-10-24, "grösser und im LCD-
+   Design wie im normal mobileview"): kept at its own real 4.8rem (not scaled
+   down) to actually match the normal mobile view's size/look. At that size
+   it needs .overlay-panel's own 1.5rem side padding back (343px available in
+   the normal mobile view at the project's 375px minimum-width target, vs.
+   this panel's narrower min(94vw,420px) minus that padding) — negative
+   margins cancel exactly that padding for this row only ("full bleed"),
+   giving back slightly MORE width than the normal view has at the same
+   375px, measured live to confirm it fits with no overflow. */
+.simple-mode-freq {
+  text-align: center;
+  margin: 0 -1.5rem 1rem;
+}
+.simple-mode-gauge {
+  display: flex;
+  flex-direction: column;
+}
+.simple-mode-gauge .meter-analog {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+}
+.simple-mode-gauge .meter-mode-row {
+  display: flex;
+  justify-content: center;
+  gap: 1.2rem;
+  margin-top: 0.4rem;
+}
+.simple-mode-tx {
+  /* much more air above it, and 3x the height (Nutzer-Wunsch 2026-10-24,
+     was 1.5rem/6rem) */
+  margin-top: 5rem;
+  width: 100%;
+  height: 18rem;
+  font-size: 2.6rem;
+  border-width: 3px;
+  border-radius: 14px;
 }
 
 /* Connected clients in the Traffic window: small list, one client per line, same
@@ -3666,14 +3696,15 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
    (fixed 150px height, see the min-width:800px block above) — the CLONE
    mounted in here (the original stays where it is, see openMeterOverlay)
    needs its own rule, same "let the SVG's own aspect ratio govern" approach
-   as .analog-panel .meter-analog (phone's "Analog" view) uses for the same
-   reason. */
+   as .simple-mode-gauge .meter-analog (phone's Simple Mode) uses for the
+   same reason. */
 #meter-overlay .meter-analog {
   display: block;
   width: 100%;
   height: auto;
   min-height: 0;
-  margin-bottom: 0.8rem;
+  /* more air to the three sliders below (Nutzer-Wunsch 2026-10-23), was 0.8rem */
+  margin-bottom: 1.6rem;
 }
 /* The real #meter-analog while its live copy is shown in #meter-overlay
    (see openMeterOverlay, app.js) — same box/size, just nothing drawn, so
@@ -4171,8 +4202,10 @@ main.controls-off .slider::-moz-range-thumb {
 }
 
 /* "hold to talk" TX button: no text selection, no iOS callout, no scroll/zoom gesture
-   stealing the touch while it is held */
-#tx-button.tx-hold {
+   stealing the touch while it is held — #tx-area-button (2026-10-24) shares the
+   same hold-to-talk wiring in app.js, so it needs the same protection. */
+#tx-button.tx-hold,
+#tx-area-button.tx-hold {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
