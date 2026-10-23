@@ -1694,6 +1694,13 @@ main {
    reasoning/same scoping as #connect-actions above. */
 #meter-overlay .overlay-actions {
   justify-content: space-between;
+  /* More air from the sliders above (Nutzer-Wunsch 2026-10-23). padding-top,
+     not margin-top: .overlay-panel is a plain block container (no flex), so
+     a margin here would just COLLAPSE with the last label's own 0.75rem
+     margin-bottom (adjacent sibling margins collapse to their max, not
+     their sum) — confirmed live, margin-top:0.75rem had no visible effect
+     at all since it matched that 0.75rem exactly. Padding doesn't collapse. */
+  padding-top: 0.75rem;
 }
 
 .overlay-actions button {
