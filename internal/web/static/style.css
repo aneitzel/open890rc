@@ -915,11 +915,13 @@ main {
   box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
 }
 .meter-mode-btn.active .mm-slit {
-  background: #ffb020;
-  box-shadow: 0 0 6px #ffb020;
+  /* yellowish-green (Nutzer-Wunsch 2026-10-23: more toward yellow than the
+     power button/busy LED's green) */
+  background: rgb(170, 205, 40);
+  box-shadow: 0 0 6px rgb(170, 205, 40);
 }
 .meter-mode-btn.active {
-  color: #ffd27a;
+  color: #cfe085;
 }
 
 /* Static dial rebuilt from open890rc_smeter.bmp (colours sampled from it). */
