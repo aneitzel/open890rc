@@ -4589,7 +4589,6 @@ function applyState(state) {
   if (state.scopeSpanHz && document.activeElement !== scopeSpanSelect) {
     scopeSpanSelect.value = String(state.scopeSpanHz);
   }
-  setupButton.classList.toggle("power-on", state.connected);
   updateConnectToggle(state.connected);
 
   // The server broadcasts the full state on every change, including the
