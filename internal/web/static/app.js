@@ -3160,7 +3160,18 @@ document.getElementById("meter-overlay-reset").addEventListener("click", () => {
   meterFallSlider.applyValue(meterFallMs);
   meterReleaseSlider.applyValue(meterReleasePct);
 });
-onLongPress(document.getElementById("meter-analog"), openMeterOverlay);
+// #meter-analog sits inside .meter-block, which setControlsDisabled
+// deliberately never marks [inert] (the needle must stay legible — readable
+// at 0 — even with the radio off, same reasoning as .waterfall-wrap's own
+// exemption there). But that exemption also left this long-press live:
+// Nutzer-Report 2026-10-23, the needle-feel settings overlay could still be
+// opened while showing "OFF". Nothing to adjust on a meter that is not
+// moving, so gated here on controlsDisabled directly (same pattern
+// waterfall.js's own scopeEnabled gating uses for its click-to-tune, since
+// the generic inert mechanism can't reach an exempt element either).
+onLongPress(document.getElementById("meter-analog"), () => {
+  if (!controlsDisabled) openMeterOverlay();
+});
 
 // Setup overlay: lets the browser tell the server which radio to dial,
 // instead of that being fixed by CLI flags at server startup. Opened by the
