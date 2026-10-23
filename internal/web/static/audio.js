@@ -199,12 +199,12 @@
     // 3rd argument) but still goes at the very end, after the codec — app.js
     // doesn't know the codec, so it can't place it there itself.
     const codec = activeMode ? activeMode.toUpperCase() : "";
-    let artist = nowPlayingSubtitle && codec ? `${nowPlayingSubtitle} · ${codec}` : nowPlayingSubtitle || codec;
-    if (nowPlayingNR) artist = artist ? `${artist} + ${nowPlayingNR}` : nowPlayingNR;
+    let artist = nowPlayingSubtitle && codec ? `${nowPlayingSubtitle}·${codec}` : nowPlayingSubtitle || codec;
+    if (nowPlayingNR) artist = artist ? `${artist}·${nowPlayingNR}` : nowPlayingNR;
     navigator.mediaSession.metadata = new MediaMetadata({
       title: nowPlayingTitle,
       artist,
-      album: nowPlayingAlbum || "Open890RC",
+      album: nowPlayingAlbum || "TS890 Open890RC",
       // Without this, the OS Now Playing widget falls back to a tiny
       // generic placeholder instead of real cover art (Nutzer-Report,
       // 2026-09-29, screenshot comparison against another app's much

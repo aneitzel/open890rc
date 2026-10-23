@@ -4633,7 +4633,7 @@ function applyState(state) {
     // ("FILA 3kHz") — audio.js hängt daran noch den Stream-Typ (PCM/OPUS) an,
     // da nur audio.js weiss, welcher Codec gerade aktiv ist.
     const title = `${(currentHz / 1e6).toFixed(3)} MHz ${state.mode}`;
-    const filterLabel = FILTER_LABELS[state.ifFilter] || "";
+    const filterLabel = { A: "FIL1", B: "FIL2", C: "FIL3" }[state.ifFilter] || "";
     const widthText = state.audioWidthHz ? formatKHzCompact(state.audioWidthHz) : "";
     const artist = filterLabel && widthText ? `${filterLabel} ${widthText}` : filterLabel;
     // Same NR/AI-NR derivation as nrCycle's own display sync further below —
