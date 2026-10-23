@@ -784,15 +784,27 @@ main {
   display: inline-block;
 }
 
+/* Physical-key look (Nutzer-Wunsch 2026-10-23, TS-990 reference photo — the
+   keys to the right of its main display specifically: darker and more
+   plastic/raised than the flat .btn-group key-face, not just that same
+   gradient reused). Darker base gradient + an inset top highlight/bottom
+   shadow for a convex, moulded-plastic edge, plus a real drop shadow
+   underneath so the key reads as raised off the panel rather than flush
+   with it. */
 .mode-button {
   font: inherit;
-  font-size: 1.5rem;
-  letter-spacing: 0.15em;
-  color: var(--accent);
-  background: none;
-  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #b8bcc0;
+  background: linear-gradient(180deg, #4a4e52 0%, #2c2f32 45%, #1a1c1e 100%);
+  border: 1px solid #0a0b0c;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.45),
+    0 2px 3px rgba(0, 0, 0, 0.5);
   cursor: pointer;
-  padding: 0.1rem 1.3rem 0.1rem 0.3rem;
+  padding: 0.3rem 1.5rem 0.3rem 0.6rem;
   border-radius: 4px;
   position: relative;
 }
@@ -800,15 +812,16 @@ main {
 .mode-button::after {
   content: "";
   position: absolute;
-  right: 0.3rem;
+  right: 0.6rem;
   top: 50%;
   translate: 0 -25%;
-  border: 0.3rem solid transparent;
-  border-top-color: var(--accent);
+  border: 0.28rem solid transparent;
+  border-top-color: #b8bcc0;
+  opacity: 0.7;
 }
 
 .mode-button:hover {
-  background: rgba(255, 157, 0, 0.15);
+  filter: brightness(1.15);
 }
 
 .mode-menu {
