@@ -14,6 +14,7 @@
     en: {
     "Signal anklicken oder rechts/links wischen": "Click the signal or swipe right/left",
     "Einstellungen": "Settings",
+    "Client Einstellungen": "Client settings",
     "Sprache": "Language",
     "Sprache der Oberfläche (nur dieser Browser)": "Interface language (this browser only)",
     "Schließen": "Close",
@@ -176,6 +177,7 @@
     it: {
     "Signal anklicken oder rechts/links wischen": "Tocca il segnale o scorri a destra/sinistra",
     "Einstellungen": "Impostazioni",
+    "Client Einstellungen": "Impostazioni client",
     "Sprache": "Lingua",
     "Sprache der Oberfläche (nur dieser Browser)": "Lingua dell'interfaccia (solo questo browser)",
     "Schließen": "Chiudi",
@@ -355,6 +357,7 @@
     es: {
     "Signal anklicken oder rechts/links wischen": "Toca la señal o desliza a la derecha/izquierda",
     "Einstellungen": "Ajustes",
+    "Client Einstellungen": "Ajustes del cliente",
     "Sprache": "Idioma",
     "Sprache der Oberfläche (nur dieser Browser)": "Idioma de la interfaz (solo este navegador)",
     "Schließen": "Cerrar",
