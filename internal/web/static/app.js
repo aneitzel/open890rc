@@ -4463,11 +4463,31 @@ function setControlsDisabled(disabled) {
     // would only fight the former and the generic inert the latter already
     // covers — without this, the waterfall-wrap ended up stuck at 0.4
     // instead of snapping back to fully visible once "Spektrum aus" showed.
-    if (el.matches(".status-row, .meter-block, #freq, .status-message-desktop, .waterfall-wrap")) continue;
+    if (el.matches(".status-row, .meter-block, #freq, .status-message-desktop, .waterfall-wrap")) {
+      // Blur has a WIDER scope than the inert-exemption above (Nutzer-Wunsch
+      // 2026-10-23: "alles unter der ersten Zeile" — really everything,
+      // including the meter and the "OFF" frequency display, unlike their
+      // inert-exemption which only exists to keep them clickable/legible as
+      // static content). Only .status-row itself and its message line
+      // (effectively still "the first line") stay sharp.
+      el.classList.toggle("off-blur", disabled && !el.matches(".status-row, .status-message-desktop"));
+      continue;
+    }
     el.inert = disabled;
+    el.classList.toggle("off-blur", disabled);
   }
   // The meter-mode keys sit inside .meter-block (skipped above for the status message).
   for (const el of document.querySelectorAll(".meter-mode-row")) el.inert = disabled;
+  // #audio-button sits inside .status-row itself, so the loop above never
+  // reaches it (the whole top bar — setup, power, audio — is deliberately
+  // left usable, see this function's own opening comment). But starting the
+  // RX audio stream makes no sense with no radio connected, and leaving it
+  // clickable let you open it while "OFF" was showing (Nutzer-Wunsch
+  // 2026-10-23) — so it alone, not the rest of that row, is explicitly
+  // disabled/re-enabled here via the native disabled attribute (a real
+  // <button>, so this also blocks the click without touching audio.js at
+  // all — .audio-btn:disabled already has the usual dimmed/no-pointer look).
+  document.getElementById("audio-button").disabled = disabled;
 }
 
 // PA access (LAN, admins, users with the PA flag): everybody else gets the PA

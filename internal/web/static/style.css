@@ -3854,6 +3854,21 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
   }
 }
 
+/* Radio off / not connected: a light blur on everything below the status
+   row (Nutzer-Wunsch 2026-10-23), on top of the existing opacity dim/inert
+   below — toggled in setControlsDisabled, which already walks the real
+   (non-display:contents) boxes under <main> for the same reason (a filter,
+   like opacity, has no effect on a display:contents element — no box to
+   paint it on). Deliberately a WIDER set than that function's own
+   inert-exemption list: the meter/frequency/waterfall stay un-inert (so
+   e.g. the frequency digits can still show "OFF" as static content) but
+   still get blurred here, unlike .status-row and its message line which
+   stay fully sharp. */
+.off-blur {
+  filter: blur(3px);
+  transition: filter 0.3s ease;
+}
+
 /* Radio off / not connected (Nutzer-Wunsch 2026-10-11, extended to phone
    2026-10-15 — "auf dem mobile sind nach power off noch die LEDs auf den
    Buttons an": this whole block used to sit inside a desktop-only
