@@ -4470,7 +4470,22 @@ function setControlsDisabled(disabled) {
       // inert-exemption which only exists to keep them clickable/legible as
       // static content). Only .status-row itself and its message line
       // (effectively still "the first line") stay sharp.
-      el.classList.toggle("off-blur", disabled && !el.matches(".status-row, .status-message-desktop"));
+      //
+      // .meter-block itself is a special case (Nutzer-Report 2026-10-23: on
+      // phone, the WakeOnLan "bitte warten" message was unreadable while
+      // powering on): blurring .meter-block as a whole also blurs #status-
+      // info, its own direct child and the ONLY place that message shows on
+      // phone (the desktop echo, #status-info-desktop, is a separate element
+      // already excluded above) — filter has no way to exempt a descendant
+      // from its ancestor's blur. So the meter proper (#meter-tx-toggle,
+      // .meter-block's OTHER direct child — holds the S/SWR bars, the
+      // desktop analog gauge and .meter-mode-row) gets blurred directly
+      // instead of .meter-block, leaving #status-info untouched.
+      if (el.matches(".meter-block")) {
+        document.getElementById("meter-tx-toggle")?.classList.toggle("off-blur", disabled);
+      } else {
+        el.classList.toggle("off-blur", disabled && !el.matches(".status-row, .status-message-desktop"));
+      }
       continue;
     }
     el.inert = disabled;
