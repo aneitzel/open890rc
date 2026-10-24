@@ -3253,7 +3253,10 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
    just in case a short viewport can't fit the now much taller TX button. */
 #simple-mode-overlay .overlay-panel.simple-mode-panel {
   width: min(94vw, 420px);
-  max-height: 90dvh;
+  /* slightly taller (Nutzer-Wunsch 2026-10-24, was 90dvh) — the overlay
+     backdrop centers it (.overlay's own align-items:center), so a taller
+     panel grows upward as much as downward from that centre. */
+  max-height: 96dvh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -3270,6 +3273,30 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
 .simple-mode-freq {
   text-align: center;
   margin: 0 -1.5rem 1rem;
+}
+/* .brand-row's own tight negative margins (see its base rule) are tuned for
+   its spot in the normal main layout, right against the freq digits there —
+   too close here (Nutzer-Wunsch 2026-10-24: "mehr Abstand zur
+   Frequenzanzeige"), scoped to Simple Mode only so the main layout's own
+   spacing stays untouched. */
+.simple-mode-panel .brand-row {
+  margin-bottom: 1.2rem;
+}
+/* Status/error messages (connection lost, PA warnings, WakeOnLan progress,
+   ...) are otherwise hidden behind this full-screen overlay (Nutzer-Wunsch
+   2026-10-24: "diese sollen sichtbar sein") — shown here instead, right
+   above the frequency as asked. .status-message is auto-synced by app.js's
+   existing statusEls (every element with that class gets the same text/
+   classes, no extra JS needed), but its base rule absolutely positions it
+   over the S/SWR meter in the main layout specifically — reset back to
+   normal flow here. Still collapses to nothing via the base rule's own
+   .status-message:empty when there is no message. */
+.simple-mode-panel .status-message {
+  position: static;
+  transform: none;
+  width: 100%;
+  max-width: none;
+  margin: 0 0 1rem;
 }
 .simple-mode-gauge {
   display: flex;
@@ -3289,8 +3316,8 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
 }
 .simple-mode-tx {
   /* much more air above it, and 3x the height (Nutzer-Wunsch 2026-10-24,
-     was 1.5rem/6rem) */
-  margin-top: 5rem;
+     was 1.5rem/6rem) — margin-top halved again right after (was 5rem). */
+  margin-top: 2.5rem;
   width: 100%;
   height: 18rem;
   font-size: 2.6rem;

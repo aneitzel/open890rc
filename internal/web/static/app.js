@@ -1380,7 +1380,20 @@ for (const btn of txButtons) {
 // no PTT while typing in a field, with a dialog open, without radio, during a tune,
 // with Ctrl/Alt/Cmd held (browser shortcuts such as Ctrl+T = new tab), or when TX
 // was already started with the mouse.
-const PTT_OVERLAYS = ["eq-overlay", "eqedit-overlay", "nr-overlay", "nb-overlay", "txmon-overlay", "proc-settings-overlay", "filter-settings-overlay", "audio-overlay"];
+const PTT_OVERLAYS = [
+  "eq-overlay",
+  "eqedit-overlay",
+  "nr-overlay",
+  "nb-overlay",
+  "txmon-overlay",
+  "proc-settings-overlay",
+  "filter-settings-overlay",
+  "audio-overlay",
+  // Easy Mode has its own giant TX button (Nutzer-Wunsch 2026-10-24) — the
+  // "t" key is just another way to drive the exact same thing, no reason to
+  // block it while this one is open.
+  "simple-mode-overlay",
+];
 const isPttKey = (e) => typeof e.key === "string" && e.key.toLowerCase() === "t";
 let pttHeld = false; // the key is down and started this TX
 function pttRelease() {

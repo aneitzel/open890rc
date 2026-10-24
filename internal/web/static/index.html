@@ -940,6 +940,13 @@
      on the backdrop closes it, same pattern as #meter-overlay below. -->
 <div id="simple-mode-overlay" class="overlay" hidden>
   <div class="overlay-panel simple-mode-panel">
+    <div class="brand-row">
+      <img class="brand-logo" src="kenwood-logo.png" alt="KENWOOD" draggable="false">
+      <span class="brand-model"><span class="brand-model-sub">HF/50MHz TRANSCEIVER</span><span class="brand-model-name">TS-890</span></span>
+    </div>
+    <!-- status-message: auto-synced, statusEls (app.js) captures every
+         .status-message element present at load, this one included. -->
+    <div class="status-message simple-mode-status"></div>
     <div id="simple-mode-freq" class="simple-mode-freq"></div>
     <div id="simple-mode-gauge" class="simple-mode-gauge"></div>
     <button type="button" id="tx-area-button" class="tx-button simple-mode-tx" title="Senden/Empfangen umschalten (gedrückt halten = Senden)">TX</button>
