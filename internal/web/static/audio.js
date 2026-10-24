@@ -1036,6 +1036,7 @@
   const MIC_GAIN_DEFAULT = 1.5;
   const MIC_GAIN_MAX = 2.5; // keep in sync with app.js's own MIC_GAIN_MAX (tenths)
   let micCtx = null;
+  let micRateWarned = false; // see the sampleRate check in ensureMicPlumbing
   let micStream = null;
   let micSourceNode = null; // the MediaStreamAudioSourceNode built from micStream — kept so releaseMicCapture can disconnect just this, see its own comment
   let micWorklet = null;
@@ -1503,6 +1504,21 @@
       console.error(
         `audio: mic AudioContext runs at ${micCtx.sampleRate}Hz, not the requested ${RADIO_SAMPLE_RATE}Hz — TX audio to the radio will be the wrong speed/pitch.`
       );
+      // Console-only was easy to miss entirely (Nutzer-Frage 2026-10-24) —
+      // this is a real quality problem (wrong speed/pitch, not just
+      // slightly off), the operator should actually see it. Once per
+      // session, not on every ensureMicPlumbing rebuild: the condition
+      // doesn't change between rebuilds on the same browser, so repeating
+      // the alert would just be noise without new information. TX itself
+      // still proceeds — garbled audio beats no audio at all.
+      if (!micRateWarned) {
+        micRateWarned = true;
+        window.alert(
+          window.t(
+            `Mikrofon läuft mit ${micCtx.sampleRate}Hz statt den benötigten ${RADIO_SAMPLE_RATE}Hz — TX-Ton zum Radio wird in falscher Geschwindigkeit/Tonhöhe ankommen.`
+          )
+        );
+      }
     }
 
     await micCtx.audioWorklet.addModule("mic-capture-processor.js");
