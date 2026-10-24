@@ -122,6 +122,54 @@
     return Math.round(((v - floor) * 255) / (255 - floor));
   }
 
+  // Auto-headroom for strong signals (Nutzer-Wunsch 2026-10-25): once Floor
+  // auto-tracks up near the noise median (see updateAutoLevel below), the
+  // remaining [floor, 255] span above it is narrow, so even a moderately
+  // strong signal's remapSpectrum() result already clears SPECTRUM_MAX and
+  // pegs flat against the top (intentional in itself, see SPECTRUM_MAX's own
+  // comment — open890 does the same — but the operator wants real headroom
+  // for genuinely strong signals instead).
+  //
+  // Deliberately NOT the same shape as Floor's own auto-tracking: that one
+  // follows the MEDIAN of every line continuously, which is exactly why it
+  // must stay separate from this — reacting to the line's average/typical
+  // level would pull the trace up during plain noise too, with nothing
+  // actually clipping ("wenn wir es dauerhaft machen wird das Spectrum auch
+  // bei Rauschen hochgezogen"). This instead reacts only to the line's PEAK:
+  // a plain multiplicative scale (<=1) that only ever moves when that peak
+  // would actually clip against SPECTRUM_MAX, snapping down immediately (no
+  // frame should visibly clip) and decaying back toward 1 — i.e. back to
+  // today's exact fixed behaviour — once nothing needs the headroom
+  // anymore. Being a flat multiplicative factor rather than a soft-knee
+  // curve, it does shrink every bin in a line by the same proportion while
+  // active, so a quiet bin sitting right next to a genuinely strong, clipping
+  // one dips slightly too for as long as that peak lasts — a one-line,
+  // self-correcting side effect of reacting per-line, not the permanent,
+  // band-wide inflation of plain noise the operator was specifically ruling
+  // out above (nothing happens at all on a line with no clipping peak).
+  let spectrumAutoScale = 1;
+  let spectrumAutoLastMs = 0;
+  const SPECTRUM_AUTO_RELEASE_SECONDS = 5; // time to drift back to scale 1 once idle
+  function updateSpectrumAutoScale(bytes, x0, x1) {
+    let maxV = 0;
+    for (let x = x0; x < x1; x++) {
+      const v = remapSpectrum(bytes[x]);
+      if (v > maxV) maxV = v;
+    }
+    const nowMs = performance.now();
+    const elapsedMs = spectrumAutoLastMs ? nowMs - spectrumAutoLastMs : 0;
+    spectrumAutoLastMs = nowMs;
+    if (maxV > 0 && maxV * spectrumAutoScale > SPECTRUM_MAX) {
+      // Snap, not ease: a peak clipping even for one frame is exactly what
+      // this exists to avoid, so there is no "attack time" here.
+      spectrumAutoScale = SPECTRUM_MAX / maxV;
+      return;
+    }
+    if (spectrumAutoScale < 1 && elapsedMs > 0) {
+      spectrumAutoScale = Math.min(1, spectrumAutoScale + elapsedMs / (SPECTRUM_AUTO_RELEASE_SECONDS * 1000));
+    }
+  }
+
   function hue2rgb(p, q, t) {
     if (t < 0) t += 1;
     if (t > 1) t -= 1;
@@ -401,6 +449,7 @@
     const x0 = Math.max(0, -off); // first bin that lands on the canvas
     const x1 = Math.min(n, spectrumWidth - off); // one past the last
     if (x1 <= x0) return;
+    updateSpectrumAutoScale(bytes, x0, x1);
 
     if (maxHoldEnabled && maxHoldValues) {
       const nowMs = performance.now();
@@ -416,7 +465,7 @@
         }
       }
       for (let x = x0; x < x1; x++) {
-        const v = Math.min(remapSpectrum(bytes[x]), SPECTRUM_MAX);
+        const v = Math.min(remapSpectrum(bytes[x]) * spectrumAutoScale, SPECTRUM_MAX);
         const px = x + off;
         if (v > maxHoldValues[px]) maxHoldValues[px] = v;
       }
@@ -439,7 +488,7 @@
     spectrumCtx.beginPath();
     spectrumCtx.moveTo(x0 + off, spectrumHeight);
     for (let x = x0; x < x1; x++) {
-      const v = Math.min(remapSpectrum(bytes[x]), SPECTRUM_MAX);
+      const v = Math.min(remapSpectrum(bytes[x]) * spectrumAutoScale, SPECTRUM_MAX);
       const y = spectrumHeight - (v / SPECTRUM_MAX) * spectrumHeight;
       spectrumCtx.lineTo(x + off, y);
     }
