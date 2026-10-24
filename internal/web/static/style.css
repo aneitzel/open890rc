@@ -2749,6 +2749,8 @@ main [inert] {
   font-weight: 700;
   min-height: 0;
   cursor: pointer;
+  /* a bit darker than the plain --key-face (Nutzer-Wunsch 2026-10-24) */
+  filter: brightness(0.8);
 }
 .kp-key:hover { filter: brightness(1.15); }
 .kp-key:active {
