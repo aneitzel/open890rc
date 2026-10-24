@@ -448,6 +448,9 @@ func main() {
 	// Mode-change hook for the TX/RX equalizers (set further down, after the
 	// equalizer state exists).
 	var onModeChanged func()
+	// TX-confirmed hook for the VoIP auto sync (set further down, after that
+	// machinery exists) — see its own assignment for why.
+	var onRadioTXConfirmed func(radioTX bool)
 	onMsg := func(msg string) {
 		if len(msg) == 5 && strings.HasPrefix(msg, "EQT0") {
 			select {
@@ -531,6 +534,10 @@ func main() {
 
 		if st.Update(msg) {
 			broadcastState()
+			if onRadioTXConfirmed != nil {
+				radioTX, _, _ := st.TXFlags()
+				onRadioTXConfirmed(radioTX)
+			}
 		}
 		enforceAmpPower()
 
@@ -1892,9 +1899,14 @@ func main() {
 	// stream sometimes drifts into a state with a delayed echo that only a
 	// ##VP0/##VP1 cycle clears (see the notes), so the server repeats that
 	// cycle on its own every N minutes (1-10, default 5, on by default).
-	// It waits while the radio transmits or tunes (TX audio uses the same
-	// VoIP link, untested whether a reset would cut it) and when nobody is
-	// listening, and restarts its window whenever the setting changes.
+	// It waits while the radio tunes and when nobody is listening, and
+	// restarts its window whenever the setting changes.
+	//
+	// This periodic version is a trial run the operator intends to remove
+	// once the TX-triggered reset below (added 2026-10-24) is confirmed
+	// sufficient on its own — kept here unmodified for now, running
+	// alongside it, specifically so the two can be compared/either one
+	// relied on as a fallback while that's still being decided.
 	var voipCfg struct {
 		Auto    *bool `json:"auto"` // nil = never saved = on
 		Minutes int   `json:"minutes"`
@@ -1930,6 +1942,49 @@ func main() {
 		lastRXSync.Store(time.Now().UnixNano()) // a full new window
 		broadcastState()
 		return nil
+	}
+	// TX-triggered RX stream reset (2026-10-24, Nutzer-Wunsch): fires the
+	// instant the radio confirms it is now transmitting (onMsg, every
+	// incoming CAT line — front-panel PTT included, not just this tool's own
+	// TX button) if the last such reset was 10+ seconds ago, completely
+	// independent of the VOIP auto sync setting above — on/off/minutes there
+	// make no difference here, by design (Nutzer-Wunsch: "Unabhängig was im
+	// auto sync steht oder ob dieser überhaupt aktiviert ist"). Deliberately
+	// its own lastTXReset, not the auto sync's lastRXSync, so the two stay
+	// fully decoupled (easy to rip the auto sync block back out later without
+	// touching this one, which is the plan if this alone turns out to be
+	// enough). onPCM already skips broadcasting the real radio-origin RX
+	// audio to every listener while radioTX is true (the link is simplex,
+	// mic relay takes over instead — see onPCM's own comment), so the
+	// ~150ms ##VP0/##VP1 gap this causes on the RADIO's own RTP sender is
+	// inaudible to literally everyone for that whole window. TX audio itself
+	// (mic -> radio) is a fully separate UDP flow (TXSender, see
+	// internal/audio/tx.go) that ##VP0/##VP1 — a CAT command about the
+	// radio's RX-direction sender only — has no code-level connection to;
+	// confirmed by inspection, still NOT yet confirmed against real
+	// hardware. Runs resetRXAudio in its own goroutine: onMsg is the hot
+	// path for every incoming CAT line and must not block on the
+	// ~150-250ms the CAT round trip takes.
+	const txResetCooldown = 10 * time.Second
+	var prevRadioTXForReset bool
+	var lastTXReset atomic.Int64 // unix nanoseconds, 0 = never
+	onRadioTXConfirmed = func(radioTX bool) {
+		wasTX := prevRadioTXForReset
+		prevRadioTXForReset = radioTX
+		if !radioTX || wasTX {
+			return // only the false->true edge
+		}
+		if time.Since(time.Unix(0, lastTXReset.Load())) < txResetCooldown {
+			return
+		}
+		lastTXReset.Store(time.Now().UnixNano())
+		go func() {
+			if err := resetRXAudio(); err != nil {
+				log.Printf("audio: TX-triggered RX stream reset failed: %v", err)
+			} else {
+				log.Printf("audio: RX stream reset on TX (10s cooldown)")
+			}
+		}()
 	}
 	go func() {
 		lastRXSync.Store(time.Now().UnixNano())
