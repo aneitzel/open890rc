@@ -3252,6 +3252,7 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
    the click handler on #simple-mode-overlay itself in app.js; overflow-y
    just in case a short viewport can't fit the now much taller TX button. */
 #simple-mode-overlay .overlay-panel.simple-mode-panel {
+  position: relative; /* anchors .simple-mode-exit in the corner */
   width: min(94vw, 420px);
   /* slightly taller (Nutzer-Wunsch 2026-10-24, was 90dvh) — the overlay
      backdrop centers it (.overlay's own align-items:center), so a taller
@@ -3260,6 +3261,29 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+/* Backdrop-click-to-close alone (app.js) turned out not discoverable enough
+   (Nutzer-Wunsch 2026-10-25: "damit man weiss wie man das overlay beendet")
+   — a small, deliberately unobtrusive "×" back in the corner just as a
+   visual hint; the backdrop click still works the same as before. */
+.simple-mode-exit {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  font-size: 0.85rem;
+  line-height: 1;
+  opacity: 0.5;
+  cursor: pointer;
+}
+.simple-mode-exit:hover,
+.simple-mode-exit:active {
+  opacity: 0.9;
 }
 /* #freq relocated in here (Nutzer-Wunsch 2026-10-24, "grösser und im LCD-
    Design wie im normal mobileview"): kept at its own real 4.8rem (not scaled

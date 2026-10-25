@@ -4212,6 +4212,7 @@ function setSimpleMode(on) {
   simpleModeOverlay.hidden = !on;
 }
 simpleModeButton.addEventListener("click", () => setSimpleMode(true));
+document.getElementById("simple-mode-exit").addEventListener("click", () => setSimpleMode(false));
 simpleModeOverlay.addEventListener("click", (e) => {
   if (e.target === simpleModeOverlay) setSimpleMode(false); // backdrop click
 });
