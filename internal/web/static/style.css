@@ -3298,6 +3298,11 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
   text-align: center;
   margin: 0 -1.5rem 1rem;
 }
+/* 90% of .freq's own fixed 4.8rem (Nutzer-Wunsch 2026-10-25) — #freq's id
+   selector already outranks the base .freq class rule, no !important needed. */
+.simple-mode-freq #freq {
+  font-size: 4.32rem;
+}
 /* .brand-row's own tight negative margins (see its base rule) are tuned for
    its spot in the normal main layout, right against the freq digits there —
    too close here (Nutzer-Wunsch 2026-10-24: "mehr Abstand zur
