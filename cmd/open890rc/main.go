@@ -451,6 +451,52 @@ func main() {
 	// TX-confirmed hook for the VoIP auto sync (set further down, after that
 	// machinery exists) — see its own assignment for why.
 	var onRadioTXConfirmed func(radioTX bool)
+
+	// Every message from the radio is read and dispatched by ONE goroutine
+	// (radio.Conn's readLoop calls onMsg synchronously, one message at a
+	// time, before reading the next). Band-scope ("##DD2") lines are cheap
+	// to dispatch (a non-blocking hub broadcast), but a normal status line
+	// (S-meter, PC, SWR, TX flag, ...) triggers st.Update + broadcastState,
+	// a full JSON marshal of the whole snapshot plus a fan-out to every /ws
+	// client — synchronously, on that same goroutine. The radio sends a
+	// burst of exactly these status lines around every TX/RX transition, so
+	// that burst could delay dispatch of a "##DD2" line interleaved right
+	// behind it, which showed up as the waterfall stuttering around TX/RX
+	// switching. Moving the non-urgent state processing to its own
+	// goroutine keeps onMsg itself fast, so a slow burst there can never
+	// delay the next band-scope line.
+	stateMsgs := make(chan string, 128)
+	go func() {
+		for msg := range stateMsgs {
+			if st.Update(msg) {
+				broadcastState()
+				if onRadioTXConfirmed != nil {
+					radioTX, _, _ := st.TXFlags()
+					onRadioTXConfirmed(radioTX)
+				}
+			}
+			enforceAmpPower()
+
+			// The radio's "MG" query returns a stale, frozen mic-gain value
+			// the whole time PROC is on — a SET still applies underneath,
+			// but only shows up in a query once PROC is off (verified live:
+			// setting MG while PROC was on echoed the old value, yet
+			// appeared correctly the moment PROC was switched off). Refresh
+			// it right when it becomes trustworthy and relevant (the UI now
+			// shows the MIC slider).
+			if strings.HasPrefix(msg, "OM0") && onModeChanged != nil {
+				onModeChanged()
+			}
+			if enabled, err := cat.ParseProc(msg); err == nil && !enabled {
+				if conn := rm.current(); conn != nil {
+					if err := conn.Send("MG"); err != nil {
+						log.Printf("main: refreshing mic gain after PROC off failed: %v", err)
+					}
+				}
+			}
+		}
+	}()
+
 	onMsg := func(msg string) {
 		if len(msg) == 5 && strings.HasPrefix(msg, "EQT0") {
 			select {
@@ -532,31 +578,10 @@ func main() {
 			return
 		}
 
-		if st.Update(msg) {
-			broadcastState()
-			if onRadioTXConfirmed != nil {
-				radioTX, _, _ := st.TXFlags()
-				onRadioTXConfirmed(radioTX)
-			}
-		}
-		enforceAmpPower()
-
-		// The radio's "MG" query returns a stale, frozen mic-gain value the
-		// whole time PROC is on — a SET still applies underneath, but only
-		// shows up in a query once PROC is off (verified live: setting MG
-		// while PROC was on echoed the old value, yet appeared correctly the
-		// moment PROC was switched off). Refresh it right when it becomes
-		// trustworthy and relevant (the UI now shows the MIC slider).
-		if strings.HasPrefix(msg, "OM0") && onModeChanged != nil {
-			onModeChanged()
-		}
-		if enabled, err := cat.ParseProc(msg); err == nil && !enabled {
-			if conn := rm.current(); conn != nil {
-				if err := conn.Send("MG"); err != nil {
-					log.Printf("main: refreshing mic gain after PROC off failed: %v", err)
-				}
-			}
-		}
+		// Everything else (state updates, PA enforcement, EQ/mic-gain
+		// follow-ups) is handled off this goroutine — see the comment on
+		// stateMsgs above for why.
+		stateMsgs <- msg
 	}
 
 	opusEncoder, err := audio.NewOpusEncoder()
