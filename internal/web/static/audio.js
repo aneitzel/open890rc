@@ -37,6 +37,7 @@
 
   const volumeSlider = makeSlider("af-slider", (value) => {
     playbackGain = (value / 255) * MAX_VOLUME_GAIN;
+    syncRxGainNode();
     try {
       localStorage.setItem(VOLUME_KEY, value);
     } catch {
@@ -88,6 +89,7 @@
   window.hamrcGetTxRelayVolume = () => txRelayVolumePercent;
   window.hamrcSetTxRelayVolume = (percent) => {
     txRelayVolumePercent = percent;
+    syncRxGainNode();
     try {
       localStorage.setItem(TX_RELAY_VOLUME_KEY, String(percent));
     } catch {
@@ -97,7 +99,25 @@
   };
   window.hamrcSetRemoteTxActive = (active) => {
     remoteTxActive = active;
+    syncRxGainNode();
   };
+
+  // The listening volume (AF slider or TX-relay-mithören slider, see above)
+  // used to be baked into the samples themselves (a per-sample multiply in
+  // pushSamples, before they ever reached the worklet) — which meant the REC
+  // recording, tapped straight off the worklet's output, inherited whatever
+  // the user happened to be listening at (Nutzer-Wunsch 2026-10-25: REC soll
+  // immer mit 100% aufnehmen, unabhängig von der Lautstärke). Fix: the gain
+  // now lives in a real GainNode AFTER the worklet, in the playback path
+  // only (workletNode -> rxGainNode -> dest) — the worklet's own output,
+  // which is exactly where the recording taps (attachRxToRecording), stays
+  // at the true, unscaled signal regardless of what the listener dials in.
+  function currentRxGain() {
+    return remoteTxActive ? txRelayVolumePercent / 100 : playbackGain;
+  }
+  function syncRxGainNode() {
+    if (rxGainNode) rxGainNode.gain.value = currentRxGain();
+  }
 
   // One AUDIO button (on/off) plus a codec dropdown in the audio settings
   // overlay (Nutzer-Wunsch 2026-10-11; before: separate PCM and OPUS buttons).
@@ -125,6 +145,7 @@
 
   let audioCtx = null;
   let workletNode = null;
+  let rxGainNode = null; // listening-volume gain, AFTER the worklet — see syncRxGainNode's comment
   let ws = null;
   let opusDecoder = null;
   let opusTimestamp = 0;
@@ -678,8 +699,11 @@
         window.hamrcReportTrim(event.data.trimmed.before, event.data.trimmed.after, activeMode);
       }
     };
-    workletNode.connect(dest);
-    attachRxToRecording(); // a running recording survives an RX restart
+    rxGainNode = audioCtx.createGain();
+    rxGainNode.gain.value = currentRxGain();
+    workletNode.connect(rxGainNode);
+    rxGainNode.connect(dest);
+    attachRxToRecording(); // taps workletNode directly, i.e. BEFORE rxGainNode — see its comment
     armAudioUnlock();
   }
 
@@ -713,14 +737,6 @@
     if (unlockArmed || audioRunning()) return;
     unlockArmed = true;
     for (const ev of UNLOCK_EVENTS) document.addEventListener(ev, onUnlockGesture, true);
-  }
-
-  function applyGain(samples, gain) {
-    const out = new Float32Array(samples.length);
-    for (let i = 0; i < samples.length; i++) {
-      out[i] = Math.max(-1, Math.min(1, samples[i] * gain));
-    }
-    return out;
   }
 
   // fromRate is the ACTUAL sample rate of `samples`, not an assumption.
@@ -773,9 +789,12 @@
       toPlayRate = RNNOISE_RATE;
     }
 
-    const boosted = applyGain(toPlay, remoteTxActive ? txRelayVolumePercent / 100 : playbackGain);
+    // No gain applied here on purpose — the listening volume lives in
+    // rxGainNode, downstream of the worklet, so the worklet's own output
+    // (what the recording taps) stays the true, unscaled signal. See
+    // syncRxGainNode's comment above.
     const resampled =
-      audioCtx.sampleRate === toPlayRate ? boosted : resampleFloat(boosted, toPlayRate, audioCtx.sampleRate);
+      audioCtx.sampleRate === toPlayRate ? toPlay : resampleFloat(toPlay, toPlayRate, audioCtx.sampleRate);
     workletNode.port.postMessage(resampled, [resampled.buffer]);
   }
 
@@ -810,6 +829,7 @@
       workletNode.disconnect();
       workletNode = null;
     }
+    rxGainNode = null;
     if (audioCtx) {
       audioCtx.close();
       audioCtx = null;
