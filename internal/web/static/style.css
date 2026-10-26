@@ -2360,17 +2360,12 @@ main [inert] {
   }
   .filter-info-row {
     grid-area: filterinfo;
-    /* The "selectors" grid row is taller than the mode/band/filter
-       dropdowns actually need (CSS Grid distributes the analog meter's
-       extra spanned height into the auto row tracks it crosses — the
-       buttons sit top-aligned in that inflated row, leaving ~18px of
-       empty space below them before this row even starts). A plain
-       8px/0.25rem margin-top barely dents that; pulled sharply negative
-       instead so the text sits right under the dropdowns, not centered
-       in the dead space between them and the button row below
-       (2026-10-09 user feedback: still "zu weit weg" at -0.25rem,
-       measured live — real gap was 22px, not the 4px box-gap alone). */
-    margin-top: -1.125rem;
+    /* Nutzer-Wunsch 2026-10-26: mehr Abstand zu den Dropdowns darüber — the
+       -1.125rem below (2026-10-09, see git history for the original "zu
+       nah dran"/"zu weit weg" tuning that landed there) had pulled this row
+       up into a 10px overlap with .selectors-row's own box. 0.75rem instead
+       gives a real, clearly visible ~20px gap (measured live). */
+    margin-top: 0.75rem;
   }
   /* .controls itself becomes a non-rendering pass-through so each of its
      children (still in their original, untouched DOM positions/order —
