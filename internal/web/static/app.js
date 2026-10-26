@@ -589,6 +589,20 @@ try {
   const m = localStorage.getItem("open890rc.meterMode");
   if (m === "swr" || m === "alc" || m === "id") analogMeterMode = m;
 } catch (e) {}
+// Shared by the PWR/SWR/ALC/IC buttons below and the desktop bars-view
+// toggle further down (that one needs ALC data flowing for its own ALC bar
+// even though the needle itself is hidden — see setDesktopMeterView's own
+// comment). The server only streams a given extra meter (ALC/IC) while some
+// client has asked for it (main.go), hence the explicit send here.
+function setAnalogMeterMode(mode) {
+  if (analogMeterMode === mode) return;
+  analogMeterMode = mode;
+  try {
+    localStorage.setItem("open890rc.meterMode", analogMeterMode);
+  } catch (e) {}
+  for (const b of document.querySelectorAll(".meter-mode-btn")) b.classList.toggle("active", b.dataset.mode === analogMeterMode);
+  send({ type: "setMeterMode", mode: analogMeterMode });
+}
 // Needle angle on the dial's SWR row: [bar raw value (see swrToRaw), angle on
 // the SWR circle], tick angles measured off the reference (1, 1.5, 2, 3, 5, end).
 const ANALOG_SWR_R = 572.7;
@@ -864,12 +878,14 @@ function updateMeter(prefix, val) {
 // the shown value towards it (exponential, time-based, ~METER_SMOOTH_TAU_MS).
 const METER_SMOOTH_TAU_MS = 25;
 const meterTarget = { s: 0, swr: 0, alc: 0, id: 0 };
-const meterShown = { s: 0, swr: 0 };
+// "alc" smoothed/drawn too (the desktop ALC bar, see updateMeter's own
+// comment) — "id" isn't, it has no bar, only the analog needle reads it.
+const meterShown = { s: 0, swr: 0, alc: 0 };
 let meterLastFrame = performance.now();
 function meterFrame(now) {
   const alpha = 1 - Math.exp(-(now - meterLastFrame) / METER_SMOOTH_TAU_MS);
   meterLastFrame = now;
-  for (const key of ["s", "swr"]) {
+  for (const key of ["s", "swr", "alc"]) {
     let diff = meterTarget[key] - meterShown[key];
     if (Math.abs(diff) < 0.05) {
       if (diff === 0) continue;
@@ -3194,6 +3210,58 @@ onLongPress(document.getElementById("meter-analog"), () => {
   if (!controlsDisabled) openMeterOverlay();
 });
 
+// Desktop bars-view toggle (Nutzer-Wunsch 2026-10-26): a plain click on the
+// analog gauge (not a long press — that's swallowed by onLongPress above
+// before it ever bubbles here, same mechanism already relied on for the
+// txeq/rxeq buttons) switches the whole meter column over to the phone's own
+// bar meters (plus a third ALC bar, see index.html), instead of the needle.
+// Clicking the bars switches back. Phone-only media query guard: on phone
+// the bars are the only view anyway (no needle to switch away from), and the
+// class this sets has no effect there regardless (see style.css).
+const DESKTOP_METER_VIEW_KEY = "open890rc.desktopMeterView";
+let desktopMeterView = "analog"; // "analog" | "bars"
+try {
+  if (localStorage.getItem(DESKTOP_METER_VIEW_KEY) === "bars") desktopMeterView = "bars";
+} catch (_) {
+  // default
+}
+// The ALC bar needs the server to actually be streaming ALC (RM1) readings,
+// which (same as the needle's own ALC mode) only happens while some client
+// has asked for it (Nutzer-Report 2026-10-26: "ALC bekommt keine Daten,
+// Balken reagiert nicht" — switching to bars-view alone never asked). The
+// needle itself is hidden in bars-view, so forcing analogMeterMode to "alc"
+// here is free to do — but its own last choice (PWR/SWR/ALC/IC) is saved in
+// preBarsNeedleMode and restored on the way back out, so leaving bars-view
+// doesn't leave the needle on a mode the user never actually picked there.
+let preBarsNeedleMode = null;
+function applyDesktopMeterView() {
+  document.querySelector(".meter-block").classList.toggle("desktop-bars-view", desktopMeterView === "bars");
+}
+function setDesktopMeterView(view) {
+  if (view === desktopMeterView) return;
+  if (view === "bars") {
+    preBarsNeedleMode = analogMeterMode;
+    setAnalogMeterMode("alc");
+  } else if (preBarsNeedleMode !== null) {
+    setAnalogMeterMode(preBarsNeedleMode);
+    preBarsNeedleMode = null;
+  }
+  desktopMeterView = view;
+  try {
+    localStorage.setItem(DESKTOP_METER_VIEW_KEY, desktopMeterView);
+  } catch (_) {
+    // the toggle still works, just won't persist across reloads
+  }
+  applyDesktopMeterView();
+}
+applyDesktopMeterView();
+if (desktopMeterView === "bars") setAnalogMeterMode("alc"); // page loaded straight into bars-view
+meterTxToggle.addEventListener("click", (e) => {
+  if (!window.matchMedia("(min-width: 800px)").matches) return;
+  if (e.target.closest(".meter-mode-row")) return; // those buttons have their own click handler
+  setDesktopMeterView(desktopMeterView === "bars" ? "analog" : "bars");
+});
+
 // Setup overlay: lets the browser tell the server which radio to dial,
 // instead of that being fixed by CLI flags at server startup. Opened by the
 // gear icon; closes itself once a connection actually comes up.
@@ -4940,16 +5008,10 @@ function applyState(state) {
 
 buildSegmentMask("segMask");
 buildSegmentMask("segMaskSwr");
+buildSegmentMask("segMaskAlc");
 for (const btn of document.querySelectorAll(".meter-mode-btn")) {
   btn.classList.toggle("active", btn.dataset.mode === analogMeterMode);
-  btn.addEventListener("click", () => {
-    analogMeterMode = btn.dataset.mode;
-    try {
-      localStorage.setItem("open890rc.meterMode", analogMeterMode);
-    } catch (e) {}
-    for (const b of document.querySelectorAll(".meter-mode-btn")) b.classList.toggle("active", b === btn);
-    send({ type: "setMeterMode", mode: analogMeterMode });
-  });
+  btn.addEventListener("click", () => setAnalogMeterMode(btn.dataset.mode));
 }
 updateAnalogNeedle(0);
 requestAnimationFrame(animateAnalogNeedle);
