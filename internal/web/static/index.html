@@ -215,12 +215,27 @@
        own ALC row (ANALOG_ALC_OK_RAW, app.js) and the same digital-bar style
        as S/SWR above — just reusing the existing meter-fill low/high colors
        (cyan = OK, red = overdrive) instead of a second scale, since the
-       gauge's own ALC row has no numbers either. -->
+       gauge's own ALC row has no numbers either. The "ALC" line above the
+       bar marks the still-OK range, same as the real TS-890's own meter
+       (Nutzer-Referenzbild 2026-10-26: "das markiert den Bereich der noch ok
+       ist") — spans exactly the cyan/low half (x=0..175), not the full bar.
+       Solid, not dashed, centred through the text's own height rather than
+       its baseline (Nutzer-Korrektur: "im Original nicht gestrichelt und
+       mittig dem ALC"). Two separate segments with a gap around the letters
+       instead of one line run behind them — a follow-up correction ("darf
+       den Text nicht durchstreichen, ein Stück vor ALC aufhören und
+       dahinter wieder losgehen"): the earlier single-line-behind-text
+       version let the line show through gaps IN individual letters (e.g.
+       the inside of the "A"), which still read as crossing through the
+       word. Gap bounds measured live off the text's own getBBox()
+       (x=74.14, width=26.72 at this font-size) plus 3px padding each side,
+       rounded. -->
   <svg class="meter-svg alc-meter-svg" viewBox="0 0 350 35">
     <mask id="segMaskAlc"></mask>
     <g class="meter-legend" transform="translate(0 15)">
-      <text class="leg-text" y="0" x="0">ALC</text>
-      <text class="leg-text high" y="0" x="175">OK</text>
+      <line class="alc-ok-line" x1="2" y1="-4.5" x2="71" y2="-4.5" />
+      <line class="alc-ok-line" x1="104" y1="-4.5" x2="173" y2="-4.5" />
+      <text class="alc-ok-label" x="87.5" y="0" text-anchor="middle">ALC</text>
     </g>
     <g transform="translate(0 20)">
       <rect x="0" y="0" width="350" height="15" class="meter-bg" />

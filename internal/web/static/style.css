@@ -1080,6 +1080,23 @@ main {
   font-family: monospace;
 }
 
+/* ALC bar's "still OK" marker (index.html has the full reasoning) — a solid
+   red line (as two segments with a gap around "ALC", not one line run
+   behind the letters) sitting at the text's own mid-height, like the real
+   TS-890's own meter. */
+.alc-ok-line {
+  stroke: #cc0000;
+  stroke-width: 1.75px;
+}
+.alc-ok-label {
+  /* Nutzer-Wunsch: "etwas besser zu lesen, grösser machen" — up from the
+     original 10px. */
+  font-size: 13px;
+  font-family: sans-serif;
+  font-weight: 700;
+  fill: #cc0000;
+}
+
 .controls {
   margin-top: 0.4rem;
   display: flex;
@@ -2397,6 +2414,13 @@ main [inert] {
     justify-self: center;
     text-align: center;
     color: var(--text-dim);
+    /* Nutzer-Wunsch 2026-10-26: mehr Abstand zu den grossen Ziffern darüber
+       — #freq's own position:relative; top:1.25rem (see its own comment)
+       shifts its rendered box down without the grid row following along,
+       so this row actually started 12px INTO #freq's own box (measured
+       live) before any margin here. 1.5rem gave a real +12px gap (also
+       measured live); halved on follow-up request to +6px. */
+    margin-top: 1.125rem;
     /* Same retro font as the big frequency display above it, just smaller.
        Went 0.75rem -> 1rem (2026-10-12: "im gleichen Font... leicht grösser
        als aktuell") -> 2rem (2026-10-12 follow-up: "doppelt so gross"). */
