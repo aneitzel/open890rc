@@ -1390,10 +1390,70 @@
       warmMic();
     }
   };
+  // CarPlay (Nutzer-Wunsch 2026-10-29): a phone plugged into a car shows up
+  // as an input (and, where setSinkId exists, output) device labelled
+  // "CarPlay". When it appears, switch to it and keep the mic connection open
+  // (the car's mic route is slow to open and drops without it); when it
+  // disappears, put back what was there before. Acts only on the appear /
+  // disappear transition, so choosing another device by hand while connected
+  // sticks. Labels exist only once mic permission was granted; until then
+  // nothing matches and nothing happens.
+  const CARPLAY_PREV_KEY = "open890rc.carplayPrev";
+  let carPlayPresent = false;
+  async function autoCarPlay() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    let all;
+    try {
+      all = await navigator.mediaDevices.enumerateDevices();
+    } catch {
+      return;
+    }
+    const isCar = (d) => /carplay/i.test(d.label || "");
+    const carIn = all.find((d) => d.kind === "audioinput" && isCar(d));
+    const carOut = all.find((d) => d.kind === "audiooutput" && isCar(d));
+    const present = !!(carIn || carOut);
+    if (present === carPlayPresent) return;
+    carPlayPresent = present;
+    if (present) {
+      console.info("audio: CarPlay device appeared, switching to it");
+      try {
+        localStorage.setItem(
+          CARPLAY_PREV_KEY,
+          JSON.stringify({ mic: micDeviceId, out: outputDeviceId, warm: micKeepWarm })
+        );
+      } catch {
+        // valid for this page only
+      }
+      if (carOut && window.hamrcOutputSelectable) await window.hamrcSetOutputDevice(carOut.deviceId);
+      if (carIn) await window.hamrcSetMicDevice(carIn.deviceId);
+      if (!micKeepWarm) await window.hamrcSetMicKeepWarm(true);
+      return;
+    }
+    console.info("audio: CarPlay device gone, restoring the previous devices");
+    let prev = null;
+    try {
+      prev = JSON.parse(localStorage.getItem(CARPLAY_PREV_KEY) || "null");
+      localStorage.removeItem(CARPLAY_PREV_KEY);
+    } catch {
+      // nothing to restore
+    }
+    if (!prev) return;
+    const stillThere = (kind, id) => !id || all.some((d) => d.kind === kind && d.deviceId === id);
+    if (window.hamrcOutputSelectable) await window.hamrcSetOutputDevice(stillThere("audiooutput", prev.out) ? prev.out : "");
+    await window.hamrcSetMicDevice(stillThere("audioinput", prev.mic) ? prev.mic : "");
+    if (micKeepWarm !== !!prev.warm) await window.hamrcSetMicKeepWarm(!!prev.warm);
+  }
+  autoCarPlay();
   if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
     navigator.mediaDevices.addEventListener("devicechange", () => {
-      if (window.hamrcOnMicDevicesChanged) window.hamrcOnMicDevicesChanged();
-      if (window.hamrcOnOutputDevicesChanged) window.hamrcOnOutputDevicesChanged();
+      autoCarPlay().finally(() => {
+        if (window.hamrcOnMicDevicesChanged) window.hamrcOnMicDevicesChanged();
+      });
+      // Re-check the stored output too, so unplugging it mid-session falls
+      // back to the default right away instead of only at the next page load.
+      applyOutputDevice().finally(() => {
+        if (window.hamrcOnOutputDevicesChanged) window.hamrcOnOutputDevicesChanged();
+      });
     });
   }
 
