@@ -389,7 +389,21 @@
       <button type="button" id="tx-button" class="tx-button" title="Senden/Empfangen umschalten (T-Taste gedrückt halten = Senden)">TX</button>
     </div>
     <div class="ctrl-row mic-proc-row">
-      <div class="btn-group"><button type="button" id="proc-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">PROC</button></div>
+      <!-- PROC and TX MSG share a small vertical stack (.mic-proc-stack) so
+           relocateEqButtonsForLayout (app.js) can keep inserting TX MON/RX
+           EQ/TX EQ as plain row siblings to its left on desktop, exactly as
+           before — only the former PROC-alone slot is now this stack
+           (Nutzer-Wunsch 2026-10-28: "TX MSG unter PROC, beide gleich
+           gross"). TX MSG is desktop-only; on phone the stack just holds
+           PROC by itself, unaffected. -->
+      <div class="mic-proc-stack">
+        <div class="btn-group"><button type="button" id="proc-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">PROC</button></div>
+        <!-- Desktop only (Nutzer-Wunsch, 2026-10-27/2026-10-28) — the
+             radio's six voice message memory channels (recorded CQ calls
+             etc.), see #txmsg-overlay. app.js' onLongPress still opens the
+             overlay; a short click sends/stops the selected channel. -->
+        <div class="btn-group desktop-only-group"><button type="button" id="txmsg-button" title="Sendet die ausgewählte TX Message - lange drücken für Einstellungen">TX MSG</button></div>
+      </div>
     </div>
   </div>
 
@@ -749,6 +763,20 @@
   </div>
 </div>
 
+<!-- Generic confirm dialog (Nutzer-Report 2026-10-27: window.confirm() blocks
+     the whole page's JS thread, including the incoming RX audio stream, so
+     audio audibly stalled for the duration of the native dialog — see
+     showConfirmDialog in app.js for why this overlay replaces it). -->
+<div id="confirm-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <div class="overlay-caption" id="confirm-message"></div>
+    <div class="overlay-actions">
+      <button type="button" id="confirm-cancel">Abbrechen</button>
+      <button type="button" id="confirm-ok">Löschen</button>
+    </div>
+  </div>
+</div>
+
 <div id="login-overlay" class="overlay login-overlay" hidden>
   <form class="overlay-panel" id="login-form" autocomplete="on">
     <div class="login-intro" id="login-intro">
@@ -756,7 +784,7 @@
       <div>TS890 + SPE 1k5 + ZS6BKW</div>
       <div>JN37RE 500 m ü. M</div>
     </div>
-    <label>Benutzer
+    <label>Benutzername
       <input type="text" id="login-user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
     </label>
     <label>Passwort
@@ -962,6 +990,59 @@
     <div class="overlay-actions">
       <button type="button" id="eq-overlay-adjust" data-i18n>Einstellen</button>
       <button type="button" id="eq-overlay-close" data-i18n>Schliessen</button>
+    </div>
+  </div>
+</div>
+
+<!-- TX Messages (desktop only, Nutzer-Wunsch 2026-10-27): the radio's six
+     voice message memory channels (recorded CQ calls etc. for contest use).
+     Rows are built once in app.js (makeTxMsgRow), not hand-written here —
+     six near-identical blocks with per-channel event listeners is exactly
+     the kind of repeated UI this project already builds in JS (EQ effect
+     buttons, NB type buttons). Opening this overlay turns the radio's Voice
+     Message List display on (everything below refuses while it's off, see
+     cat/voicemsg.go) and queries all six channels; closing it turns the
+     list display back off. -->
+<div id="txmsg-overlay" class="overlay" hidden>
+  <div class="overlay-panel txmsg-panel">
+    <h2>TX Nachrichten</h2>
+    <!-- Kein Kanal-Parameter im RE-Befehl selbst (siehe
+         cat.EncodeVoiceMsgRecording) — welcher der sechs Kanäle bespielt
+         wird, bestimmt vermutlich die Cursor-Position in der Liste am
+         Radio-Display selbst, nicht steuerbar von hier. Die Quelle (PB5)
+         wird beim Start der Aufnahme mitgesetzt (Nutzer-Wunsch 2026-10-27:
+         kleines Dropdown neben REC, Default LAN — das ist, was dieses Tool
+         selbst dem Radio zuspielt, aber eine andere Wahl soll möglich
+         bleiben). -->
+    <div class="txmsg-source-row">
+      <button type="button" id="txmsg-rec-button" class="txmsg-rec" title="Aufnahme starten/stoppen">REC</button>
+      <span class="txmsg-remaining" id="txmsg-remaining" title="Verbleibende Aufnahmezeit, alle Kanäle zusammen"></span>
+      <span class="txmsg-source-group">
+        <span class="txmsg-source-label">Aufnahmequelle:</span>
+        <select id="txmsg-source" title="Aufnahmequelle (wird beim Start gesetzt)">
+          <option value="0">Mikrofon</option>
+          <option value="1">ACC 2</option>
+          <option value="2">USB Audio</option>
+          <option value="3" selected>LAN</option>
+        </select>
+      </span>
+    </div>
+    <!-- Only "Wiederholen" stays per row (each channel repeats
+         independently) — PLAY/SEND/STOP/DELETE below act on whichever
+         row's radio is selected (Nutzer-Wunsch 2026-10-27/2026-10-28,
+         revised 2026-10-28: per-row SEND removed again, it now lives in
+         the shared row below between STOP and DELETE). DELETE uses
+         LM<channel>3 (cat.EncodeVoiceMsgDelete) — a separate,
+         per-channel command from RE, see that function's own comment. -->
+    <div class="txmsg-channels" id="txmsg-channels"></div>
+    <div class="txmsg-controls" id="txmsg-controls">
+      <button type="button" id="txmsg-play" class="txmsg-play" title="Lokal anhören (sendet nicht)">PLAY</button>
+      <button type="button" id="txmsg-stop" class="txmsg-stop">STOP</button>
+      <button type="button" id="txmsg-send" class="txmsg-send" title="Senden - das Radio sendet tatsächlich">SEND</button>
+      <button type="button" id="txmsg-delete" class="txmsg-delete" title="Aufnahme auf diesem Kanal löschen">DELETE</button>
+    </div>
+    <div class="overlay-actions">
+      <button type="button" id="txmsg-overlay-close">Schliessen</button>
     </div>
   </div>
 </div>

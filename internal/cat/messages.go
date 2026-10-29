@@ -36,9 +36,18 @@ func MessageText(id int) string {
 		return "TX protection (high temperature)"
 	case id == 7:
 		return "Reference signal input error"
-	case id == 9:
-		return "Backup data corruption"
-	case id >= 10 && id <= 21:
+	// id 9 and id 10 both turned out to fire on ordinary TX Message memory
+	// access — id 9 ("Backup data corruption" per the reference) on plain
+	// local PLAY, id 10 (part of the reference's "010-021 DSP error" range)
+	// on an actual SEND (PB1<channel>1/5, RE1) — confirmed live (Nutzer-
+	// Report, 2026-10-28) even when triggered straight from the front
+	// panel, which shows nothing on its own screen for either. Reading back
+	// a stored voice message apparently reuses these two IDs as routine
+	// status, not as the faults their reference text describes; excluded so
+	// the status line doesn't cry wolf on every normal TX Message.
+	case id == 9, id == 10:
+		return ""
+	case id >= 11 && id <= 21:
 		return "DSP error"
 	case id == 23:
 		return "Hardware error"

@@ -134,6 +134,31 @@ type Controls struct {
 	AmpToggleOper   func() error
 	AmpCycleLevel   func() error
 	AmpTune         func() error
+	// Voice message memory ("TX Messages", desktop only). SetVoiceMsgOverlay
+	// turns the radio's Voice Message List display on/off (PB0) — everything
+	// else refuses while it's off — and, on open, queries all six channels.
+	SetVoiceMsgOverlay func(open bool) error
+	VoiceMsgControl    func(channel, op int) error
+	SetVoiceMsgRepeat  func(channel int, on bool) error
+	SetVoiceMsgName    func(channel int, name string) error
+	// SetVoiceMsgRecording starts/stops a recording on one channel, via LM
+	// (cat.EncodeVoiceMsgRecordStart/Stop) — RE alone has no channel
+	// parameter and could only ever record to whatever the radio's own
+	// on-screen cursor happened to have selected, see
+	// cat.EncodeVoiceMsgRecording's own comment on why that was dropped. On
+	// start, sets the recording source (PB5) first — source is ignored on
+	// stop (cat.VoiceMsgSourceMic/ACC2/USB/LAN).
+	SetVoiceMsgRecording func(channel int, recording bool, source int) error
+	// DeleteVoiceMsg erases a channel's recording (LM<channel>3 — a
+	// different, per-channel command family than RE above, see
+	// cat.EncodeVoiceMsgDelete's own comment).
+	DeleteVoiceMsg func(channel int) error
+	// QuickSendVoiceMsg sends a channel without the overlay having been
+	// opened first (Nutzer-Wunsch 2026-10-28: short click on the TX MSG
+	// button) — PB1 refuses while the Voice Message List display (PB0) is
+	// off, so this turns it on first if needed, same as
+	// SetVoiceMsgOverlay(true) but without that one's full channel re-query.
+	QuickSendVoiceMsg func(channel int) error
 }
 
 // ConnectRequest is what a browser client's setup dialog supplies to (re)dial
@@ -262,6 +287,23 @@ func (s *Server) releaseTXAudio(c *websocket.Conn) {
 	s.txOwnerMu.Unlock()
 }
 
+// TXAudioActive reports whether a browser's mic audio is actively being
+// relayed to the radio right now (claimTXAudio has an owner that sent
+// something within the last 500ms, the same window claimTXAudio itself uses
+// to let a new owner take over). Used by onPCM (main.go) to tell a real PTT
+// transmission — where suppressing the radio's own LAN audio is correct,
+// the mic relay is the only real-time RX-audio-hub source left, see that
+// function's own comment — apart from a TX Message send (PB1<ch>5/RE1,
+// Nutzer-Report 2026-10-29): nothing feeds the mic relay there at all, so
+// blanket-suppressing during every TX left listeners hearing nothing while
+// the radio played/sent a voice message, even though its own LAN audio
+// output keeps carrying it the whole time.
+func (s *Server) TXAudioActive() bool {
+	s.txOwnerMu.Lock()
+	defer s.txOwnerMu.Unlock()
+	return s.txOwner != nil && time.Since(s.txOwnerLast) <= 500*time.Millisecond
+}
+
 // New creates a Server backed by the given hub, state, controls, audio hubs,
 // and waterfall (band scope) hub.
 func New(h *hub.Hub, st *state.State, controls Controls, audioHubs AudioHubs, txAudio TXAudio, waterfall *hub.Hub) *Server {
@@ -291,11 +333,13 @@ type clientMessage struct {
 	Filter     string  `json:"filter"`
 	Rate       string  `json:"rate"`
 	SerialPort string  `json:"serialPort"`
-	Before     float64 `json:"before"` // rxTrim: backlog before the cut, seconds
-	After      float64 `json:"after"`  // rxTrim: backlog after the cut, seconds
-	N          int     `json:"n"`      // rxTrim: how many cuts this page has made so far
-	Values     []int   `json:"values"` // setTxEqBands/setRxEqBands: 18 raw band values
-	Codec      string  `json:"codec"`  // audioCodec: "pcm"/"opus" while RX audio plays, "" once stopped
+	Before     float64 `json:"before"`  // rxTrim: backlog before the cut, seconds
+	After      float64 `json:"after"`   // rxTrim: backlog after the cut, seconds
+	N          int     `json:"n"`       // rxTrim: how many cuts this page has made so far
+	Values     []int   `json:"values"`  // setTxEqBands/setRxEqBands: 18 raw band values
+	Codec      string  `json:"codec"`   // audioCodec: "pcm"/"opus" while RX audio plays, "" once stopped
+	Channel    int     `json:"channel"` // voiceMsgControl/setVoiceMsgRepeat/setVoiceMsgName: 1-6
+	Name       string  `json:"name"`    // setVoiceMsgName: the new channel name, up to 30 characters
 }
 
 // rxTrimTotal counts the browser-side RX audio buffer cuts reported by all
@@ -333,6 +377,24 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 	// client also hides/disables the TX and TUNE controls and never opens
 	// the microphone for such a user, this is the actual enforcement for
 	// anyone who bypasses that (Nutzer-Wunsch 2026-10-18).
+	// Same TX gate for voice messages, but only the one PB1 operation that
+	// actually keys the transmitter (5 = "Begin Transmission Playback",
+	// cat.VoiceMsgOpSend) — play/stop/pause/rewind/fast-forward just
+	// preview locally and stay available to anyone who can open the
+	// overlay at all.
+	if !txOK && msg.Type == "voiceMsgControl" && msg.Value == 5 {
+		log.Printf("web: %s (send) ignored: client %s has no TX access", msg.Type, remote)
+		return
+	}
+	// voiceMsgQuickSend (Nutzer-Wunsch 2026-10-28: short click on the TX MSG
+	// button sends the selected channel directly) always transmits — same
+	// gate as the value==5 case above, there's no non-transmitting variant
+	// of this one.
+	if !txOK && msg.Type == "voiceMsgQuickSend" {
+		log.Printf("web: %s ignored: client %s has no TX access", msg.Type, remote)
+		return
+	}
+
 	if !txOK && (msg.Type == "setTX" || msg.Type == "setTune") {
 		log.Printf("web: %s ignored: client %s has no TX access", msg.Type, remote)
 		return
@@ -561,6 +623,20 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 		err = s.controls.AmpTune()
 	case "ampCycleLevel":
 		err = s.controls.AmpCycleLevel()
+	case "voiceMsgOverlay":
+		err = s.controls.SetVoiceMsgOverlay(msg.Enabled)
+	case "voiceMsgControl":
+		err = s.controls.VoiceMsgControl(msg.Channel, msg.Value)
+	case "setVoiceMsgRepeat":
+		err = s.controls.SetVoiceMsgRepeat(msg.Channel, msg.Enabled)
+	case "setVoiceMsgName":
+		err = s.controls.SetVoiceMsgName(msg.Channel, msg.Name)
+	case "setVoiceMsgRecording":
+		err = s.controls.SetVoiceMsgRecording(msg.Channel, msg.Enabled, msg.Value)
+	case "deleteVoiceMsg":
+		err = s.controls.DeleteVoiceMsg(msg.Channel)
+	case "voiceMsgQuickSend":
+		err = s.controls.QuickSendVoiceMsg(msg.Channel)
 	default:
 		log.Printf("web: unknown client message type %q", msg.Type)
 		return

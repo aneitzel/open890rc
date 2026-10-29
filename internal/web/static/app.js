@@ -256,6 +256,47 @@ function send(msg) {
   }
 }
 
+// Generic yes/no confirm dialog, used anywhere a destructive click (delete a
+// TX Messages recording, delete a user, ...) needs confirmation. NOT
+// window.confirm() — that's a native, synchronous, page-blocking dialog, and
+// blocking the JS thread stalls everything else running on it too, audibly
+// cutting off RX audio while the dialog is open (Nutzer-Report 2026-10-27:
+// "kein Ton mehr im Hintergrund" while a TX Messages delete confirmation was
+// up) — the actual audio decode/playback runs on the AudioWorklet's own
+// thread, but feeding it new samples from the WebSocket's onmessage handler
+// does not, and that's exactly what a blocked main thread stops. This
+// overlay is a normal DOM element, so nothing else on the page pauses.
+// Returns a Promise<boolean> (true = confirmed), same shape window.confirm()
+// had — call sites just needed one `await` added, nothing else.
+const confirmOverlay = document.getElementById("confirm-overlay");
+const confirmMessageEl = document.getElementById("confirm-message");
+const confirmOkButton = document.getElementById("confirm-ok");
+const confirmCancelButton = document.getElementById("confirm-cancel");
+let confirmResolve = null;
+function finishConfirm(result) {
+  if (!confirmResolve) return;
+  confirmOverlay.hidden = true;
+  const resolve = confirmResolve;
+  confirmResolve = null;
+  resolve(result);
+}
+function showConfirmDialog(message, confirmLabel) {
+  confirmMessageEl.textContent = message;
+  confirmOkButton.textContent = confirmLabel || "Löschen";
+  confirmOverlay.hidden = false;
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+  });
+}
+confirmOkButton.addEventListener("click", () => finishConfirm(true));
+confirmCancelButton.addEventListener("click", () => finishConfirm(false));
+confirmOverlay.addEventListener("click", (e) => {
+  if (e.target === confirmOverlay) finishConfirm(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !confirmOverlay.hidden) finishConfirm(false);
+});
+
 // Trailing-edge throttle shared by the sliders: a fast drag/scroll burst
 // collapses into the latest value, sent at most every `intervalMs`, instead
 // of flooding the radio's CAT parser with one command per pixel/tick.
@@ -1324,6 +1365,7 @@ function paintTxButton() {
 function setTX(enabling) {
   if (enabling && !txAllowed) return; // no TX access (listen-only user) — releasing is always fine
   if (enabling) {
+    stopActiveTxMsg(); // Nutzer-Wunsch 2026-10-28: pressing TX also stops an active TX MSG
     myTX = true;
     myTXSeenHigh = false;
     myTXDeadline = performance.now() + 5000; // dropped if the radio never confirms
@@ -2501,6 +2543,309 @@ function closeEqOverlay() {
   eqOverlay.hidden = true;
   eqOverlayKind = null;
 }
+
+// TX Messages (desktop only, Nutzer-Wunsch 2026-10-27): the radio's six
+// voice message memory channels. Opening the overlay turns the radio's
+// Voice Message List display on (PB0) — everything else about voice
+// messages refuses while it's off, see cat/voicemsg.go — and queries all
+// six channels; closing it turns the list display back off. Simple
+// last-client-wins policy, no per-client tracking (same known limitation as
+// the ALC/ID meter's wantMeter in main.go): two browsers both opening this
+// at once isn't handled specially.
+const txMsgOverlay = document.getElementById("txmsg-overlay");
+const txMsgButton = document.getElementById("txmsg-button");
+const txMsgChannelsEl = document.getElementById("txmsg-channels");
+let txMsgOpen = false;
+function openTxMsgOverlay() {
+  if (txMsgOpen) return;
+  txMsgOpen = true;
+  send({ type: "voiceMsgOverlay", enabled: true });
+  txMsgOverlay.hidden = false;
+}
+function closeTxMsgOverlay() {
+  if (!txMsgOpen) return;
+  txMsgOpen = false;
+  send({ type: "voiceMsgOverlay", enabled: false });
+  txMsgOverlay.hidden = true;
+}
+// Short click sends the selected channel; a second short click while it's
+// still active (playing/sending) stops it instead (Nutzer-Wunsch 2026-10-28:
+// "einfacher klick: senden... wenn aktiv und nun erneut ein klick kommt,
+// STOP") — same "short press does the thing, long press configures it"
+// pattern as PROC/TX EQ/RX EQ/the noise blankers below, via onLongPress —
+// long press still opens the overlay to pick which channel, rename it,
+// record, etc. txMsgSelectedChannel defaults to 1 and otherwise keeps
+// whatever was last picked in the overlay, even after it's closed.
+txMsgButton.addEventListener("click", () => {
+  if (!window.matchMedia("(min-width: 800px)").matches) return; // belt and braces: the button is already phone-hidden
+  // Not .disabled like the overlay's own per-row SEND buttons (txAllowed,
+  // see updateTxMsgOverlay) — this button's long press still has to work
+  // for a listen-only user (opening the overlay to preview/rename/record
+  // doesn't transmit), so only the click's own action is skipped here; the
+  // server refuses the command either way (defense in depth).
+  if (!txAllowed) return;
+  if (isTxMsgActive(txMsgLastState)) {
+    send({ type: "voiceMsgControl", channel: txMsgSelectedChannel, value: 0 });
+  } else if (!selectedTxMsgHasContent()) {
+    // Nutzer-Wunsch 2026-10-28: nothing to send on this channel (never
+    // queried yet, or queried and empty) — open the overlay to pick/record
+    // one instead of firing PB15 at an empty channel (which the radio
+    // answered with a "TS890 DSP error" pop-up, Nutzer-Report).
+    openTxMsgOverlay();
+  } else {
+    send({ type: "voiceMsgQuickSend", channel: txMsgSelectedChannel });
+  }
+});
+document.getElementById("txmsg-overlay-close").addEventListener("click", closeTxMsgOverlay);
+txMsgOverlay.addEventListener("click", (e) => {
+  if (e.target === txMsgOverlay) closeTxMsgOverlay();
+});
+
+// Plain seconds, not min:sec — the reference caps every one of these values
+// at 100 (channel length, playback/recording elapsed, remaining recording
+// time) and the radio's own display shows them the same way (Nutzer-Report
+// 2026-10-27, photo of the actual TS-890 screen: "Aufnahme für TX Messages
+// frei = 83sec").
+function formatTxMsgTime(sec) {
+  return `${sec || 0} sec`;
+}
+function txMsgOpLabel(op) {
+  switch (op) {
+    case 1:
+      return "spielt";
+    case 2:
+      return "pausiert";
+    case 3:
+      return "spult vor";
+    case 4:
+      return "spult zurück";
+    case 5:
+      return "sendet";
+    default:
+      return "";
+  }
+}
+// Recording (LM, see cat.EncodeVoiceMsgRecordStart/Stop) + source (PB5,
+// sent on start only) + remaining time (PB6, Nutzer-Wunsch 2026-10-27) —
+// recording targets whichever channel is currently selected (same row
+// selection PLAY/STOP/SEND/DELETE already act on), so REC itself sits above
+// the channel list once, not duplicated per row.
+const txMsgRecButton = document.getElementById("txmsg-rec-button");
+const txMsgSourceSelect = document.getElementById("txmsg-source");
+const txMsgRemainingEl = document.getElementById("txmsg-remaining");
+txMsgRecButton.addEventListener("click", () => {
+  const recording = !txMsgRecButton.classList.contains("active");
+  send({ type: "setVoiceMsgRecording", channel: txMsgSelectedChannel, enabled: recording, value: Number(txMsgSourceSelect.value) });
+});
+
+// Built once (6 near-identical rows, same reasoning as the EQ effect/NB
+// type buttons elsewhere in this file), then just updated on every state
+// broadcast in updateTxMsgOverlay below. SEND and Repeat stay in each row
+// (every channel sends/repeats independently — there's nothing to "select"
+// for those two). One channel is "selected" (a radio button per row, like a
+// normal selection list) and PLAY/STOP/DELETE below the list act on
+// whichever one that is — previously those three had their own copy per
+// row too, the same buttons six times over for actions where only one
+// channel at a time makes sense (Nutzer-Wunsch 2026-10-27/2026-10-28).
+let txMsgSelectedChannel = 1;
+let txMsgLastState = null; // so selecting a different row can refresh the
+// shared controls immediately, without waiting for the next broadcast
+const txMsgRows = [];
+for (let ch = 1; ch <= 6; ch++) {
+  const row = document.createElement("div");
+  row.className = "txmsg-row";
+
+  const radio = document.createElement("input");
+  radio.type = "radio";
+  radio.name = "txmsg-ch-select";
+  radio.className = "txmsg-row-radio";
+  radio.value = String(ch);
+  radio.checked = ch === txMsgSelectedChannel;
+  radio.addEventListener("change", () => {
+    txMsgSelectedChannel = ch;
+    if (txMsgLastState) updateTxMsgOverlay(txMsgLastState);
+  });
+
+  const info = document.createElement("div");
+  info.className = "txmsg-row-info";
+  const header = document.createElement("div");
+  header.className = "txmsg-row-header";
+  const chLabel = document.createElement("span");
+  chLabel.className = "txmsg-row-chlabel";
+  chLabel.textContent = `CH${ch}`;
+  // A real <input>, not just a label (Nutzer-Wunsch 2026-10-27: Kanäle
+  // umbenennbar machen, PB4 set) — commits on blur or Enter, only if the
+  // text actually changed, same "don't fight what the user is typing"
+  // guard the frequency digits use (pendingHz) via lastSentName below.
+  const name = document.createElement("input");
+  name.type = "text";
+  name.className = "txmsg-row-name";
+  name.maxLength = 30;
+  name.placeholder = "(unbenannt)";
+  let lastSentName = "";
+  function commitName() {
+    if (name.disabled || name.value === lastSentName) return;
+    lastSentName = name.value;
+    send({ type: "setVoiceMsgName", channel: ch, name: name.value });
+  }
+  name.addEventListener("blur", commitName);
+  name.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") name.blur();
+  });
+  const length = document.createElement("span");
+  length.className = "txmsg-row-length";
+  header.appendChild(chLabel);
+  header.appendChild(name);
+  header.appendChild(length);
+  const status = document.createElement("div");
+  status.className = "txmsg-row-status";
+  info.appendChild(header);
+  info.appendChild(status);
+
+  // Only "Wiederholen" stays per row (Nutzer-Wunsch 2026-10-28: the per-row
+  // SEND button is gone again — sending now happens via the shared SEND
+  // button below the list, or the TX MSG button itself, both acting on
+  // whichever row is selected).
+  const mini = document.createElement("div");
+  mini.className = "txmsg-row-mini-controls";
+  const repeatLabel = document.createElement("label");
+  repeatLabel.className = "txmsg-row-repeat";
+  const repeatCheck = document.createElement("input");
+  repeatCheck.type = "checkbox";
+  repeatCheck.addEventListener("change", () => send({ type: "setVoiceMsgRepeat", channel: ch, enabled: repeatCheck.checked }));
+  repeatLabel.appendChild(repeatCheck);
+  repeatLabel.appendChild(document.createTextNode("Wiederholen"));
+  mini.appendChild(repeatLabel);
+
+  // Clicking anywhere in the row selects it too (not just the small radio
+  // dot) — except the name input, which needs plain clicks for editing/
+  // caret placement, not a side effect of also selecting the row.
+  row.addEventListener("click", (e) => {
+    if (e.target === name || e.target === radio) return;
+    if (!radio.checked) {
+      radio.checked = true;
+      radio.dispatchEvent(new Event("change"));
+    }
+  });
+
+  row.appendChild(radio);
+  row.appendChild(info);
+  row.appendChild(mini);
+  txMsgChannelsEl.appendChild(row);
+  txMsgRows.push({
+    channel: ch,
+    row,
+    radio,
+    name,
+    getLastSentName: () => lastSentName,
+    setLastSentName: (v) => (lastSentName = v),
+    length,
+    status,
+    repeatCheck,
+  });
+}
+// Shared PLAY/STOP/SEND/DELETE row below the channel list, acting on
+// txMsgSelectedChannel.
+const txMsgPlayBtn = document.getElementById("txmsg-play");
+const txMsgStopBtn = document.getElementById("txmsg-stop");
+const txMsgSendBtn = document.getElementById("txmsg-send");
+const txMsgDeleteBtn = document.getElementById("txmsg-delete");
+txMsgPlayBtn.addEventListener("click", () => send({ type: "voiceMsgControl", channel: txMsgSelectedChannel, value: 1 }));
+txMsgStopBtn.addEventListener("click", () => send({ type: "voiceMsgControl", channel: txMsgSelectedChannel, value: 0 }));
+txMsgSendBtn.addEventListener("click", () => send({ type: "voiceMsgControl", channel: txMsgSelectedChannel, value: 5 }));
+txMsgDeleteBtn.addEventListener("click", async () => {
+  const ch = txMsgSelectedChannel;
+  if (!(await showConfirmDialog(`Aufnahme auf CH${ch} wirklich löschen?`))) return;
+  send({ type: "deleteVoiceMsg", channel: ch });
+});
+
+// Whether the selected channel is currently doing anything at all (playing,
+// sending, paused, winding) — used for the TX MSG button's click-to-stop,
+// the ESC shortcut and the red "sending" LED below. Works whether or not
+// the overlay is open, since txMsgLastState is kept live regardless (see
+// updateTxMsgOverlay).
+function isTxMsgActive(state) {
+  return !!state && state.voiceMsgChannel === txMsgSelectedChannel && state.voiceMsgOp !== 0;
+}
+// Whether the selected channel is known to actually have a recording on it
+// (Nutzer-Wunsch 2026-10-28, see the TX MSG click handler above) — "known"
+// because voiceMsgChannels is only ever populated once the Voice Message
+// List display has been queried at least once this session (overlay opened,
+// or a previous quick-send turned it on); before that, txMsgLastState has
+// no channel data at all and this conservatively returns false, same as an
+// explicitly empty channel — both cases should open the overlay rather than
+// guess.
+function selectedTxMsgHasContent() {
+  const chState = txMsgLastState && txMsgLastState.voiceMsgChannels ? txMsgLastState.voiceMsgChannels[txMsgSelectedChannel - 1] : null;
+  return !!(chState && chState.registered);
+}
+// Red LED only while actually transmitting (op 5), not while just locally
+// previewing (op 1) — matches the "wenn er sendet" wording.
+function updateTxMsgButtonLED(state) {
+  txMsgButton.classList.toggle("active", isTxMsgActive(state) && state.voiceMsgOp === 5);
+}
+// Shared by the ESC key and a TX press (Nutzer-Wunsch 2026-10-28: "ESC
+// taste und druck auf TX stoppen ebenfalls eine aktive TX MSG") — stops
+// whatever the selected channel is currently doing. Deliberately not
+// restricted to op===5 (actually transmitting): stopping a local PLAY
+// preview this way is just as reasonable and costs nothing extra to allow.
+function stopActiveTxMsg() {
+  if (isTxMsgActive(txMsgLastState)) {
+    send({ type: "voiceMsgControl", channel: txMsgSelectedChannel, value: 0 });
+  }
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") stopActiveTxMsg();
+});
+
+// Only the per-row/per-channel-list parts below do real work while the
+// overlay is actually open (txMsgOpen) — the channel data itself is stale/
+// zeroed once PB0 goes off anyway, same "only refresh what's visible"
+// spirit as the meter overlay. txMsgLastState/updateTxMsgButtonLED above
+// stay live regardless, so the TX MSG button's LED/click-to-stop and ESC
+// keep working with the overlay closed.
+function updateTxMsgOverlay(state) {
+  if (state.voiceMsgChannels) txMsgLastState = state;
+  updateTxMsgButtonLED(state);
+  if (!txMsgOpen || !state.voiceMsgChannels) return;
+  // LM's op values (0 stop, 1 ready - response only, 2 recording), not
+  // RE's — recording is per-channel now, so this only lights up while the
+  // channel LM last reported is the one currently selected.
+  const recording = state.voiceMsgRecChannel === txMsgSelectedChannel && state.voiceMsgRecOp !== 0;
+  txMsgRecButton.classList.toggle("active", recording);
+  txMsgRemainingEl.textContent = recording
+    ? `Aufnahme läuft: ${formatTxMsgTime(state.voiceMsgRecProgressSec)}`
+    : `frei: ${formatTxMsgTime(state.voiceMsgRemainingSec)}`;
+  let selectedState = null;
+  for (const r of txMsgRows) {
+    const chState = state.voiceMsgChannels[r.channel - 1];
+    if (!chState) continue;
+    if (r.channel === txMsgSelectedChannel) selectedState = chState;
+    const isActive = state.voiceMsgChannel === r.channel && state.voiceMsgOp !== 0;
+    r.row.classList.toggle("active", isActive);
+    r.row.classList.toggle("unregistered", !chState.registered);
+    // Never overwrite what the user is actively typing — same guard the
+    // frequency digits use for an in-flight optimistic edit, just simpler
+    // (no server round-trip to wait out, only "don't clobber focus").
+    if (document.activeElement !== r.name) {
+      r.name.value = chState.name;
+      r.setLastSentName(chState.name);
+    }
+    r.name.disabled = !chState.registered;
+    r.length.textContent = chState.registered ? `(${formatTxMsgTime(chState.lengthSec)})` : "(leer)";
+    r.status.textContent = isActive ? `${txMsgOpLabel(state.voiceMsgOp)} ${formatTxMsgTime(state.voiceMsgElapsedSec)}` : "";
+    r.repeatCheck.disabled = !chState.registered;
+    r.repeatCheck.checked = chState.repeat;
+  }
+  const isSelectedActive = state.voiceMsgChannel === txMsgSelectedChannel && state.voiceMsgOp !== 0;
+  const selectedRegistered = !!(selectedState && selectedState.registered);
+  txMsgPlayBtn.disabled = !selectedRegistered;
+  txMsgPlayBtn.classList.toggle("active", isSelectedActive && state.voiceMsgOp === 1);
+  txMsgStopBtn.disabled = !selectedRegistered;
+  txMsgSendBtn.disabled = !selectedRegistered || !txAllowed;
+  txMsgSendBtn.classList.toggle("active", isSelectedActive && state.voiceMsgOp === 5);
+  txMsgDeleteBtn.disabled = !selectedRegistered;
+}
 // Long press (about half a second) on the button opens the effect choice; the
 // click that follows the release is swallowed so it does not toggle the
 // equalizer as well. Works with mouse, touch and pen (pointer events).
@@ -2537,6 +2882,7 @@ function onLongPress(button, handler, ms = 500) {
 onLongPress(document.getElementById("txeq-button"), () => openEqOverlay("tx"));
 onLongPress(document.getElementById("rxeq-button"), () => openEqOverlay("rx"));
 document.getElementById("eq-overlay-close").addEventListener("click", closeEqOverlay);
+onLongPress(txMsgButton, openTxMsgOverlay);
 
 // Equalizer curve editor ("UT"/"UR": 18 bands, 0..5100 Hz in 300 Hz steps, raw value
 // 0 = +6 dB ... 30 = -24 dB, 1 dB per step). The radio takes the whole curve with
@@ -4637,6 +4983,7 @@ const AMP_STATE_OFF = {
 function applyState(state) {
   if (!paAllowed) state = { ...state, ...AMP_STATE_OFF };
   syncVoipAutoSync(state);
+  updateTxMsgOverlay(state);
   // While powering on, the radio is treated as still off (the connection is
   // redialed once after it came up) — no "RADIO OFF", no half-working UI.
   // forceRadioOffDisplay: the shutdown animation's 900ms are up (see
@@ -5329,7 +5676,8 @@ document.getElementById("useredit-form").addEventListener("submit", async (e) =>
 });
 userEditDelete.addEventListener("click", async () => {
   const target = userEditTarget;
-  if (!target || !window.confirm(`Benutzer ${target.name} löschen?`)) return;
+  if (!target) return;
+  if (!(await showConfirmDialog(`Benutzer ${target.name} löschen?`))) return;
   try {
     await usersCall("DELETE", `${USER_API}?name=${encodeURIComponent(target.name)}`);
     closeUserEdit();

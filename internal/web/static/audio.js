@@ -1897,13 +1897,39 @@
   // after the key was already released is torn down again.
   let micWanted = false;
   let micActive = false;
+  let micActiveSince = -1; // -1 = not set; performance.now() is never negative
   let micChain = Promise.resolve();
+  // iPhone report (2026-10-26): a brief TX tap returns RX cleanly, but a
+  // longer press (reported ~2s+) comes back with RX "stuck muted" — only
+  // another TX tap or toggling AUDIO off/on fixes it. The rebuild below
+  // already runs every time either way; audioRunning() (see armAudioUnlock's
+  // own comment) only checks audioCtx.state/streamAudioEl.paused, which iOS
+  // can keep reporting as fine even though the audio session's routing
+  // didn't actually come back after a longer recording — so armAudioUnlock's
+  // retry-on-next-gesture never arms, because it thinks the rebuild already
+  // worked. The two known manual fixes don't do anything special, they just
+  // repeat the SAME rebuild a bit later, by which point iOS has had more
+  // time to settle. Automate exactly that for a hold long enough to
+  // plausibly trigger it. Not live-verified on real iOS hardware — this
+  // environment has no microphone access.
+  const RX_REBUILD_RETRY_HOLD_MS = 1200; // below the ~2s the report named, for margin
+  const RX_REBUILD_RETRY_DELAY_MS = 1200; // not measured against a real device
+  function scheduleExtraRxRebuildIfNeeded(heldMs, mode) {
+    if (heldMs < RX_REBUILD_RETRY_HOLD_MS) return;
+    setTimeout(() => {
+      // Skip if anything has moved on since: a new TX, or AUDIO/codec changed.
+      if (micWanted || micActive || activeMode !== mode) return;
+      if (mode === "pcm") startPCM();
+      else if (mode === "opus") startOpus();
+    }, RX_REBUILD_RETRY_DELAY_MS);
+  }
   async function applyMicState() {
     if (micWanted) {
       if (micActive) return;
       try {
         await startMicStreaming(activeMode === "opus" ? "opus" : "pcm");
         micActive = true;
+        micActiveSince = performance.now();
       } catch (e) {
         stopMicStreaming(true); // drop a half-built capture so the next press starts clean
         if (micWanted) {
@@ -1918,6 +1944,8 @@
     const wasActive = micActive;
     micActive = false;
     if (!wasActive) return;
+    const heldMs = micActiveSince >= 0 ? performance.now() - micActiveSince : 0;
+    micActiveSince = -1;
     window.hamrcMuteRx(false);
     stopMicStreaming();
     // Releasing the mic alone did NOT fix the reported "RX audio stuck quiet
@@ -1926,8 +1954,10 @@
     // Not with a warm mic: the mic stays open anyway, and rebuilding RX
     // would only disturb a Bluetooth link once more.
     if (micKeepWarm) return;
-    if (activeMode === "pcm") await startPCM();
-    else if (activeMode === "opus") await startOpus();
+    const mode = activeMode;
+    if (mode === "pcm") await startPCM();
+    else if (mode === "opus") await startOpus();
+    scheduleExtraRxRebuildIfNeeded(heldMs, mode);
   }
   // Opens the mic chain ahead of time (keep-warm option). Silent on failure:
   // a permission prompt nobody asked for must not turn into an alert.

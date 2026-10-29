@@ -112,6 +112,29 @@ type State struct {
 	ampModel        string
 	ampPowerW       float64
 	ampSWR          float64
+
+	// Voice message memory ("TX Messages" in the UI, desktop only — see
+	// cat/voicemsg.go). voiceMsgChannel/Op/Elapsed is PB1's own "what's
+	// currently happening" readback (0 channel = nothing active); the six
+	// channels' own registration/name/repeat state is queried separately
+	// per channel (PB2/PB3/PB4) when the overlay opens.
+	voiceMsgListOn      bool
+	voiceMsgChannel     int
+	voiceMsgOp          int
+	voiceMsgElapsed     int
+	voiceMsgChannels    [6]VoiceMsgChannel
+	voiceMsgRemaining   int // seconds of recording time left, all channels combined (PB6)
+	voiceMsgRecChannel  int // which of the 1-6 channels LM last reported recording to (0 = none)
+	voiceMsgRecOp       int // cat.VoiceMsgLMOp* (LM) — recording in progress, separate from PB1 playback above
+	voiceMsgRecProgress int
+}
+
+// VoiceMsgChannel is one of the TS-890's six voice message memory channels.
+type VoiceMsgChannel struct {
+	Registered bool
+	LengthSec  int
+	Name       string
+	Repeat     bool
 }
 
 // New creates a State with no radio connected yet; the browser's setup
@@ -238,6 +261,33 @@ func (s *State) Connected() bool {
 	return s.connected
 }
 
+// VoiceMsgChannelRegistered reports whether a voice message channel (1-6) is
+// known to actually have a recording on it, from the last PB2 query (the
+// zero value, false, before the first query this session — see
+// voiceMsgChannels' own field comment). Used by QuickSendVoiceMsg (main.go,
+// defense in depth — the client already guards this the same way) to avoid
+// sending PB1<ch>5 to an empty channel, which the radio answers with its own
+// "TS890 DSP error" pop-up instead of simply ignoring (Nutzer-Report,
+// 2026-10-28).
+func (s *State) VoiceMsgChannelRegistered(channel int) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if channel < 1 || channel > 6 {
+		return false
+	}
+	return s.voiceMsgChannels[channel-1].Registered
+}
+
+// VoiceMsgListOn reports the last known state of the radio's Voice Message
+// List display (PB0) — PB1-PB6 refuse while it's off. Used by
+// QuickSendVoiceMsg (main.go) to skip the PB01-then-wait round trip when
+// it's already known to be on (e.g. the TX Messages overlay is open).
+func (s *State) VoiceMsgListOn() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.voiceMsgListOn
+}
+
 // SetKnsMac records the radio's MAC address used for Wake-on-LAN.
 func (s *State) SetKnsMac(mac string) {
 	s.mu.Lock()
@@ -284,116 +334,134 @@ func (s *State) SetAmpStatus(on, operate, tx bool, level, warning, alarm, model 
 
 // Snapshot is the JSON shape sent to browser clients.
 type Snapshot struct {
-	RadioHost            string         `json:"radioHost"`
-	RadioPort            int            `json:"radioPort"`
-	RadioVoipPort        int            `json:"radioVoipPort"`
-	RadioUser            string         `json:"radioUser"`
-	RadioAdmin           bool           `json:"radioAdmin"`
-	Connected            bool           `json:"connected"`
-	RadioStandby         bool           `json:"radioStandby"`
-	VFOAHz               int            `json:"vfoAHz"`
-	VFOBHz               int            `json:"vfoBHz"`
-	Mode                 string         `json:"mode"`
-	ActiveReceiver       string         `json:"activeReceiver"`
-	SMeter               int            `json:"sMeter"`
-	SWRMeter             int            `json:"swrMeter"`
-	ALCMeter             int            `json:"alcMeter"`
-	IDMeter              int            `json:"idMeter"`
-	AGC                  string         `json:"agc"`
-	NR                   int            `json:"nr"`
-	NB1                  bool           `json:"nb1"`
-	NB2                  bool           `json:"nb2"`
-	RFGain               int            `json:"rfGain"`
-	Squelch              int            `json:"squelch"`
-	Band                 string         `json:"band"`
-	Busy                 bool           `json:"busy"`
-	TX                   bool           `json:"tx"`
-	BC                   int            `json:"bc"`
-	NR1Level             int            `json:"nr1Level"`
-	NR2Tc                int            `json:"nr2Tc"`
-	NB1Level             int            `json:"nb1Level"`
-	NB2Level             int            `json:"nb2Level"`
-	NB2TypeB             bool           `json:"nb2TypeB"`
-	NB2Depth             int            `json:"nb2Depth"`
-	NB2Width             int            `json:"nb2Width"`
-	TXEq                 bool           `json:"txEq"`
-	TXEqEffect           int            `json:"txEqEffect"`
-	RXEq                 bool           `json:"rxEq"`
-	RXEqEffect           int            `json:"rxEqEffect"`
-	TXEqBands            []int          `json:"txEqBands"`
-	RXEqBands            []int          `json:"rxEqBands"`
-	TXMonitor            bool           `json:"txMonitor"`
-	TXMonitorLevel       int            `json:"txMonitorLevel"`
-	Proc                 bool           `json:"proc"`
-	ProcTypeHard         bool           `json:"procTypeHard"`
-	ProcTypeKnown        bool           `json:"procTypeKnown"`
-	Ant                  string         `json:"ant"`
-	Power                int            `json:"power"`
-	MicGain              int            `json:"micGain"`
-	ProcLevelIn          int            `json:"procLevelIn"`
-	ProcLevelOut         int            `json:"procLevelOut"`
-	IFFilter             string         `json:"ifFilter"`
-	FilterWidthHz        map[string]int `json:"filterWidthHz"`
-	AudioWidthByFilterHz map[string]int `json:"audioWidthByFilterHz"`
-	TunerOn              bool           `json:"tunerOn"`
-	Tuning               bool           `json:"tuning"`
-	AudioWidthHz         int            `json:"audioWidthHz"`
-	AudioShiftHz         int            `json:"audioShiftHz"`
-	AudioHasShift        bool           `json:"audioHasShift"`
-	AudioWidthSet        bool           `json:"audioWidthSettable"`
-	AudioWidthMin        int            `json:"audioWidthMinHz"`
-	AudioWidthMax        int            `json:"audioWidthMaxHz"`
-	AudioShiftMin        int            `json:"audioShiftMinHz"`
-	AudioShiftMax        int            `json:"audioShiftMaxHz"`
-	AudioHasLoHiCut      bool           `json:"audioHasLoHiCut"`
-	SSBFilterMode        string         `json:"ssbFilterMode"` // "hiLoCut" / "shiftWidth" in SSB modes, else ""
-	AudioLoCutHz         int            `json:"audioLoCutHz"`
-	AudioHiCutHz         int            `json:"audioHiCutHz"`
-	AudioLoCutMin        int            `json:"audioLoCutMinHz"`
-	AudioLoCutMax        int            `json:"audioLoCutMaxHz"`
-	AudioHiCutMin        int            `json:"audioHiCutMinHz"`
-	AudioHiCutMax        int            `json:"audioHiCutMaxHz"`
-	AudioLoCutSteps      []int          `json:"audioLoCutSteps"`
-	AudioHiCutSteps      []int          `json:"audioHiCutSteps"`
-	ScopeSpanHz          int            `json:"scopeSpanHz"`
-	ScopeRate            string         `json:"scopeRate"` // "high"/"medium"/"low", as last chosen via the tool
-	RxAudioLost          uint64         `json:"rxAudioLost"`
-	RadioMessage         string         `json:"radioMessage"`
-	JitterBufferMs       int            `json:"jitterBufferMs"`
-	VoipInLevel          int            `json:"voipInLevel"`
-	VoipOutLevel         int            `json:"voipOutLevel"`
-	CWPitchHz            int            `json:"cwPitchHz"`
-	APFOn                bool           `json:"apfOn"`
-	APFBwKnown           bool           `json:"apfBwKnown"`
-	APFBw                int            `json:"apfBw"`
-	APFGainKnown         bool           `json:"apfGainKnown"`
-	APFGain              int            `json:"apfGain"`
-	APFKnown             bool           `json:"apfKnown"`
-	APFShiftHz           int            `json:"apfShiftHz"`
-	ATT                  int            `json:"att"`
-	PRE                  int            `json:"pre"`
-	RITOn                bool           `json:"ritOn"`
-	RITOffsetHz          int            `json:"ritOffsetHz"`
-	XITOn                bool           `json:"xitOn"`
-	AmpPort              string         `json:"ampPort"`
-	AmpSavedPort         string         `json:"ampSavedPort"`
-	AmpAuto              bool           `json:"ampAuto"`
-	KnsAuto              bool           `json:"knsAuto"`
-	KnsMac               string         `json:"knsMac"`
-	VoipAutoSync         bool           `json:"voipAutoSync"`
-	VoipAutoSyncMin      int            `json:"voipAutoSyncMin"`
-	AmpTxTimeout         int            `json:"ampTxTimeout"`
-	AmpMaxPowerW         int            `json:"ampMaxPowerW"`
-	AmpOn                bool           `json:"ampOn"`
-	AmpOperate           bool           `json:"ampOperate"`
-	AmpTX                bool           `json:"ampTX"`
-	AmpLevel             string         `json:"ampLevel"`
-	AmpWarning           string         `json:"ampWarning"`
-	AmpAlarm             string         `json:"ampAlarm"`
-	AmpTuning            bool           `json:"ampTuning"`
-	AmpModel             string         `json:"ampModel"`
-	AmpPowerW            float64        `json:"ampPowerW"`
-	AmpSWR               float64        `json:"ampSWR"`
+	RadioHost            string                `json:"radioHost"`
+	RadioPort            int                   `json:"radioPort"`
+	RadioVoipPort        int                   `json:"radioVoipPort"`
+	RadioUser            string                `json:"radioUser"`
+	RadioAdmin           bool                  `json:"radioAdmin"`
+	Connected            bool                  `json:"connected"`
+	RadioStandby         bool                  `json:"radioStandby"`
+	VFOAHz               int                   `json:"vfoAHz"`
+	VFOBHz               int                   `json:"vfoBHz"`
+	Mode                 string                `json:"mode"`
+	ActiveReceiver       string                `json:"activeReceiver"`
+	SMeter               int                   `json:"sMeter"`
+	SWRMeter             int                   `json:"swrMeter"`
+	ALCMeter             int                   `json:"alcMeter"`
+	IDMeter              int                   `json:"idMeter"`
+	AGC                  string                `json:"agc"`
+	NR                   int                   `json:"nr"`
+	NB1                  bool                  `json:"nb1"`
+	NB2                  bool                  `json:"nb2"`
+	RFGain               int                   `json:"rfGain"`
+	Squelch              int                   `json:"squelch"`
+	Band                 string                `json:"band"`
+	Busy                 bool                  `json:"busy"`
+	TX                   bool                  `json:"tx"`
+	BC                   int                   `json:"bc"`
+	NR1Level             int                   `json:"nr1Level"`
+	NR2Tc                int                   `json:"nr2Tc"`
+	NB1Level             int                   `json:"nb1Level"`
+	NB2Level             int                   `json:"nb2Level"`
+	NB2TypeB             bool                  `json:"nb2TypeB"`
+	NB2Depth             int                   `json:"nb2Depth"`
+	NB2Width             int                   `json:"nb2Width"`
+	TXEq                 bool                  `json:"txEq"`
+	TXEqEffect           int                   `json:"txEqEffect"`
+	RXEq                 bool                  `json:"rxEq"`
+	RXEqEffect           int                   `json:"rxEqEffect"`
+	TXEqBands            []int                 `json:"txEqBands"`
+	RXEqBands            []int                 `json:"rxEqBands"`
+	TXMonitor            bool                  `json:"txMonitor"`
+	TXMonitorLevel       int                   `json:"txMonitorLevel"`
+	Proc                 bool                  `json:"proc"`
+	ProcTypeHard         bool                  `json:"procTypeHard"`
+	ProcTypeKnown        bool                  `json:"procTypeKnown"`
+	Ant                  string                `json:"ant"`
+	Power                int                   `json:"power"`
+	MicGain              int                   `json:"micGain"`
+	ProcLevelIn          int                   `json:"procLevelIn"`
+	ProcLevelOut         int                   `json:"procLevelOut"`
+	IFFilter             string                `json:"ifFilter"`
+	FilterWidthHz        map[string]int        `json:"filterWidthHz"`
+	AudioWidthByFilterHz map[string]int        `json:"audioWidthByFilterHz"`
+	TunerOn              bool                  `json:"tunerOn"`
+	Tuning               bool                  `json:"tuning"`
+	AudioWidthHz         int                   `json:"audioWidthHz"`
+	AudioShiftHz         int                   `json:"audioShiftHz"`
+	AudioHasShift        bool                  `json:"audioHasShift"`
+	AudioWidthSet        bool                  `json:"audioWidthSettable"`
+	AudioWidthMin        int                   `json:"audioWidthMinHz"`
+	AudioWidthMax        int                   `json:"audioWidthMaxHz"`
+	AudioShiftMin        int                   `json:"audioShiftMinHz"`
+	AudioShiftMax        int                   `json:"audioShiftMaxHz"`
+	AudioHasLoHiCut      bool                  `json:"audioHasLoHiCut"`
+	SSBFilterMode        string                `json:"ssbFilterMode"` // "hiLoCut" / "shiftWidth" in SSB modes, else ""
+	AudioLoCutHz         int                   `json:"audioLoCutHz"`
+	AudioHiCutHz         int                   `json:"audioHiCutHz"`
+	AudioLoCutMin        int                   `json:"audioLoCutMinHz"`
+	AudioLoCutMax        int                   `json:"audioLoCutMaxHz"`
+	AudioHiCutMin        int                   `json:"audioHiCutMinHz"`
+	AudioHiCutMax        int                   `json:"audioHiCutMaxHz"`
+	AudioLoCutSteps      []int                 `json:"audioLoCutSteps"`
+	AudioHiCutSteps      []int                 `json:"audioHiCutSteps"`
+	ScopeSpanHz          int                   `json:"scopeSpanHz"`
+	ScopeRate            string                `json:"scopeRate"` // "high"/"medium"/"low", as last chosen via the tool
+	RxAudioLost          uint64                `json:"rxAudioLost"`
+	RadioMessage         string                `json:"radioMessage"`
+	JitterBufferMs       int                   `json:"jitterBufferMs"`
+	VoipInLevel          int                   `json:"voipInLevel"`
+	VoipOutLevel         int                   `json:"voipOutLevel"`
+	CWPitchHz            int                   `json:"cwPitchHz"`
+	APFOn                bool                  `json:"apfOn"`
+	APFBwKnown           bool                  `json:"apfBwKnown"`
+	APFBw                int                   `json:"apfBw"`
+	APFGainKnown         bool                  `json:"apfGainKnown"`
+	APFGain              int                   `json:"apfGain"`
+	APFKnown             bool                  `json:"apfKnown"`
+	APFShiftHz           int                   `json:"apfShiftHz"`
+	ATT                  int                   `json:"att"`
+	PRE                  int                   `json:"pre"`
+	RITOn                bool                  `json:"ritOn"`
+	RITOffsetHz          int                   `json:"ritOffsetHz"`
+	XITOn                bool                  `json:"xitOn"`
+	AmpPort              string                `json:"ampPort"`
+	AmpSavedPort         string                `json:"ampSavedPort"`
+	AmpAuto              bool                  `json:"ampAuto"`
+	KnsAuto              bool                  `json:"knsAuto"`
+	KnsMac               string                `json:"knsMac"`
+	VoipAutoSync         bool                  `json:"voipAutoSync"`
+	VoipAutoSyncMin      int                   `json:"voipAutoSyncMin"`
+	AmpTxTimeout         int                   `json:"ampTxTimeout"`
+	AmpMaxPowerW         int                   `json:"ampMaxPowerW"`
+	AmpOn                bool                  `json:"ampOn"`
+	AmpOperate           bool                  `json:"ampOperate"`
+	AmpTX                bool                  `json:"ampTX"`
+	AmpLevel             string                `json:"ampLevel"`
+	AmpWarning           string                `json:"ampWarning"`
+	AmpAlarm             string                `json:"ampAlarm"`
+	AmpTuning            bool                  `json:"ampTuning"`
+	AmpModel             string                `json:"ampModel"`
+	AmpPowerW            float64               `json:"ampPowerW"`
+	AmpSWR               float64               `json:"ampSWR"`
+	VoiceMsgListOn       bool                  `json:"voiceMsgListOn"`
+	VoiceMsgChannel      int                   `json:"voiceMsgChannel"`
+	VoiceMsgOp           int                   `json:"voiceMsgOp"`
+	VoiceMsgElapsedSec   int                   `json:"voiceMsgElapsedSec"`
+	VoiceMsgChannels     []VoiceMsgChannelJSON `json:"voiceMsgChannels"`
+	VoiceMsgRemainingSec int                   `json:"voiceMsgRemainingSec"`
+	VoiceMsgRecChannel   int                   `json:"voiceMsgRecChannel"`
+	VoiceMsgRecOp        int                   `json:"voiceMsgRecOp"`
+	VoiceMsgRecProgress  int                   `json:"voiceMsgRecProgressSec"`
+}
+
+// VoiceMsgChannelJSON is one voice message channel's entry in a Snapshot.
+type VoiceMsgChannelJSON struct {
+	Channel    int    `json:"channel"` // 1-6
+	Registered bool   `json:"registered"`
+	LengthSec  int    `json:"lengthSec"`
+	Name       string `json:"name"`
+	Repeat     bool   `json:"repeat"`
 }
 
 // Update applies a raw CAT message to the state. It reports whether the
@@ -873,6 +941,80 @@ func (s *State) Update(msg string) bool {
 		return true
 	}
 
+	if on, err := cat.ParsePBListDisplay(msg); err == nil {
+		if s.voiceMsgListOn == on {
+			return false
+		}
+		s.voiceMsgListOn = on
+		return true
+	}
+
+	if channel, op, elapsed, err := cat.ParsePBPlayback(msg); err == nil {
+		if s.voiceMsgChannel == channel && s.voiceMsgOp == op && s.voiceMsgElapsed == elapsed {
+			return false
+		}
+		s.voiceMsgChannel, s.voiceMsgOp, s.voiceMsgElapsed = channel, op, elapsed
+		return true
+	}
+
+	if channel, registered, seconds, err := cat.ParsePBRegistration(msg); err == nil {
+		if channel < 1 || channel > 6 {
+			return false
+		}
+		ch := &s.voiceMsgChannels[channel-1]
+		if ch.Registered == registered && ch.LengthSec == seconds {
+			return false
+		}
+		ch.Registered, ch.LengthSec = registered, seconds
+		return true
+	}
+
+	if channel, on, err := cat.ParsePBRepeat(msg); err == nil {
+		if channel < 1 || channel > 6 {
+			return false
+		}
+		ch := &s.voiceMsgChannels[channel-1]
+		if ch.Repeat == on {
+			return false
+		}
+		ch.Repeat = on
+		return true
+	}
+
+	if channel, name, err := cat.ParsePBName(msg); err == nil {
+		if channel < 1 || channel > 6 {
+			return false
+		}
+		ch := &s.voiceMsgChannels[channel-1]
+		if ch.Name == name {
+			return false
+		}
+		ch.Name = name
+		return true
+	}
+
+	if v, err := cat.ParsePBRecordingRemaining(msg); err == nil {
+		if s.voiceMsgRemaining == v {
+			return false
+		}
+		s.voiceMsgRemaining = v
+		return true
+	}
+
+	// Recording now goes through LM, not RE (see cat.EncodeVoiceMsgRecordStart's
+	// own comment) — RE has no channel parameter at all, so it could never
+	// reliably target one of the six channels from here. LM's Delete reply
+	// (op 3) is deliberately NOT routed into this recording state: DeleteVoiceMsg
+	// (main.go) already re-queries PB2/PB4 for the actual result, and showing a
+	// transient "recording" status after every delete would be wrong.
+	if channel, op, elapsed, err := cat.ParseVoiceMsgChannelOp(msg); err == nil && op != cat.VoiceMsgLMOpDelete {
+		if s.voiceMsgRecChannel == channel && s.voiceMsgRecOp == op && s.voiceMsgRecProgress == elapsed {
+			return false
+		}
+		s.voiceMsgRecChannel, s.voiceMsgRecOp, s.voiceMsgRecProgress = channel, op, elapsed
+		return true
+	}
+
 	return false
 }
 
@@ -1110,7 +1252,30 @@ func (s *State) Snapshot() Snapshot {
 		AmpModel:             s.ampModel,
 		AmpPowerW:            s.ampPowerW,
 		AmpSWR:               s.ampSWR,
+		VoiceMsgListOn:       s.voiceMsgListOn,
+		VoiceMsgChannel:      s.voiceMsgChannel,
+		VoiceMsgOp:           s.voiceMsgOp,
+		VoiceMsgElapsedSec:   s.voiceMsgElapsed,
+		VoiceMsgChannels:     voiceMsgChannelsJSON(s.voiceMsgChannels),
+		VoiceMsgRemainingSec: s.voiceMsgRemaining,
+		VoiceMsgRecChannel:   s.voiceMsgRecChannel,
+		VoiceMsgRecOp:        s.voiceMsgRecOp,
+		VoiceMsgRecProgress:  s.voiceMsgRecProgress,
 	}
+}
+
+func voiceMsgChannelsJSON(chs [6]VoiceMsgChannel) []VoiceMsgChannelJSON {
+	out := make([]VoiceMsgChannelJSON, 6)
+	for i, ch := range chs {
+		out[i] = VoiceMsgChannelJSON{
+			Channel:    i + 1,
+			Registered: ch.Registered,
+			LengthSec:  ch.LengthSec,
+			Name:       ch.Name,
+			Repeat:     ch.Repeat,
+		}
+	}
+	return out
 }
 
 func ssbFilterModeName(mode string, fm cat.FilterMode) string {

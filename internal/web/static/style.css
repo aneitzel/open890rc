@@ -1748,6 +1748,16 @@ main {
   color: var(--panel);
 }
 
+/* Generic confirm dialog's "go ahead and delete" button — same red
+   "this is destructive" language as .txmsg-send/.txmsg-delete elsewhere. */
+#confirm-ok {
+  border: 1px solid #661111;
+}
+#confirm-ok:hover {
+  background: #cc2222;
+  color: #fff;
+}
+
 /* Moved from the bottom action row up to right under the heading (Nutzer-
    Wunsch, 2026-09-28) — "Trennen" is a separate, less frequent kind of
    action from confirming/cancelling the form, not a peer of Abbrechen/
@@ -2308,6 +2318,17 @@ main [inert] {
   .meter-block.desktop-bars-view .meter-mode-row {
     display: none;
   }
+  /* Nutzer-Wunsch 2026-10-26: "sieht mir zu breit aus" — all three bars
+     narrower than the full column (matching .meter-analog's own side
+     margins, see its comment above), centred. Horizontal only: each bar's
+     own margin-top (vertical alignment/spacing) is untouched below. */
+  .meter-block.desktop-bars-view .s-meter-svg,
+  .meter-block.desktop-bars-view .swr-meter-svg,
+  .meter-block.desktop-bars-view .alc-meter-svg {
+    width: 82%;
+    margin-left: auto;
+    margin-right: auto;
+  }
   .meter-block.desktop-bars-view .s-meter-svg {
     display: block;
     cursor: pointer;
@@ -2325,6 +2346,18 @@ main [inert] {
     display: block;
     cursor: pointer;
     margin-top: 0.6rem;
+  }
+  /* Nutzer-Wunsch 2026-10-26: Zifferngrösse der S-Meter-/SWR-Balken etwas
+     grösser — up from the shared (phone + desktop) 9px/16px base in
+     .leg-text/.leg-text.inf. Scoped to desktop-bars-view only, so the
+     phone's own legend (same markup/classes) stays untouched. */
+  .meter-block.desktop-bars-view .s-meter-svg .leg-text,
+  .meter-block.desktop-bars-view .swr-meter-svg .leg-text {
+    font-size: 11px;
+  }
+  .meter-block.desktop-bars-view .s-meter-svg .leg-text.inf,
+  .meter-block.desktop-bars-view .swr-meter-svg .leg-text.inf {
+    font-size: 19px;
   }
   /* .brand-row stays ONE real grid item (unlike .controls below) spanning
      the FULL row width — a first attempt split it into two separate named
@@ -2552,17 +2585,45 @@ main [inert] {
   .desktop-only-group {
     display: flex;
   }
+  /* TX MSG sits directly under PROC now (Nutzer-Wunsch 2026-10-28: "den
+     button TX MSG unter den PROC button legen, Beide gleich gross machen").
+     .mic-proc-row itself stays a plain flex ROW (NOT a column) — it still
+     has to hold TX MON/RX EQ/TX EQ as normal row siblings to the left,
+     inserted at runtime by relocateEqButtonsForLayout (app.js), exactly as
+     before this change. Only the former PROC-alone slot grew into
+     .mic-proc-stack, a small nested column with PROC on top and TX MSG
+     below it — everything else about the row (and PROC's own phone-only
+     absolute-positioning rule, unaffected here, see the base/non-desktop
+     rule above) is untouched. */
   .mic-proc-row {
     grid-area: controlsx;
     margin-top: -0.15rem;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    padding-right: 0;
+    min-height: 0;
   }
-  /* PROC as the same recessed key with a glowing slit as the meter-mode
-     buttons (PWR/SWR/ALC); the slit lights while PROC is on. */
-  #proc-button {
-    /* exactly the PWR/SWR/ALC key size, centred under the 4.2rem TX button */
+  .mic-proc-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  /* PROC and TX MSG as the same recessed key with a glowing slit as the
+     meter-mode buttons (PWR/SWR/ALC) — same size for both, stacked instead
+     of PROC's phone-only absolute centering under the TX button. */
+  #proc-button,
+  #txmsg-button {
+    /* exactly the PWR/SWR/ALC key size */
     width: 3.1rem;
     min-width: 0;
-    right: 0.55rem;
+    position: static;
+    top: auto;
+    right: auto;
+    transform: none;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -2577,7 +2638,8 @@ main [inert] {
     font-weight: 700;
     letter-spacing: 0.05em;
   }
-  #proc-button::before {
+  #proc-button::before,
+  #txmsg-button::before {
     content: "";
     width: 1.56rem;
     height: 3.6px;
@@ -3101,14 +3163,30 @@ main [inert] {
 #at-button {
   min-width: 3.7rem;
 }
+/* ANT and PRE are the size reference (their own natural widths, unchanged
+   from before) — AGC and ATT are shrunk DOWN to match them, not the other
+   way round. A first attempt widened ANT/PRE up to match AGC's/ATT's OWN
+   widest label instead — wrong direction, explicitly rejected (Nutzer-
+   Report, 2026-10-28: "AGC M gleich breit wie ANT 1, ATT OFF gleich breit
+   wie PRE OFF" — then, after a first fix widened both pairs together up to
+   a new shared 4.75rem: "jetzt hast du ANT 1 doch breiter gemacht"). ANT
+   gets an explicit min-width too (previously implicit/auto, "ANT 1"/"2"
+   both ~3.35rem) so AGC has a stable, unchanging target. AGC's/ATT's own
+   widest labels ("AGC OFF", "ATT 12dB"/"18dB") still won't literally fit
+   these floors and stay wider when shown — unavoidable without clipping
+   their text or padding ANT/PRE out to match, neither of which was
+   wanted; their narrower states (AGC S/M/F, ATT 6dB) now match closely. */
+#ant-button {
+  min-width: 3.35rem;
+}
+#agc-button {
+  min-width: 3.35rem;
+}
 #pre-button {
   min-width: 4.35rem;
 }
 #att-button {
-  min-width: 4.6rem;
-}
-#agc-button {
-  min-width: 4.5rem;
+  min-width: 4.35rem;
 }
 
 /* Recessed-key look (started as a desktop-only TRIAL, 2026-10-09; brought to
@@ -3171,6 +3249,14 @@ main #pa-level-button::before,
 main #ant-button::before,
 main #agc-button::before {
   visibility: hidden;
+}
+/* TX MSG left this group again (Nutzer-Wunsch 2026-10-28): it now has a
+   real state to show, a red LED while it's actively sending — same red
+   "transmitting" language as PA OPER below, not the generic amber
+   .active::before every other lit key uses. */
+main #txmsg-button.active::before {
+  background: rgb(230, 40, 40);
+  box-shadow: 0 0 6px rgb(230, 40, 40);
 }
 /* AGC also shouldn't light up (amber text) when active (Nutzer-Wunsch,
    2026-10-13, right after the LED removal above) — same reasoning: the
@@ -3860,6 +3946,236 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
   background: var(--accent);
   color: var(--panel);
 }
+
+/* TX Messages (desktop only, index.html has the full reasoning) — wider
+   than the default 280px .overlay-panel, same responsive pattern already
+   used by #connect-overlay/#audio-overlay. Tighter padding/heading margin
+   than the shared .overlay-panel default (Nutzer-Wunsch 2026-10-28: "das
+   ganze overlay kompakter gestalten") — six rows plus the two control rows
+   add up fast, so trimming the panel's own whitespace matters more here
+   than in a typical one-or-two-field dialog. */
+#txmsg-overlay .overlay-panel {
+  width: min(90vw, 480px);
+  padding: 1.1rem 1.3rem;
+}
+#txmsg-overlay h2 {
+  margin-bottom: 1.1rem;
+}
+.txmsg-source-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.6rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+/* RE (Recording Function) toggle — same visual language as .txmsg-send
+   (red = "this actually does something real"), since recording overwrites
+   whatever was on the channel before. */
+.txmsg-rec {
+  background: var(--key-face);
+  color: var(--key-text);
+  border: 1px solid #661111;
+  border-radius: 4px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.txmsg-rec.active {
+  background: #cc2222;
+  color: #fff;
+  border-color: #cc2222;
+}
+/* Source picker next to REC (Nutzer-Wunsch 2026-10-27) — sent as PB5 when
+   REC starts a recording. Styled like the TX Mic Limiter preset dropdown
+   in the VOIP settings tab (Nutzer-Wunsch 2026-10-27, see
+   #mic-limiter-preset's own comment on why: no box/border, dimmed text, a
+   quiet secondary control rather than something as prominent as REC
+   itself). */
+.txmsg-source-group {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.txmsg-source-label {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  flex: none;
+}
+#txmsg-source {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  padding: 0;
+  margin: 0;
+}
+#txmsg-source:hover,
+#txmsg-source:focus {
+  color: var(--accent);
+}
+.txmsg-remaining {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  flex: none;
+}
+.txmsg-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.6rem;
+}
+.txmsg-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer; /* clicking anywhere (but the name input) selects the row, see app.js */
+}
+.txmsg-row-radio {
+  flex: none;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+/* The row holding the selected radio — PLAY/STOP/DELETE below the list act
+   on this one (Nutzer-Wunsch 2026-10-27/2026-10-28: SEND and Repeat stay
+   per row, only these three are shared). */
+.txmsg-row:has(.txmsg-row-radio:checked) {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+/* Currently playing/sending this channel (state.voiceMsgChannel/Op) — same
+   accent-border-glow language the rest of the UI uses for "this is live
+   right now" (e.g. .tx-button.active). Independent of selection above: the
+   radio briefly played from the panel could be a channel other than the
+   one currently selected for the next action. */
+.txmsg-row.active {
+  border-color: var(--accent);
+  background: rgba(255, 184, 77, 0.08);
+}
+.txmsg-row.unregistered {
+  opacity: 0.5;
+}
+.txmsg-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  flex: 1 1 auto; /* fill the row now that radio+info are its only children */
+}
+.txmsg-row-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.txmsg-row-chlabel {
+  font-weight: 700;
+  color: var(--text-dim);
+  flex: none;
+}
+/* An actual <input>, not a label (Nutzer-Wunsch 2026-10-27: Kanäle sollen
+   umbenennbar sein, PB4 set) — styled to look like plain text until
+   hovered/focused, so the row doesn't read as "one more input field" among
+   buttons that just DO something. */
+.txmsg-row-name {
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: inherit;
+  font: inherit;
+  padding: 0.1rem 0.3rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.txmsg-row-name:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.txmsg-row-name:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(0, 0, 0, 0.25);
+}
+.txmsg-row-name:disabled {
+  color: inherit;
+  cursor: default;
+}
+.txmsg-row-length {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  flex: none;
+}
+.txmsg-row-status {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+/* Only "Wiederholen" at the end of each row now (Nutzer-Wunsch 2026-10-28:
+   the per-row SEND button is gone again — PLAY/STOP/SEND/DELETE below the
+   list are all shared, see .txmsg-controls). */
+.txmsg-row-mini-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: none;
+}
+.txmsg-row-repeat {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.txmsg-row-repeat input {
+  cursor: pointer;
+}
+/* Shared PLAY/STOP/DELETE row below the channel list, acting on whichever
+   row's radio is selected (Nutzer-Wunsch 2026-10-27/2026-10-28). */
+.txmsg-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.txmsg-controls button {
+  background: var(--key-face);
+  color: var(--key-text);
+  border: 1px solid #0b0b0d;
+  border-radius: 4px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.txmsg-controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.txmsg-controls button.active {
+  background: var(--accent);
+  color: var(--panel);
+}
+/* SEND actually transmits — red, like the real TX button, so it doesn't
+   look like just another harmless preview control (same language the
+   per-row SEND button used to have before it moved here). DELETE is the
+   other genuinely destructive shared action (erases the recording,
+   LM<channel>3) — same red border language, just never turns solid since
+   it has no "active" state of its own. */
+.txmsg-controls button.txmsg-send,
+.txmsg-controls button.txmsg-delete {
+  border-color: #661111;
+}
+.txmsg-controls button.txmsg-send.active {
+  background: #cc2222;
+  color: #fff;
+}
 @media (min-width: 800px) {
   .eq-row {
     display: flex;
@@ -4065,7 +4381,8 @@ main.controls-off > :not(.status-row):not(.waterfall-row) .btn-group button.acti
 main.controls-off > :not(.status-row):not(.waterfall-row) .btn-group button.active::before,
 main.controls-off #pa-power-button.active::before,
 main.controls-off #pa-oper-button.active::before,
-main.controls-off #proc-button.active::before {
+main.controls-off #proc-button.active::before,
+main.controls-off #txmsg-button.active::before {
   background: #3b3b3e;
   box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.6);
 }

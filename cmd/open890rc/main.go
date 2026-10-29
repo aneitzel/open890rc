@@ -187,6 +187,25 @@ func (r *radioManager) swap(c *radio.Conn) *radio.Conn {
 	return old
 }
 
+// clearIfCurrent removes c as the current connection, but only if it's
+// still installed. An unexpected drop (radio off, cable pulled, "no route
+// to host") fires onClose asynchronously from the read/keepalive loop —
+// without this guard, rm.conn stayed pointing at the dead connection
+// forever (only connectRadio's own swap ever replaced it), so every
+// control handler's "conn := rm.current(); if conn == nil { ... }" guard
+// kept thinking it was connected and tried to Send() on the closed socket
+// (live-observed: a string of "broken pipe" errors after a real network
+// drop). A plain unconditional nil-out would be wrong too: if a reconnect
+// already swapped in a newer connection before this old one's own close
+// fires, that would clobber the new one.
+func (r *radioManager) clearIfCurrent(c *radio.Conn) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.conn == c {
+		r.conn = nil
+	}
+}
+
 // txSenderManager holds the current TX audio UDP sender, mirroring
 // radioManager: re-created on every (re)connect since it targets a specific
 // radio IP, swapped in only once the new one exists so a reconnect attempt
@@ -563,6 +582,16 @@ func main() {
 		if msg == "?" || msg == "E" {
 			log.Printf("radio: reply %q", msg)
 		}
+		// Pop-up message IDs (ME0/ME1) only ever surface as cat.MessageText's
+		// mapped text (often generic for a whole ID range, e.g. 10-21 all
+		// show "DSP error") — log the raw ID too so a report like "DSP error
+		// shows but nothing's actually wrong" (Nutzer-Report, 2026-10-28:
+		// happens even sending a TX Message from the front panel, which
+		// shows nothing on its own screen) can be tied to the EXACT 3-digit
+		// code instead of just "somewhere in that range".
+		if _, id, err := cat.ParseMessageID(msg); err == nil {
+			log.Printf("radio: pop-up message %q (text: %q)", msg, cat.MessageText(id))
+		}
 		if strings.HasPrefix(msg, "PS") && len(msg) >= 3 {
 			select {
 			case psReplies <- msg:
@@ -627,6 +656,12 @@ func main() {
 	// time (the old one is always closed before a new one starts, see
 	// connectRadio below) — safe without its own lock.
 	var lastReportedLost uint64
+	// Forward-declared (same pattern as radioManager's conn in connectRadio's
+	// onClose) — onPCM, defined now but only actually called once a radio
+	// connection exists, needs srv.TXAudioActive() below; srv itself is only
+	// constructed much further down, after txAudio (which closes over onPCM
+	// indirectly via broadcastRXAudio) is built.
+	var srv *web.Server
 	onPCM := func(pcm []byte) {
 		// While transmitting, the link is simplex (no real RX content), but
 		// the radio's own LAN audio output was found to keep streaming RTP
@@ -639,7 +674,17 @@ func main() {
 		// a second for the whole duration of a TX). Skipping the
 		// radio-origin broadcast during TX leaves only the mic relay
 		// feeding the hubs — a single real-time stream again.
-		if radioTX, _, _ := st.TXFlags(); !radioTX {
+		//
+		// BUT only while the mic relay is actually the one feeding them
+		// (srv.TXAudioActive(), see its own comment) — a TX Message send
+		// (PB1<ch>5/RE1) also sets radioTX, but nothing streams mic audio
+		// for one, so blanket-skipping here left listeners hearing nothing
+		// at all for its whole duration (Nutzer-Report, 2026-10-29) even
+		// though the radio's LAN audio output keeps carrying it, same as it
+		// would carry a TX monitor. srv is nil for a brief window at
+		// startup before it's constructed (see its own comment) — treated
+		// as "no mic relay", i.e. broadcast normally, the safe default.
+		if radioTX, _, _ := st.TXFlags(); !radioTX || srv == nil || !srv.TXAudioActive() {
 			broadcastRXAudio(pcm)
 		}
 		// Checked once per incoming packet (every ~20ms) rather than on a
@@ -1605,7 +1650,12 @@ func main() {
 		addr := fmt.Sprintf("%s:%d", req.Host, port)
 		creds := radio.Credentials{Username: req.User, Password: req.Pass, IsAdmin: req.Admin}
 
+		// conn is assigned below, after DialTimeout succeeds; onClose only
+		// ever fires afterwards (from the read/keepalive loop), so the
+		// closure correctly sees the final pointer by the time it runs.
+		var conn *radio.Conn
 		onClose := func() {
+			rm.clearIfCurrent(conn)
 			st.SetConnected(false)
 			broadcastState()
 		}
@@ -1614,7 +1664,8 @@ func main() {
 		if req.Timeout > 0 {
 			connectTO, loginTO = req.Timeout, 15*time.Second
 		}
-		conn, err := radio.DialTimeout(addr, creds, onMsg, onClose, connectTO, loginTO)
+		var err error
+		conn, err = radio.DialTimeout(addr, creds, onMsg, onClose, connectTO, loginTO)
 		if err != nil {
 			return err
 		}
@@ -3244,6 +3295,221 @@ func main() {
 			go applyBandScopeCenter(conn)
 			onModeChanged()
 		},
+		// Voice message memory ("TX Messages", desktop only — see the
+		// overlay's own comment in app.js). From the official TS-890 PC
+		// Command Reference (operator-provided screenshots, 2026-10-27), not
+		// in open890 at all.
+		SetVoiceMsgOverlay: func(open bool) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			if err := conn.Send(cat.EncodePBListDisplay(open)); err != nil {
+				return err
+			}
+			if !open {
+				return nil
+			}
+			// The reference notes PB1-PB6 refuse ("?") until the Voice
+			// Message List display is actually on, which isn't instant — so
+			// these follow a short delay rather than going out right behind
+			// PB01 on the same write. Not timed against the real radio; a
+			// plausible, generous guess, same spirit as several other such
+			// delays in this file (e.g. the VoIP VP0/VP1 reset).
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				conn := rm.current()
+				if conn == nil {
+					return
+				}
+				for _, q := range []string{"PB1", "PB5", "PB6"} {
+					if err := conn.Send(q); err != nil {
+						log.Printf("main: querying %q for the TX Messages overlay failed: %v", q, err)
+					}
+				}
+				for ch := 1; ch <= 6; ch++ {
+					if q, err := cat.EncodePBRegistrationQuery(ch); err == nil {
+						_ = conn.Send(q)
+					}
+					if q, err := cat.EncodePBNameQuery(ch); err == nil {
+						_ = conn.Send(q)
+					}
+					if q, err := cat.EncodePBRepeatQuery(ch); err == nil {
+						_ = conn.Send(q)
+					}
+				}
+			}()
+			return nil
+		},
+		VoiceMsgControl: func(channel, op int) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			cmd, err := cat.EncodePBPlayback(channel, op)
+			if err != nil {
+				return err
+			}
+			return conn.Send(cmd)
+		},
+		SetVoiceMsgRepeat: func(channel int, on bool) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			cmd, err := cat.EncodePBRepeat(channel, on)
+			if err != nil {
+				return err
+			}
+			return conn.Send(cmd)
+		},
+		SetVoiceMsgName: func(channel int, name string) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			cmd, err := cat.EncodePBName(channel, name)
+			if err != nil {
+				return err
+			}
+			return conn.Send(cmd)
+		},
+		// Mirrors the manual's own two-step physical procedure for recording
+		// a voice message (Nutzer-Screenshot, 2026-10-28, "Aufzeichnen einer
+		// Sprachnachricht"): (1) HOLD the channel's F-key (F2-F7) — arms that
+		// channel and shows a "recording is about to start" prompt — THEN,
+		// separately, (2) HOLD the on-screen F4 [REC] key (a context-only
+		// soft key inside the Voice Message screen, NOT the physical REC
+		// button on the front panel — Nutzer-Klarstellung 2026-10-28: "TX
+		// Messages werden nicht über die REC Taste vorne an der Front
+		// aufgenommen") to actually capture audio; releasing it stops and
+		// saves. Mapped here as: PB5 (REC IN / source, step 4) once, then
+		// LM<channel>2 (step 3's channel hold, cat.EncodeVoiceMsgRecordStart)
+		// — RE has no channel parameter at all and could only ever land on
+		// whatever channel the radio's own on-screen cursor had selected,
+		// see cat.EncodeVoiceMsgRecording's own comment — THEN RE1 (step 5's
+		// REC hold). Stopping is the reverse: RE0 (step 6, release REC)
+		// first, then LM<channel>0. Not live-verified against the real radio
+		// yet; the short pause between the two start commands gives the
+		// radio a moment to actually arm the channel first, same "give it a
+		// moment" pattern as resetRXAudio's ##VP0/##VP1 above.
+		SetVoiceMsgRecording: func(channel int, recording bool, source int) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			if !recording {
+				stopCmd, err := cat.EncodeVoiceMsgRecording(cat.VoiceMsgRecOpStop)
+				if err != nil {
+					return err
+				}
+				if err := conn.Send(stopCmd); err != nil {
+					return err
+				}
+				armOffCmd, err := cat.EncodeVoiceMsgRecordStop(channel)
+				if err != nil {
+					return err
+				}
+				return conn.Send(armOffCmd)
+			}
+			sourceCmd, err := cat.EncodePBRecordingSource(source)
+			if err != nil {
+				return err
+			}
+			if err := conn.Send(sourceCmd); err != nil {
+				return err
+			}
+			armCmd, err := cat.EncodeVoiceMsgRecordStart(channel)
+			if err != nil {
+				return err
+			}
+			if err := conn.Send(armCmd); err != nil {
+				return err
+			}
+			time.Sleep(150 * time.Millisecond)
+			recCmd, err := cat.EncodeVoiceMsgRecording(cat.VoiceMsgRecOpRecord)
+			if err != nil {
+				return err
+			}
+			return conn.Send(recCmd)
+		},
+		DeleteVoiceMsg: func(channel int) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			cmd, err := cat.EncodeVoiceMsgDelete(channel)
+			if err != nil {
+				return err
+			}
+			if err := conn.Send(cmd); err != nil {
+				return err
+			}
+			// LM's own answer only carries channel/op/elapsed (no
+			// registered/length/name), so the row would otherwise keep
+			// showing the just-deleted recording until something else
+			// happened to re-query it. Re-query PB2 (and PB4, since a
+			// deleted channel likely loses its name too) after a short
+			// pause for the radio to actually process the delete — same
+			// "give the radio a moment, then re-query" pattern as
+			// SetVoiceMsgOverlay's own channel queries above.
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				if conn := rm.current(); conn != nil {
+					if q, err := cat.EncodePBRegistrationQuery(channel); err == nil {
+						_ = conn.Send(q)
+					}
+					if q, err := cat.EncodePBNameQuery(channel); err == nil {
+						_ = conn.Send(q)
+					}
+				}
+			}()
+			return nil
+		},
+		// Does not turn PB0 back off afterward (unlike SetVoiceMsgOverlay's
+		// close path) — a quick send that happened without the overlay ever
+		// being opened has no "close" moment to hook that into, and turning
+		// the display off while a just-started playback might still be
+		// running is an unverified risk not worth taking for a purely
+		// cosmetic radio-display state. Worst case it stays on until the
+		// overlay is opened and closed once (same as leaving the overlay
+		// itself open always has).
+		QuickSendVoiceMsg: func(channel int) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			// Defense in depth — app.js already refuses this and opens the
+			// overlay instead when the selected channel isn't known to have
+			// a recording (see State.VoiceMsgChannelRegistered's own
+			// comment on the DSP error this avoids).
+			if !st.VoiceMsgChannelRegistered(channel) {
+				return fmt.Errorf("TX message channel %d has no recording", channel)
+			}
+			cmd, err := cat.EncodePBPlayback(channel, cat.VoiceMsgOpSend)
+			if err != nil {
+				return err
+			}
+			// Skip the on/wait round trip if the list display is already
+			// known to be on (st.VoiceMsgListOn — e.g. the TX Messages
+			// overlay is open right now), same reasoning/delay as
+			// SetVoiceMsgOverlay above otherwise.
+			if st.VoiceMsgListOn() {
+				return conn.Send(cmd)
+			}
+			if err := conn.Send(cat.EncodePBListDisplay(true)); err != nil {
+				return err
+			}
+			go func() {
+				time.Sleep(200 * time.Millisecond)
+				if conn := rm.current(); conn != nil {
+					if err := conn.Send(cmd); err != nil {
+						log.Printf("main: quick-sending TX message channel %d failed: %v", channel, err)
+					}
+				}
+			}()
+			return nil
+		},
 	}
 
 	txAudio := web.TXAudio{
@@ -3251,7 +3517,7 @@ func main() {
 		NewDecoder: audio.NewOpusDecoder,
 		Relay:      broadcastRXAudio,
 	}
-	srv := web.New(h, st, controls, web.AudioHubs{PCM: pcmHub, Opus: opusHub}, txAudio, waterfallHub)
+	srv = web.New(h, st, controls, web.AudioHubs{PCM: pcmHub, Opus: opusHub}, txAudio, waterfallHub)
 
 	// Graceful shutdown on Ctrl-C/SIGTERM. Without this, killing the process
 	// (there was no signal handling at all before) leaves the OS to just
