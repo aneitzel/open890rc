@@ -2585,45 +2585,21 @@ main [inert] {
   .desktop-only-group {
     display: flex;
   }
-  /* TX MSG sits directly under PROC now (Nutzer-Wunsch 2026-10-28: "den
-     button TX MSG unter den PROC button legen, Beide gleich gross machen").
-     .mic-proc-row itself stays a plain flex ROW (NOT a column) — it still
-     has to hold TX MON/RX EQ/TX EQ as normal row siblings to the left,
-     inserted at runtime by relocateEqButtonsForLayout (app.js), exactly as
-     before this change. Only the former PROC-alone slot grew into
-     .mic-proc-stack, a small nested column with PROC on top and TX MSG
-     below it — everything else about the row (and PROC's own phone-only
-     absolute-positioning rule, unaffected here, see the base/non-desktop
-     rule above) is untouched. */
   .mic-proc-row {
     grid-area: controlsx;
     margin-top: -0.15rem;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 0.6rem;
-    padding-right: 0;
-    min-height: 0;
   }
-  .mic-proc-stack {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.35rem;
-  }
-  /* PROC and TX MSG as the same recessed key with a glowing slit as the
-     meter-mode buttons (PWR/SWR/ALC) — same size for both, stacked instead
-     of PROC's phone-only absolute centering under the TX button. */
-  #proc-button,
-  #txmsg-button {
-    /* exactly the PWR/SWR/ALC key size */
+  /* PROC as the same recessed key with a glowing slit as the meter-mode
+     buttons (PWR/SWR/ALC); the slit lights while PROC is on. TX MSG moved
+     back out to the eq-row/TX MON group (Nutzer-Wunsch, 2026-10-29: "TX MSG
+     button links neben TX MON anordnen" — a brief stint stacked under PROC,
+     same size as it, didn't last) — see relocateEqButtonsForLayout's own
+     comment in app.js for where it actually ends up placed. */
+  #proc-button {
+    /* exactly the PWR/SWR/ALC key size, centred under the 4.2rem TX button */
     width: 3.1rem;
     min-width: 0;
-    position: static;
-    top: auto;
-    right: auto;
-    transform: none;
+    right: 0.55rem;
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -2638,8 +2614,7 @@ main [inert] {
     font-weight: 700;
     letter-spacing: 0.05em;
   }
-  #proc-button::before,
-  #txmsg-button::before {
+  #proc-button::before {
     content: "";
     width: 1.56rem;
     height: 3.6px;

@@ -304,6 +304,14 @@
       </div>
     </div>
     <div class="ctrl-row ctrl-row-buttons eq-row" id="eq-row">
+      <!-- Desktop only (Nutzer-Wunsch, 2026-10-29: "TX MSG button links neben
+           TX MON anordnen") — the radio's six voice message memory channels
+           (recorded CQ calls etc.), see #txmsg-overlay. app.js' onLongPress
+           still opens the overlay; a short click sends/stops the selected
+           channel. relocateEqButtonsForLayout (app.js) inserts it leftmost
+           of the whole group on desktop, same relocation as TX MON/RX
+           EQ/TX EQ below. -->
+      <div class="btn-group desktop-only-group"><button type="button" id="txmsg-button" title="Sendet die ausgewählte TX Message - lange drücken für Einstellungen">TX MSG</button></div>
       <!-- Desktop only (Nutzer-Wunsch, 2026-10-14: "desktop: ... button hierfür
            links von RX EQ") — hidden on phone via .desktop-only-group in
            style.css, same as the RIT/XIT knobs above. -->
@@ -389,21 +397,7 @@
       <button type="button" id="tx-button" class="tx-button" title="Senden/Empfangen umschalten (T-Taste gedrückt halten = Senden)">TX</button>
     </div>
     <div class="ctrl-row mic-proc-row">
-      <!-- PROC and TX MSG share a small vertical stack (.mic-proc-stack) so
-           relocateEqButtonsForLayout (app.js) can keep inserting TX MON/RX
-           EQ/TX EQ as plain row siblings to its left on desktop, exactly as
-           before — only the former PROC-alone slot is now this stack
-           (Nutzer-Wunsch 2026-10-28: "TX MSG unter PROC, beide gleich
-           gross"). TX MSG is desktop-only; on phone the stack just holds
-           PROC by itself, unaffected. -->
-      <div class="mic-proc-stack">
-        <div class="btn-group"><button type="button" id="proc-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">PROC</button></div>
-        <!-- Desktop only (Nutzer-Wunsch, 2026-10-27/2026-10-28) — the
-             radio's six voice message memory channels (recorded CQ calls
-             etc.), see #txmsg-overlay. app.js' onLongPress still opens the
-             overlay; a short click sends/stops the selected channel. -->
-        <div class="btn-group desktop-only-group"><button type="button" id="txmsg-button" title="Sendet die ausgewählte TX Message - lange drücken für Einstellungen">TX MSG</button></div>
-      </div>
+      <div class="btn-group"><button type="button" id="proc-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">PROC</button></div>
     </div>
   </div>
 

@@ -1225,15 +1225,19 @@ const preCycle = makeCycleButton(
 // needed; inserting TX EQ first and then RX EQ before it (both as
 // "first child") gets the RX EQ, TX EQ, PROC left-to-right order. TX
 // Monitor (2026-10-14, desktop-only) joins the same relocation, inserted
-// last so it lands leftmost of the three: TX MON, RX EQ, TX EQ, PROC.
+// last so it lands leftmost: TX MON, RX EQ, TX EQ, PROC. TX MSG (2026-10-29,
+// "TX MSG button links neben TX MON anordnen" — previously stacked under
+// PROC instead, didn't last) joins last of all, landing leftmost of
+// everything: TX MSG, TX MON, RX EQ, TX EQ, PROC.
 (function relocateEqButtonsForLayout() {
+  const txMsgGroup = document.getElementById("txmsg-button")?.closest(".btn-group");
   const txMonGroup = document.getElementById("txmon-button")?.closest(".btn-group");
   const txEqGroup = document.getElementById("txeq-button")?.closest(".btn-group");
   const rxEqGroup = document.getElementById("rxeq-button")?.closest(".btn-group");
   const micProcRow = document.querySelector(".mic-proc-row");
   const ctrlRow2 = document.querySelector(".ctrl-row-2");
   const nbButtons = document.getElementById("nb-buttons");
-  if (!txMonGroup || !txEqGroup || !rxEqGroup || !micProcRow || !ctrlRow2 || !nbButtons) return;
+  if (!txMsgGroup || !txMonGroup || !txEqGroup || !rxEqGroup || !micProcRow || !ctrlRow2 || !nbButtons) return;
   const desktopQuery = window.matchMedia("(min-width: 800px)");
   function apply() {
     if (desktopQuery.matches) {
@@ -1243,6 +1247,9 @@ const preCycle = makeCycleButton(
       // inserted last so it lands leftmost of all three, i.e. left of RX EQ
       // (Nutzer-Wunsch, 2026-10-14).
       micProcRow.insertBefore(txMonGroup, micProcRow.firstChild);
+      // TX MSG (desktop only): inserted last of all so it lands leftmost,
+      // i.e. left of TX MON (Nutzer-Wunsch, 2026-10-29).
+      micProcRow.insertBefore(txMsgGroup, micProcRow.firstChild);
     } else {
       // Phone (Nutzer-Wunsch, 2026-10-14: "NB1, NB2, BC in mobilansicht
       // entfernen und dafür RX EQ, TX EQ hinzufügen"): NB1/NB2/BC stay in
@@ -4826,6 +4833,20 @@ function statusMessageFor(state) {
   if (state.ampAlarm) return `⚠ PA: ${state.ampAlarm} ⚠`;
   if (state.ampWarning) return `⚠ PA: ${state.ampWarning} ⚠`;
   if (paCmdError) return `⚠ PA: ${paCmdError} ⚠`;
+  // A TX Message is actually transmitting (op 5, cat.VoiceMsgOpSend) — shown
+  // regardless of who/what triggered it (another client's TX MSG button, or
+  // the front panel itself: state.voiceMsgChannel is the radio's own PB1
+  // readback, not tied to this browser's txMsgSelectedChannel), same as the
+  // red LED on the TX MSG button isn't limited to "this browser sent it"
+  // either (Nutzer-Wunsch, 2026-10-29: "beim senden einer TX message oben
+  // einblenden 'TX : NAME DER MESSAGE'"). Ranked above the plain info
+  // messages below — an actual transmission in progress is as attention-
+  // worthy as the PA/error states above it, not a passing notice.
+  if (state.voiceMsgOp === 5 && state.voiceMsgChannel) {
+    const ch = state.voiceMsgChannels && state.voiceMsgChannels[state.voiceMsgChannel - 1];
+    const name = ch && ch.name ? ch.name : `CH${state.voiceMsgChannel}`;
+    return `TX: ${name}`;
+  }
   if (clientInfoMessage) return clientInfoMessage;
   if (paInfoMessage) return paInfoMessage;
   if (state.rxAudioLost && Date.now() < rxLostMessageUntil) return `⚠ VoIP UDP Paketverluste: ${state.rxAudioLost} !`;
