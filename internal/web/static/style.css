@@ -1991,8 +1991,8 @@ main {
   /* Same height as the buttons it sits next to (NR OFF etc., Nutzer-Wunsch
      2026-10-13) — measured live: those render at 28.453px with this app's
      16px/rem base, which 1.78rem matches to a fraction of a pixel. */
-  width: 1.78rem;
-  height: 1.78rem;
+  width: 2.67rem; /* 50% bigger than the 1.78rem button height (Nutzer-Wunsch 2026-10-30) */
+  height: 2.67rem;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -2124,10 +2124,10 @@ main [inert] {
     grid-template-areas:
       "status     status     status  status"
       "brand      brand      brand   brand"
-      "meter      freq       sliders sliders"
-      "meter      otherfreq  sliders sliders"
-      "meter      selectors  sliders sliders"
-      "meter      filterinfo ascope  ascope"
+      "meter      freq       ascope  ascope"
+      "meter      otherfreq  ascope  ascope"
+      "meter      selectors  ascope  ascope"
+      "meter      filterinfo sliders sliders"
       "metercontrols eqmid   controlsx controlsx"
       "metercontrols eqmid   pa      pa"
       "metercontrols eqmid   buttons buttons"
@@ -2601,9 +2601,16 @@ main [inert] {
   .desktop-only-group {
     display: flex;
   }
+  /* PROC level with the NR / NB1 / NB2 / BC row (Nutzer-Wunsch 2026-10-30): the row shares that grid cell and
+     lets the clicks through, only the PROC button itself takes them. */
   .mic-proc-row {
-    grid-area: controlsx;
-    margin-top: -0.15rem;
+    grid-area: buttons;
+    align-self: center;
+    margin-top: 0;
+    pointer-events: none;
+  }
+  .mic-proc-row #proc-button {
+    pointer-events: auto;
   }
   /* PROC as the same recessed key with a glowing slit as the meter-mode
      buttons (PWR/SWR/ALC); the slit lights while PROC is on. TX MSG moved
@@ -4706,19 +4713,23 @@ main.controls-off .slider::-moz-range-thumb {
 /* centre line: the same white as the filter outline, but quieter */
 .ascope .fg-center, .filter-graph .fg-center { stroke: rgba(255, 255, 255, 0.5); stroke-width: 1; }
 .ascope .fg-hd, .filter-graph .fg-hd { fill: #fff; font-size: 10px; }
-.ascope .fg-ft, .filter-graph .fg-ft { fill: #fff; font-size: 9px; }
-.ascope .fg-a-box, .filter-graph .fg-a-box { fill: #fff; }
-.ascope .fg-a-text, .filter-graph .fg-a-text { fill: #000; font-size: 10px; font-weight: 700; }
+.ascope .fg-ft, .filter-graph .fg-ft { fill: #fff; font-size: 10px; }
+.ascope .fg-a-box, .filter-graph .fg-a-box { fill: #8b9197; } /* same grey as the active VFO box (.vfo-ab) */
+.ascope .fg-a-text, .filter-graph .fg-a-text { fill: #16161a; font-size: 13px; font-weight: 700; }
 .ascope .fg-title { font-size: 10px; }
 @media (min-width: 800px) {
   .ascope {
     display: block;
     grid-area: ascope;
+    /* level with the frequency display, centred between it and the right edge (Nutzer-Wunsch 2026-10-30) */
     align-self: start;
-    justify-self: center;
-    /* centred under the slider bars, not under the TX button next to them (TX 5.4rem + gap 1.7rem) */
-    margin-right: 7.1rem;
-    width: 66%; /* half the size first, then a bit larger again (Nutzer-Wunsch 2026-10-30): about 260 x 95 px */
+    justify-self: end;
+    margin-top: 2.1rem; /* the frequency digits start about 2rem below the top of their grid row (clock/LED line above) */
+    /* reaches to the right edge of the area (as much room to the right as the meter has to the left, Nutzer-Wunsch
+       2026-10-30) at a fixed height; the drawing widens with it (renderAscope), so it does not shrink with the window */
+    margin-right: 2.25rem; /* the bar meter's graphic starts 52px from the panel edge (92 vs 40), the area itself 16px: 36px more here */
+    width: calc(100% - 4.2rem - 2.25rem);
+    height: 110px; /* half the size first, then a bit larger again (Nutzer-Wunsch 2026-10-30): about 260 x 95 px */
     margin-bottom: 0;
   }
   .ascope[hidden] { display: none; }
@@ -4760,4 +4771,50 @@ main.controls-off .slider::-moz-range-thumb {
 .ascope,
 .filter-graph {
   opacity: 0.85;
+}
+
+/* PA buttons (only with a PA connected): on desktop app.js moves #pa-row into the first button row, as its
+   own line above ANT 1 (Nutzer-Wunsch 2026-10-30). */
+@media (min-width: 800px) {
+  .ctrl-row-1 > #pa-row {
+    order: 0;
+    flex: 0 0 100%;
+    padding-left: 0;
+    margin: 0;
+    justify-content: flex-start;
+  }
+}
+
+/* Draggable boundary between the spectrum and the waterfall (desktop only, see waterfall.js): a thin strip
+   over the boundary above the overlay canvas, a faint line shows on hover and while dragging. */
+.scope-divider { display: none; }
+@media (min-width: 800px) {
+  .spectrum-canvas {
+    height: var(--spectrum-h, 70px);
+  }
+  .scope-divider {
+    display: block;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--spectrum-h, 70px) - 4px);
+    height: 8px;
+    z-index: 3;
+    cursor: ns-resize;
+    touch-action: none;
+  }
+  .scope-divider::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 3px;
+    height: 2px;
+    background: transparent;
+    transition: background 0.15s;
+  }
+  .scope-divider:hover::after,
+  .scope-divider.dragging::after {
+    background: rgba(255, 255, 255, 0.4);
+  }
 }

@@ -1213,6 +1213,22 @@ const preCycle = makeCycleButton(
   desktopQuery.addEventListener("change", apply);
 })();
 
+// PA buttons (#pa-row): on desktop in the first button row of the left column, as its own line above ANT 1
+// (Nutzer-Wunsch 2026-10-30); on the phone back in its own row where it always was.
+(function relocatePaRowForLayout() {
+  const paRow = document.getElementById("pa-row");
+  const ctrlRow1 = document.querySelector(".ctrl-row-1");
+  const extrasRow = document.getElementById("extras-row");
+  if (!paRow || !ctrlRow1 || !extrasRow) return;
+  const desktopQuery = window.matchMedia("(min-width: 800px)");
+  function apply() {
+    if (desktopQuery.matches) ctrlRow1.insertBefore(paRow, ctrlRow1.firstChild);
+    else extrasRow.insertAdjacentElement("afterend", paRow);
+  }
+  apply();
+  desktopQuery.addEventListener("change", apply);
+})();
+
 // TX EQ and RX EQ move to sit immediately left of PROC on desktop, in the
 // order RX EQ, TX EQ, PROC (2026-10-12 user requests: "TX Eqalizer links vom
 // PROC button anordnen", then "RX equalizer links vom TX EQ platzieren"),
@@ -1909,9 +1925,10 @@ const bandDropdown = makeDropdown("band-button", "band-menu", BANDS, (band) =>
 const FILTER_LABELS = { A: "FILA", B: "FILB", C: "FILC" };
 const FILTER_SETTINGS_ITEM = "SETTINGS";
 // The wrench of the client settings button at the top right (#audio-settings-button), so the entry that
-// opens the filter settings reads as the same kind of "client settings" action (Nutzer-Wunsch 2026-10-30).
+// opens the filter settings reads as the same kind of "client settings" action (Nutzer-Wunsch 2026-10-30);
+// no "CFG" text beside it any more (2026-10-31).
 const GEAR_ICON_HTML =
-  '<svg class="gear-icon gear-fill" viewBox="0 0 24 24"><path d="M22.7 19 13.6 9.9c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4Z" /></svg><span class="gear-icon-label">CFG</span>';
+  '<svg class="gear-icon gear-fill" viewBox="0 0 24 24"><path d="M22.7 19 13.6 9.9c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4Z" /></svg>';
 const filterDropdown = makeDropdown(
   "filter-button",
   "filter-menu",
@@ -2149,6 +2166,28 @@ function drawFilterGraph() {
 // the filter outline may be off by a constant factor until compared with the radio display.
 const ascopeSvg = document.getElementById("ascope");
 const ASCOPE_MAX_LEVEL = 50; // ##DD3 values are 00h..32h (0..50): 0 = top (0 dB), 50 = not shown (-50 dB), see the Kenwood reference
+// Spectrum look, switched by a click on the scope (Nutzer-Wunsch 2026-10-30): 0 gradient from blue to light grey
+// the louder it gets, 1 green like the waterfall, 2 outline only. Kept per browser. (The plain blue fill was
+// dropped after trying the four looks.)
+const ASCOPE_STYLE_KEY = "open890rc.ascopeLook";
+const ASCOPE_STYLES = 3;
+let ascopeStyle = 0;
+try {
+  ascopeStyle = Math.max(0, Math.min(ASCOPE_STYLES - 1, Number(localStorage.getItem(ASCOPE_STYLE_KEY)) || 0));
+} catch (e) {}
+function cycleAscopeStyle() {
+  ascopeStyle = (ascopeStyle + 1) % ASCOPE_STYLES;
+  try {
+    localStorage.setItem(ASCOPE_STYLE_KEY, String(ascopeStyle));
+  } catch (e) {}
+  scheduleAscope();
+}
+for (const el of [ascopeSvg, filterGraphSvg]) {
+  el.style.cursor = "pointer";
+  el.addEventListener("click", cycleAscopeStyle);
+  // no context menu on the picture (it kept the whole page stuck while it was open, Nutzer-Report 2026-10-30)
+  el.addEventListener("contextmenu", (e) => e.preventDefault());
+}
 let ascopeData = null;
 // What is drawn: ascopeData eased towards, so the ~8 lines a second the radio sends look like a fluid movement
 // instead of 8 jumps (Nutzer-Wunsch 2026-10-30). ascopeAnim runs only while something is still moving.
@@ -2193,12 +2232,6 @@ let ascopeWanted = false;
 let ascopeRetry = null;
 let ascopeFrame = 0;
 const ascopeDesktop = window.matchMedia("(min-width: 800px)");
-// Per browser on/off switch (Nutzer-Wunsch 2026-10-30, to find out whether the scope makes the waterfall stutter).
-const ASCOPE_ENABLED_KEY = "open890rc.audioScope";
-let ascopeEnabled = true;
-try {
-  ascopeEnabled = localStorage.getItem(ASCOPE_ENABLED_KEY) !== "0";
-} catch (e) {}
 function openAscopeWs() {
   if (ascopeWs) return;
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -2223,7 +2256,7 @@ function openAscopeWs() {
   sock.onerror = () => sock.close();
 }
 function syncAscopeStream() {
-  const want = !!(ascopeEnabled && (ascopeDesktop.matches || !filterSettingsOverlay.hidden) && lastState && lastState.connected && !document.hidden);
+  const want = !!((ascopeDesktop.matches || !filterSettingsOverlay.hidden) && lastState && lastState.connected && !document.hidden);
   if (want === ascopeWanted) return;
   ascopeWanted = want;
   send({ type: "setAudioScope", enabled: want });
@@ -2239,6 +2272,7 @@ function syncAscopeStream() {
   }
 }
 document.addEventListener("visibilitychange", syncAscopeStream);
+if (window.ResizeObserver) new ResizeObserver(() => scheduleAscope()).observe(ascopeSvg);
 ascopeDesktop.addEventListener("change", syncAscopeStream);
 new MutationObserver(() => {
   syncAscopeStream();
@@ -2297,7 +2331,17 @@ function ascopeGeometry(st) {
 // the filter window's slider values while that window is open), apf = optional CW audio peak filter shift.
 function renderAscope(svg, st, apf) {
   const g = ascopeGeometry(st) || { x0: 0, x1: 3000, lo: 0, hi: 0, titles: [st.mode || "", "", ""] };
-  const W = 232, H = 84, left = 4, right = W - 4, top = 24, base = 68;
+  // The scope under the sliders is as wide as the layout gives it at a fixed height, so the drawing
+  // gets wider (not taller) with the room: the viewBox width follows the element's aspect ratio. The
+  // one in the filter settings keeps its fixed shape.
+  const H = 97;
+  let W = 232;
+  if (svg.id === "ascope") {
+    const box = svg.getBoundingClientRect();
+    if (box.width > 0 && box.height > 0) W = Math.max(160, Math.round((H * box.width) / box.height));
+    if (svg.getAttribute("viewBox") !== `0 0 ${W} ${H}`) svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  }
+  const left = 4, right = W - 4, top = 24, base = 81; // 15% higher than 84/68 (Nutzer-Wunsch 2026-10-30)
   // The axis end sits a little before the right edge so that a filter edge AT the end of the axis (HC 3000
   // on the 0-3000 axis) still has room for its sloped flank, like on the radio's display; the spectrum
   // data runs on to the right edge.
@@ -2311,8 +2355,8 @@ function renderAscope(svg, st, apf) {
   out += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#58585b"/><stop offset="1" stop-color="#2c2c2f"/></linearGradient></defs>`;
   out += `<rect x="1" y="1" width="${W - 2}" height="19" fill="url(#${gid})"/>`;
   const filt = st.ifFilter || "";
-  if (filt) out += `<rect class="fg-a-box" x="4" y="3" width="12" height="14" rx="2"/><text class="fg-a-text" x="10" y="14.5" text-anchor="middle">${filt}</text>`;
-  out += `<text class="fg-hd" x="21" y="14.5">${g.titles[0]}</text>`;
+  if (filt) out += `<rect class="fg-a-box" x="2.5" y="2" width="16" height="16" rx="2"/><text class="fg-a-text" x="10.5" y="15" text-anchor="middle">${filt}</text>`;
+  out += `<text class="fg-hd" x="24" y="14.5">${g.titles[0]}</text>`;
   if (g.titles[1]) out += `<text class="fg-hd" x="${W / 2 + 6}" y="14.5" text-anchor="middle">${g.titles[1]}</text>`;
   if (g.titles[2]) out += `<text class="fg-hd" x="${W - 5}" y="14.5" text-anchor="end">${g.titles[2]}</text>`;
   // The spectrum polygon is a placeholder in the static markup; only its points change with every line of
@@ -2320,7 +2364,18 @@ function renderAscope(svg, st, apf) {
   // for the waterfall (Nutzer-Report 2026-10-30: the waterfall stuttered with the scope running).
   const spectrum = ascopeShown || ascopeData;
   const hasSpectrum = !!(spectrum && spectrum.length > 1);
-  if (hasSpectrum) out += `<polygon class="fg-spectrum" points=""/>`;
+  if (hasSpectrum) {
+    const sid = `${svg.id}-spectrum`;
+    // gradient for style 0: dark blue at the axis, light grey at the top (user space: the plot height)
+    out += `<defs><linearGradient id="${sid}" gradientUnits="userSpaceOnUse" x1="0" y1="${base}" x2="0" y2="${top}"><stop offset="0" stop-color="#1f35c9" stop-opacity="0.75"/><stop offset="0.55" stop-color="#6f86e8" stop-opacity="0.8"/><stop offset="1" stop-color="#d8dbdf" stop-opacity="0.95"/></linearGradient></defs>`;
+    const looks = [
+      `fill:url(#${sid});stroke:rgba(255,255,255,0.45)`,
+      "fill:rgba(60,190,90,0.55);stroke:rgba(160,255,175,0.75)",
+      "fill:none;stroke:rgba(255,255,255,0.85);stroke-width:0.9",
+    ];
+    const tag = ascopeStyle === 2 ? "polyline" : "polygon";
+    out += `<${tag} class="fg-spectrum" points="" style="${looks[ascopeStyle]}"/>`;
+  }
   out += `<line class="fg-axis" x1="${left}" y1="${base}" x2="${right}" y2="${base}"/>`;
   const centerHz = (g.x0 + g.x1) / 2;
   const mid = x(centerHz);
@@ -2348,12 +2403,13 @@ function renderAscope(svg, st, apf) {
   }
   if (hasSpectrum) {
     const n = spectrum.length;
-    const parts = [`${left},${base}`];
+    const corners = ascopeStyle !== 2; // the outline is the curve only, no closing lines along the axis
+    const parts = corners ? [`${left},${base}`] : [];
     for (let i = 0; i < n; i++) {
       const v = Math.min(spectrum[i], ASCOPE_MAX_LEVEL);
       parts.push(`${(left + (i / (n - 1)) * (right - left)).toFixed(1)},${(base - ((ASCOPE_MAX_LEVEL - v) / ASCOPE_MAX_LEVEL) * (base - top - 2)).toFixed(1)}`);
     }
-    parts.push(`${right},${base}`);
+    if (corners) parts.push(`${right},${base}`);
     svg.querySelector(".fg-spectrum").setAttribute("points", parts.join(" "));
   }
 }
@@ -2376,12 +2432,10 @@ function ascopeTxView(st) {
 function drawAscope() {
   if (!lastState) return;
   const txView = ascopeTxView(lastState);
-  const show = !!(ascopeEnabled && ascopeDesktop.matches && lastState.connected);
+  const show = !!(ascopeDesktop.matches && lastState.connected);
   ascopeSvg.toggleAttribute("hidden", !show); // SVG elements have no .hidden property
   if (show) renderAscope(ascopeSvg, txView || lastState);
-  if (!ascopeEnabled) {
-    filterGraphSvg.toggleAttribute("hidden", true);
-  } else if (!filterSettingsOverlay.hidden && txView) {
+  if (!filterSettingsOverlay.hidden && txView) {
     filterGraphSvg.toggleAttribute("hidden", false);
     renderAscope(filterGraphSvg, txView);
   } else if (!filterSettingsOverlay.hidden) {
@@ -3187,6 +3241,8 @@ onLongPress(document.getElementById("txeq-button"), () => openEqOverlay("tx"));
 onLongPress(document.getElementById("rxeq-button"), () => openEqOverlay("rx"));
 document.getElementById("eq-overlay-close").addEventListener("click", closeEqOverlay);
 onLongPress(txMsgButton, openTxMsgOverlay);
+// long press on the audio scope opens the filter settings (a short click switches its look, see cycleAscopeStyle)
+onLongPress(ascopeSvg, openFilterSettingsOverlay);
 
 // Equalizer curve editor ("UT"/"UR": 18 bands, 0..5100 Hz in 300 Hz steps, raw value
 // 0 = +6 dB ... 30 = -24 dB, 1 dB per step). The radio takes the whole curve with
@@ -4294,16 +4350,6 @@ for (const slider of [trimTriggerSlider, trimTargetSlider]) {
   });
 }
 const rxServoSlipInput = document.getElementById("rx-servo-slip");
-const audioScopeInput = document.getElementById("audio-scope-enabled");
-audioScopeInput.checked = ascopeEnabled;
-audioScopeInput.addEventListener("change", () => {
-  ascopeEnabled = audioScopeInput.checked;
-  try {
-    localStorage.setItem(ASCOPE_ENABLED_KEY, ascopeEnabled ? "1" : "0");
-  } catch (e) {}
-  syncAscopeStream();
-  scheduleAscope();
-});
 rxServoSlipInput.addEventListener("change", () => {
   if (window.hamrcSetRxServoSlip) window.hamrcSetRxServoSlip(rxServoSlipInput.checked);
 });
@@ -6106,6 +6152,10 @@ initAuth();
 // Tabs of the settings overlay.
 const overlayTabs = document.querySelectorAll("#connect-overlay .overlay-tab");
 function showOverlayTab(name) {
+  // The status lines sit below all tabs: each one belongs to its own tab and goes when another is shown
+  // (a "verbunden" from the PA tab used to stay at the bottom of every tab, Nutzer-Frage 2026-10-30).
+  if (name !== "pa") setAmpStatus("", false);
+  if (name !== "net") setConnectStatus("", false);
   for (const t of overlayTabs) t.classList.toggle("active", t.dataset.tab === name);
   for (const p of document.querySelectorAll("#connect-overlay .overlay-tabpanel")) p.hidden = p.dataset.tab !== name;
   // Debug tab: the server's log output, live, only while that tab is showing

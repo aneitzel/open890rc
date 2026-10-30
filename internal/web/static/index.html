@@ -289,7 +289,7 @@
   </div>
 
   <!-- Desktop only: the radio's audio scope (AF spectrum) under the sliders, see drawAscope in app.js -->
-  <svg id="ascope" class="ascope filter-graph" viewBox="0 0 232 84" hidden></svg>
+  <svg id="ascope" class="ascope filter-graph" viewBox="0 0 232 97" hidden></svg>
 
   <div class="controls">
     <div class="ctrl-row-group">
@@ -456,6 +456,8 @@
     </label>
   </div>
   <div class="waterfall-wrap">
+    <!-- desktop: drag to move the boundary between spectrum and waterfall (waterfall.js) -->
+    <div id="scope-divider" class="scope-divider"></div>
     <canvas id="spectrum-canvas" class="spectrum-canvas" width="640" height="70"></canvas>
     <canvas id="waterfall-canvas" class="waterfall-canvas" width="640" height="176"></canvas>
     <canvas id="waterfall-overlay" class="waterfall-overlay" width="640" height="246" data-i18n-title title="Signal anklicken oder rechts/links wischen"></canvas>
@@ -611,7 +613,7 @@
 
 <div id="audio-overlay" class="overlay" hidden>
   <div class="overlay-panel">
-    <div class="overlay-brand"><span>Open890RC v1.0.2 by <a href="https://www.qrz.com/db/HB9INA" target="_blank" rel="noopener noreferrer">HB9INA</a></span></div>
+    <div class="overlay-brand"><span>Open890RC v1.0.3 by <a href="https://www.qrz.com/db/HB9INA" target="_blank" rel="noopener noreferrer">HB9INA</a></span></div>
     <h2 data-i18n>Client Einstellungen</h2>
     <div class="overlay-tabs" role="tablist">
       <button type="button" class="overlay-tab active" data-tab="rx">RX</button>
@@ -650,10 +652,6 @@
           <label class="overlay-checkbox" data-i18n-title title="Gleicht Taktabweichungen zwischen Radio und Browser automatisch aus">
             <input type="checkbox" id="rx-servo-slip">
             <span data-i18n>RX Taktkompensation</span>
-          </label>
-          <label class="overlay-checkbox" data-i18n-title title="Das Audiospektrum des Radios (unter den Reglern und im Filter-Fenster) ein- oder ausschalten - nur dieser Browser">
-            <input type="checkbox" id="audio-scope-enabled" checked>
-            <span data-i18n>Audio-Scope</span>
           </label>
         </div>
         <div class="overlay-caption overlay-section-divider" data-i18n data-i18n-title title="Wird der Rückstand im Browser-Puffer zu groß, werden die ältesten Audio-Daten verworfen">Bei Browser RX  Pufferüberlauf:</div>
@@ -878,7 +876,7 @@
 <div id="filter-settings-overlay" class="overlay" hidden>
   <div class="overlay-panel">
     <h2>Filter Einstellungen</h2>
-    <svg id="filter-graph" class="filter-graph" viewBox="0 0 232 84" hidden></svg>
+    <svg id="filter-graph" class="filter-graph" viewBox="0 0 232 97" hidden></svg>
     <label class="center-row">Filter wählen
       <div class="btn-group" id="filter-settings-roofing-buttons"></div>
     </label>

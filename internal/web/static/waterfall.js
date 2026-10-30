@@ -1062,22 +1062,74 @@
     const wrap = canvas.parentElement;
     const avail = Math.round(wrap.clientHeight - spectrum.getBoundingClientRect().height);
     const rows = Math.max(waterfallRowsFor(true), Math.min(avail, WATERFALL_MAX_ROWS));
-    if (rows === height) return;
-    const old = document.createElement("canvas");
-    old.width = width;
-    old.height = height;
-    old.getContext("2d").drawImage(canvas, 0, 0);
-    height = rows;
-    canvas.height = height; // resizing clears the canvas
-    canvas.style.height = height + "px";
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(old, 0, 0);
-    overlayHeight = spectrumHeight + height;
-    overlay.height = overlayHeight;
-    overlay.style.height = overlayHeight + "px";
-    resetVerticalSmooth();
+    if (rows !== height) {
+      const old = document.createElement("canvas");
+      old.width = width;
+      old.height = height;
+      old.getContext("2d").drawImage(canvas, 0, 0);
+      height = rows;
+      canvas.height = height; // resizing clears the canvas
+      canvas.style.height = height + "px";
+      ctx.fillStyle = "#000";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(old, 0, 0);
+      overlayHeight = spectrumHeight + height;
+      overlay.height = overlayHeight;
+      resetVerticalSmooth();
+      drawOverlay();
+    }
+    // The overlay covers the spectrum and the waterfall at their displayed sizes (the spectrum's height can be
+    // dragged, see below, while its drawing keeps its 70 rows).
+    const total = Math.round(spectrum.getBoundingClientRect().height + height) + "px";
+    if (overlay.style.height !== total) {
+      overlay.style.height = total;
+      drawOverlay();
+    }
+  }
+  // Draggable boundary between the spectrum and the waterfall (desktop, Nutzer-Wunsch 2026-10-31): the divider
+  // strip sets --spectrum-h on the wrap; the waterfall takes the rest (fitWaterfallToWindow). Double click resets.
+  const SPECTRUM_H_KEY = "open890rc.spectrumHeight";
+  const SPECTRUM_H_DEFAULT = 70;
+  const SPECTRUM_H_MIN = 40;
+  const SPECTRUM_H_MAX = 300;
+  const scopeWrap = canvas.parentElement;
+  const divider = document.getElementById("scope-divider");
+  function setSpectrumHeight(px, save) {
+    const room = Math.max(SPECTRUM_H_MIN, scopeWrap.clientHeight - 100); // always leave a piece of waterfall
+    const h = Math.round(Math.max(SPECTRUM_H_MIN, Math.min(SPECTRUM_H_MAX, room, px)));
+    scopeWrap.style.setProperty("--spectrum-h", `${h}px`);
+    if (save) {
+      try {
+        localStorage.setItem(SPECTRUM_H_KEY, String(h));
+      } catch (e) {}
+    }
+    fitWaterfallToWindow();
     drawOverlay();
+  }
+  if (divider) {
+    try {
+      const saved = Number(localStorage.getItem(SPECTRUM_H_KEY));
+      if (saved) setSpectrumHeight(saved, false);
+    } catch (e) {}
+    let dragFrom = null;
+    divider.addEventListener("pointerdown", (e) => {
+      dragFrom = { y: e.clientY, h: spectrum.getBoundingClientRect().height };
+      divider.setPointerCapture(e.pointerId);
+      divider.classList.add("dragging");
+      e.preventDefault();
+    });
+    divider.addEventListener("pointermove", (e) => {
+      if (dragFrom) setSpectrumHeight(dragFrom.h + (e.clientY - dragFrom.y), false);
+    });
+    const endDrag = () => {
+      if (!dragFrom) return;
+      dragFrom = null;
+      divider.classList.remove("dragging");
+      setSpectrumHeight(spectrum.getBoundingClientRect().height, true);
+    };
+    divider.addEventListener("pointerup", endDrag);
+    divider.addEventListener("pointercancel", endDrag);
+    divider.addEventListener("dblclick", () => setSpectrumHeight(SPECTRUM_H_DEFAULT, true));
   }
   if (window.ResizeObserver) new ResizeObserver(fitWaterfallToWindow).observe(canvas.parentElement);
   desktopQuery.addEventListener("change", () => {
