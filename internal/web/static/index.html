@@ -288,6 +288,9 @@
     <span class="audio-filter-info" id="audio-filter-info"></span>
   </div>
 
+  <!-- Desktop only: the radio's audio scope (AF spectrum) under the sliders, see drawAscope in app.js -->
+  <svg id="ascope" class="ascope filter-graph" viewBox="0 0 232 84" hidden></svg>
+
   <div class="controls">
     <div class="ctrl-row-group">
       <div class="ctrl-row ctrl-row-buttons ctrl-row-1">
@@ -648,6 +651,10 @@
             <input type="checkbox" id="rx-servo-slip">
             <span data-i18n>RX Taktkompensation</span>
           </label>
+          <label class="overlay-checkbox" data-i18n-title title="Das Audiospektrum des Radios (unter den Reglern und im Filter-Fenster) ein- oder ausschalten - nur dieser Browser">
+            <input type="checkbox" id="audio-scope-enabled" checked>
+            <span data-i18n>Audio-Scope</span>
+          </label>
         </div>
         <div class="overlay-caption overlay-section-divider" data-i18n data-i18n-title title="Wird der Rückstand im Browser-Puffer zu groß, werden die ältesten Audio-Daten verworfen">Bei Browser RX  Pufferüberlauf:</div>
         <div class="slider-pair">
@@ -871,7 +878,7 @@
 <div id="filter-settings-overlay" class="overlay" hidden>
   <div class="overlay-panel">
     <h2>Filter Einstellungen</h2>
-    <svg id="filter-graph" class="filter-graph" viewBox="0 0 232 74" hidden></svg>
+    <svg id="filter-graph" class="filter-graph" viewBox="0 0 232 84" hidden></svg>
     <label class="center-row">Filter wählen
       <div class="btn-group" id="filter-settings-roofing-buttons"></div>
     </label>
@@ -880,22 +887,38 @@
     </label>
     <label id="filter-width-row">
       <span>Breite <span class="ctrl-max" id="filter-width-value"></span></span>
-      <input type="range" class="slider" id="filter-width-slider" min="0" max="3000" step="100">
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="filter-width-fill"></div>
+        <input type="range" id="filter-width-slider" min="0" max="3000" step="100">
+      </div>
     </label>
     <label id="filter-shift-row" hidden>
       <span>Shift <span class="ctrl-max" id="filter-shift-value"></span></span>
-      <input type="range" class="slider" id="filter-shift-slider" min="0" max="3000" step="10">
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="filter-shift-fill"></div>
+        <input type="range" id="filter-shift-slider" min="0" max="3000" step="10">
+      </div>
     </label>
     <label id="apf-row" hidden>
       <span>APF <button type="button" id="apf-toggle" class="apf-toggle">OFF</button> <span class="ctrl-max" id="apf-value"></span></span>
-      <input type="range" class="slider" id="apf-slider" min="-200" max="200" step="5" value="0">
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="apf-fill"></div>
+        <input type="range" id="apf-slider" min="-200" max="200" step="5" value="0">
+      </div>
     </label>
     <label id="apf-bw-row" class="center-row" hidden>APF Breite
       <div class="btn-group" id="apf-bw-buttons"></div>
     </label>
     <label id="apf-gain-row" hidden>
       <span>APF Gain <span class="ctrl-max" id="apf-gain-value"></span></span>
-      <input type="range" class="slider" id="apf-gain-slider" min="0" max="6" step="1" value="0">
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="apf-gain-fill"></div>
+        <input type="range" id="apf-gain-slider" min="0" max="6" step="1" value="0">
+      </div>
     </label>
     <label id="filter-lohicut-row" hidden>
       <span>LC <span class="ctrl-max" id="locut-value"></span> — HC <span class="ctrl-max" id="hicut-value"></span></span>

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 )
 
 // ParseMessageID parses a pop-up message report from the radio: "ME0" or
@@ -238,4 +239,79 @@ func EncodeAPFGain(gain int) (string, error) {
 		return "", fmt.Errorf("invalid APF gain %d", gain)
 	}
 	return fmt.Sprintf("AP3%d", gain), nil
+}
+
+// Beep volume is the menu item "Beep Volume" (menu type 0, category 01, item
+// 00 = "EX00100", Kenwood PC Command Reference, EX parameter lists): value
+// 000 = off, 001-020 = level. Like every EX answer the real wire format has a
+// literal space before the value ("EX00100 005"), see ParseSSBFilterMode.
+
+// EncodeBeepVolumeQuery builds the "EX00100" read command.
+func EncodeBeepVolumeQuery() string { return "EX00100" }
+
+// EncodeBeepVolume builds the "EX00100 <000-020>" set command.
+func EncodeBeepVolume(level int) string {
+	if level < 0 {
+		level = 0
+	}
+	if level > 20 {
+		level = 20
+	}
+	return fmt.Sprintf("EX00100 %03d", level)
+}
+
+// ParseBeepVolume parses an "EX00100 <level>" answer.
+func ParseBeepVolume(msg string) (int, error) {
+	const prefix = "EX00100"
+	if len(msg) < len(prefix)+2 || msg[:len(prefix)] != prefix {
+		return 0, fmt.Errorf("not an EX00100 message: %q", msg)
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(msg[len(prefix):]))
+	if err != nil || v < 0 || v > 20 {
+		return 0, fmt.Errorf("bad beep volume in %q", msg)
+	}
+	return v, nil
+}
+
+// TX filter menu items (Kenwood PC Command Reference, EX parameter lists, menu type 0 category 06):
+// 06 TX Filter Low Cut (SSB/AM), 07 TX Filter High Cut (SSB/AM), 08 Low Cut (SSB-DATA/AM-DATA), 09 High
+// Cut (SSB-DATA/AM-DATA). The radio's filter display shows these during TX (LC/BW/HC of the TX filter).
+// P5 is an index: low cut 000-005 = 10/100/200/300/400/500 Hz; high cut 000-005 = 2500..3000 Hz in 100 Hz
+// steps, 006 = 3500, 007 = 4000.
+var txLowCutHz = []int{10, 100, 200, 300, 400, 500}
+var txHighCutHz = []int{2500, 2600, 2700, 2800, 2900, 3000, 3500, 4000}
+
+// TXFilterEdge says which of the four menu items a parsed answer was.
+type TXFilterEdge int
+
+const (
+	TXFilterLowSSB TXFilterEdge = iota
+	TXFilterHighSSB
+	TXFilterLowData
+	TXFilterHighData
+)
+
+// ParseTXFilterEdge parses an "EX00606".."EX00609" answer ("EX00606 001") into the edge and its Hz value.
+func ParseTXFilterEdge(msg string) (edge TXFilterEdge, hz int, err error) {
+	if len(msg) < 9 || msg[:6] != "EX0060" {
+		return 0, 0, fmt.Errorf("not a TX filter message: %q", msg)
+	}
+	var table []int
+	switch msg[6] {
+	case '6':
+		edge, table = TXFilterLowSSB, txLowCutHz
+	case '7':
+		edge, table = TXFilterHighSSB, txHighCutHz
+	case '8':
+		edge, table = TXFilterLowData, txLowCutHz
+	case '9':
+		edge, table = TXFilterHighData, txHighCutHz
+	default:
+		return 0, 0, fmt.Errorf("not a TX filter message: %q", msg)
+	}
+	idx, err := strconv.Atoi(strings.TrimSpace(msg[7:]))
+	if err != nil || idx < 0 || idx >= len(table) {
+		return 0, 0, fmt.Errorf("bad TX filter index in %q", msg)
+	}
+	return edge, table[idx], nil
 }

@@ -1056,7 +1056,7 @@
   // the window and the waterfall grows with it, one canvas row per CSS pixel, up to
   // WATERFALL_MAX_ROWS. A lower window keeps the 266 rows and the wrap cuts the bottom off
   // (style.css). Growing/shrinking keeps the lines already drawn (the newest are at the top).
-  const WATERFALL_MAX_ROWS = 1000;
+  const WATERFALL_MAX_ROWS = 800;
   function fitWaterfallToWindow() {
     if (!desktopQuery.matches) return;
     const wrap = canvas.parentElement;

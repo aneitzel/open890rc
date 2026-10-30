@@ -70,6 +70,7 @@ type State struct {
 	tuner              cat.TunerState
 	ssbFilterMode      cat.FilterMode
 	ssbDataFilterMode  cat.FilterMode
+	txFilterHz         [4]int // cat.TXFilterEdge: TX filter low/high cut (SSB/AM and data modes), 0 = not read yet
 	loPassbandID       int
 	hiPassbandID       int
 	scopeSpanHz        int
@@ -398,7 +399,9 @@ type Snapshot struct {
 	AudioShiftMin        int                   `json:"audioShiftMinHz"`
 	AudioShiftMax        int                   `json:"audioShiftMaxHz"`
 	AudioHasLoHiCut      bool                  `json:"audioHasLoHiCut"`
-	SSBFilterMode        string                `json:"ssbFilterMode"` // "hiLoCut" / "shiftWidth" in SSB modes, else ""
+	SSBFilterMode        string                `json:"ssbFilterMode"`   // "hiLoCut" / "shiftWidth" in SSB modes, else ""
+	TXFilterLoCutHz      int                   `json:"txFilterLoCutHz"` // the TX filter shown while transmitting (0 = none/unknown), see txFilterEdges
+	TXFilterHiCutHz      int                   `json:"txFilterHiCutHz"`
 	AudioLoCutHz         int                   `json:"audioLoCutHz"`
 	AudioHiCutHz         int                   `json:"audioHiCutHz"`
 	AudioLoCutMin        int                   `json:"audioLoCutMinHz"`
@@ -917,6 +920,14 @@ func (s *State) Update(msg string) bool {
 		return true
 	}
 
+	if edge, hz, err := cat.ParseTXFilterEdge(msg); err == nil {
+		if s.txFilterHz[edge] == hz {
+			return false
+		}
+		s.txFilterHz[edge] = hz
+		return true
+	}
+
 	if val, err := cat.ParseSSBFilterMode(msg); err == nil {
 		if s.ssbFilterMode == val {
 			return false
@@ -1051,6 +1062,18 @@ func (s *State) MarkVoiceRecActivity() {
 	s.mu.Unlock()
 }
 
+// txFilterEdges are the TX filter low/high cut for the current mode: the data menu items in the data modes
+// (LSB-D, USB-D, AM-D), the SSB/AM ones in SSB and AM, none (0, 0) in every other mode. s.mu is held.
+func (s *State) txFilterEdges() (lo, hi int) {
+	switch s.mode {
+	case "LSB", "USB", "AM":
+		return s.txFilterHz[cat.TXFilterLowSSB], s.txFilterHz[cat.TXFilterHighSSB]
+	case "LSB-D", "USB-D", "AM-D":
+		return s.txFilterHz[cat.TXFilterLowData], s.txFilterHz[cat.TXFilterHighData]
+	}
+	return 0, 0
+}
+
 // cacheAudioWidth recomputes the audio filter's width for the current mode/
 // filter-mode/passband state and remembers it against whichever roofing
 // filter is currently selected. SL0/SH0 only ever report the ACTIVE
@@ -1168,6 +1191,7 @@ func (s *State) Snapshot() Snapshot {
 	audioWidthMin, audioWidthMax, audioWidthSettable := cat.AudioWidthRange(s.mode, s.filterModeLocked())
 	audioShiftMin, audioShiftMax, _ := cat.ShiftRange(s.mode, s.filterModeLocked())
 
+	txLo, txHi := s.txFilterEdges()
 	audioLoCutHz, audioHiCutHz, audioHasLoHiCut := cat.AudioLoHiCut(s.mode, s.filterModeLocked(), s.loPassbandID, s.hiPassbandID)
 	audioLoCutMin, audioLoCutMax, _ := cat.AudioLoCutRange(s.mode, s.filterModeLocked())
 	audioHiCutMin, audioHiCutMax, _ := cat.AudioHiCutRange(s.mode, s.filterModeLocked())
@@ -1238,6 +1262,8 @@ func (s *State) Snapshot() Snapshot {
 		AudioShiftMax:        audioShiftMax,
 		AudioHasLoHiCut:      audioHasLoHiCut,
 		SSBFilterMode:        ssbFilterModeName(s.mode, s.filterModeLocked()),
+		TXFilterLoCutHz:      txLo,
+		TXFilterHiCutHz:      txHi,
 		AudioLoCutHz:         audioLoCutHz,
 		AudioHiCutHz:         audioHiCutHz,
 		AudioLoCutMin:        audioLoCutMin,

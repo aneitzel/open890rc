@@ -184,3 +184,27 @@ func TestVoiceMsgChannelOp(t *testing.T) {
 		t.Fatal("must not parse PB1 as LM")
 	}
 }
+
+func TestBeepVolume(t *testing.T) {
+	if EncodeBeepVolumeQuery() != "EX00100" {
+		t.Errorf("query = %q", EncodeBeepVolumeQuery())
+	}
+	if c := EncodeBeepVolume(0); c != "EX00100 000" {
+		t.Errorf("mute = %q", c)
+	}
+	if c := EncodeBeepVolume(7); c != "EX00100 007" {
+		t.Errorf("set 7 = %q", c)
+	}
+	if c := EncodeBeepVolume(99); c != "EX00100 020" {
+		t.Errorf("clamped = %q", c)
+	}
+	if v, err := ParseBeepVolume("EX00100 005"); err != nil || v != 5 {
+		t.Errorf("parse = %d, %v", v, err)
+	}
+	if _, err := ParseBeepVolume("EX00611 001"); err == nil {
+		t.Error("another menu item must not parse as beep volume")
+	}
+	if _, err := ParseBeepVolume("EX00100 021"); err == nil {
+		t.Error("out of range must fail")
+	}
+}

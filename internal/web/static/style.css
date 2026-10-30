@@ -62,7 +62,7 @@ body {
 main {
   background: var(--panel);
   border-radius: 12px;
-  padding: 2.5rem 1rem;
+  padding: 2.5rem 0.5rem; /* side distance to the browser edge halved 2026-10-30 (was 1rem) */
   text-align: center;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
 }
@@ -2127,7 +2127,7 @@ main [inert] {
       "meter      freq       sliders sliders"
       "meter      otherfreq  sliders sliders"
       "meter      selectors  sliders sliders"
-      "meter      filterinfo .       ."
+      "meter      filterinfo ascope  ascope"
       "metercontrols eqmid   controlsx controlsx"
       "metercontrols eqmid   pa      pa"
       "metercontrols eqmid   buttons buttons"
@@ -2149,7 +2149,7 @@ main [inert] {
        ("soll aber auch im desktop unten abschliessen"). Top padding halved
        again, 2026-10-09: "Platz zwischen der ersten Zeile... und der
        Oberkante... ist zu gross, um die Hälfte reduzieren". */
-    padding: 0.75rem 2rem 0;
+    padding: 0.75rem 1rem 0; /* sides halved 2026-10-30 (was 2rem) */
   }
   /* kB/s and ms readout right in front of the AUDIO button, with some space
      (Nutzer-Wunsch 2026-10-11), instead of the row's middle where the status
@@ -2612,10 +2612,10 @@ main [inert] {
      same size as it, didn't last) — see relocateEqButtonsForLayout's own
      comment in app.js for where it actually ends up placed. */
   #proc-button {
-    /* exactly the PWR/SWR/ALC key size, centred under the 4.2rem TX button */
+    /* exactly the PWR/SWR/ALC key size, centred under the TX button (5.4rem on desktop) */
     width: 3.1rem;
     min-width: 0;
-    right: 0.55rem;
+    right: 1.15rem; /* (5.4rem TX - 3.1rem) / 2: stays centred under the wider TX button */
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
@@ -2663,6 +2663,10 @@ main [inert] {
     grid-area: sliders;
     align-self: center;
     margin-top: 0;
+    /* Gap sliders to TX button: the visible distance used to be ~60px (3.2rem reserved for the
+       value + 0.75rem column gap); halved to ~30px (Nutzer-Wunsch 2026-10-30). The reservation
+       itself is gone on desktop (see below), so the gap is set here. */
+    column-gap: 1.7rem;
   }
   /* Phone's version spans only AF/SQL/RFG (grid-row 1/span 3, stretched to
      fill that 3-row height) with a margin-top hand-tuned to land it on the
@@ -2682,11 +2686,15 @@ main [inert] {
      no override — so phone's exact 76px is just as correct a height here;
      align-self:center centres that fixed-size box within the 4-row cell
      instead of phone's margin-top offset within a 3-row one. */
+  /* Taller, almost the height of the AF..PWR slider stack (Nutzer-Wunsch 2026-10-30; was a fixed
+     76px): stretches over the 4 rows with a small gap top and bottom. */
   .slider-tx-block .tx-button {
     grid-row: 1 / span 4;
-    align-self: center;
-    height: 76px;
-    margin-top: 0;
+    align-self: stretch;
+    height: auto;
+    margin: 0.35rem 0;
+    width: 5.4rem; /* wider as well (Nutzer-Wunsch 2026-10-30; phone keeps 4.2rem) */
+    font-size: 1.6rem;
   }
   .waterfall-row {
     grid-area: wfrow;
@@ -3088,8 +3096,11 @@ main [inert] {
     max-width: none;
     margin: 0;
   }
+  /* The value sits ON the slider, so no room needs reserving on the right any more: the
+     sliders run on to the TX button (Nutzer-Wunsch 2026-10-30). */
+  .slider-col .ctrl-row,
   .slider-col .pwr-row {
-    padding-right: 3.2rem;
+    padding-right: 0;
   }
   /* label + slider of all four rows 15px further right */
   .slider-col .ctrl-row > .ctrl-label {
@@ -4685,4 +4696,68 @@ main.controls-off .slider::-moz-range-thumb {
 #confirm-overlay .overlay-actions {
   justify-content: center;
   gap: 0.8rem;
+}
+
+/* Audio scope under the sliders (desktop only, see drawAscope in app.js). Styled like the passband
+   graphic of the filter settings (.filter-graph, .fg-*). */
+.ascope { display: none; }
+.ascope .fg-spectrum, .filter-graph .fg-spectrum { fill: rgba(40, 70, 255, 0.45); stroke: rgba(255, 255, 255, 0.5); stroke-width: 0.6; }
+.ascope .fg-shape-line, .filter-graph .fg-shape-line { fill: none; stroke: rgba(255, 255, 255, 0.7); stroke-width: 1.1; }
+/* centre line: the same white as the filter outline, but quieter */
+.ascope .fg-center, .filter-graph .fg-center { stroke: rgba(255, 255, 255, 0.5); stroke-width: 1; }
+.ascope .fg-hd, .filter-graph .fg-hd { fill: #fff; font-size: 10px; }
+.ascope .fg-ft, .filter-graph .fg-ft { fill: #fff; font-size: 9px; }
+.ascope .fg-a-box, .filter-graph .fg-a-box { fill: #fff; }
+.ascope .fg-a-text, .filter-graph .fg-a-text { fill: #000; font-size: 10px; font-weight: 700; }
+.ascope .fg-title { font-size: 10px; }
+@media (min-width: 800px) {
+  .ascope {
+    display: block;
+    grid-area: ascope;
+    align-self: start;
+    justify-self: center;
+    /* centred under the slider bars, not under the TX button next to them (TX 5.4rem + gap 1.7rem) */
+    margin-right: 7.1rem;
+    width: 66%; /* half the size first, then a bit larger again (Nutzer-Wunsch 2026-10-30): about 260 x 95 px */
+    margin-bottom: 0;
+  }
+  .ascope[hidden] { display: none; }
+}
+
+/* Filter settings: a wider window, so the scope at the top (and the sliders) get bigger
+   (Nutzer-Wunsch 2026-10-30); on a phone it stays within 90% of the screen width. */
+#filter-settings-overlay .overlay-panel {
+  width: min(90vw, 350px); /* 420px was too big (Nutzer-Wunsch 2026-10-30), 280px the old default */
+}
+
+/* Filter settings (Nutzer-Wunsch 2026-10-30): all rows centred, and the Width/Shift/APF sliders in the
+   same flat look as the Hi/Lo cut slider. */
+#filter-settings-overlay label {
+  align-items: center;
+  text-align: center;
+}
+#filter-settings-overlay .level-slider,
+#filter-settings-overlay .dual-slider {
+  width: 100%;
+  max-width: 255px;
+  flex: none;
+}
+/* Same fill colour as the Hi/Lo cut slider (.dual-slider-fill, 0.7), the generic .level-slider-fill is
+   the more muted 0.45 (Nutzer-Report 2026-10-30: Width/Shift looked different). */
+#filter-settings-overlay .level-slider-fill {
+  background: rgba(232, 129, 42, 0.7);
+}
+
+/* Slightly rounded corners of the scope displays (Nutzer-Wunsch 2026-10-30): the SVG clips its content
+   (the grey header strip) to the rounded shape, the frame rectangle inside has the same radius. */
+.ascope,
+.filter-graph {
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* Quieter overall (Nutzer-Wunsch 2026-10-30): the scope displays sit back a little against the controls. */
+.ascope,
+.filter-graph {
+  opacity: 0.85;
 }

@@ -113,3 +113,31 @@ func ParseBandScopeLine(msg string) (line []byte, ok bool) {
 	}
 	return out, true
 }
+
+// Filter scope (the AF spectrum of the received audio in the radio's filter display) over LAN.
+// Kenwood PC Command Reference "##DD3 Filter Scope Display Information (LAN Output Only)": 213
+// values, each two ASCII hex digits (426 digits), 00h..32h, where 00h = top of the display
+// (signal 0 dB) and 32h = nothing shown (-50 dB), i.e. LOW means STRONG; not output while the
+// radio itself displays the audio scope. Switched on with "DD11" (as open890 does, matches the
+// reference's "DD1 set to output to LAN"); "DD10" as the off command is an assumption.
+
+// EncodeAudioScope builds the audio scope on/off command.
+func EncodeAudioScope(on bool) string {
+	if on {
+		return "DD11"
+	}
+	return "DD10"
+}
+
+// ParseAudioScopeLine parses a "##DD3<hex>" audio scope line into its level bytes.
+func ParseAudioScopeLine(msg string) (line []byte, ok bool) {
+	const prefix = "##DD3"
+	if len(msg) <= len(prefix) || msg[:len(prefix)] != prefix {
+		return nil, false
+	}
+	out, err := hex.DecodeString(msg[len(prefix):])
+	if err != nil || len(out) == 0 {
+		return nil, false
+	}
+	return out, true
+}

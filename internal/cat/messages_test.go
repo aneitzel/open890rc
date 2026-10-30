@@ -36,3 +36,29 @@ func TestVoipLevel(t *testing.T) {
 		}
 	}
 }
+
+func TestParseTXFilterEdge(t *testing.T) {
+	cases := []struct {
+		msg  string
+		edge TXFilterEdge
+		hz   int
+	}{
+		{"EX00606 000", TXFilterLowSSB, 10},
+		{"EX00606 005", TXFilterLowSSB, 500},
+		{"EX00607 005", TXFilterHighSSB, 3000},
+		{"EX00607 007", TXFilterHighSSB, 4000},
+		{"EX00608 001", TXFilterLowData, 100},
+		{"EX00609 000", TXFilterHighData, 2500},
+	}
+	for _, c := range cases {
+		edge, hz, err := ParseTXFilterEdge(c.msg)
+		if err != nil || edge != c.edge || hz != c.hz {
+			t.Errorf("%q = %v, %d, %v", c.msg, edge, hz, err)
+		}
+	}
+	for _, bad := range []string{"EX00606 006", "EX00611 001", "EX00610 000", "EX00606"} {
+		if _, _, err := ParseTXFilterEdge(bad); err == nil {
+			t.Errorf("%q must not parse", bad)
+		}
+	}
+}

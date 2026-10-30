@@ -1908,10 +1908,10 @@ const bandDropdown = makeDropdown("band-button", "band-menu", BANDS, (band) =>
 // that used numbers instead of open890's lettering in the first place).
 const FILTER_LABELS = { A: "FILA", B: "FILB", C: "FILC" };
 const FILTER_SETTINGS_ITEM = "SETTINGS";
-// Same gear glyph as the connection setup button (#setup-button), so the two
-// "open a config overlay" entries in this UI read as the same action.
+// The wrench of the client settings button at the top right (#audio-settings-button), so the entry that
+// opens the filter settings reads as the same kind of "client settings" action (Nutzer-Wunsch 2026-10-30).
 const GEAR_ICON_HTML =
-  '<svg class="gear-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5" /><circle cx="12" cy="12" r="7.5" stroke-dasharray="2.2 2.6" /></svg><span class="gear-icon-label">CFG</span>';
+  '<svg class="gear-icon gear-fill" viewBox="0 0 24 24"><path d="M22.7 19 13.6 9.9c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4Z" /></svg><span class="gear-icon-label">CFG</span>';
 const filterDropdown = makeDropdown(
   "filter-button",
   "filter-menu",
@@ -1996,6 +1996,23 @@ const roofingGroup = makeButtonGroup(
 );
 roofingGroup.onClick((filter) => send({ type: "setIFFilter", filter }));
 
+// Filter window sliders in the flat track/fill look of the Hi/Lo cut slider (.level-slider): the fill
+// runs from the left edge (width, APF gain) or from the zero point (shift, APF shift, which can be
+// negative). Redrawn with every redraw of the scope while the window is open.
+function setCenteredFill(fillEl, slider) {
+  const min = Number(slider.min), max = Number(slider.max);
+  const span = max - min || 1;
+  const zero = Math.max(0, Math.min(1, (0 - min) / span));
+  const pos = Math.max(0, Math.min(1, (Number(slider.value) - min) / span));
+  fillEl.style.left = `${Math.min(zero, pos) * 100}%`;
+  fillEl.style.width = `${Math.abs(pos - zero) * 100}%`;
+}
+function updateFilterFills() {
+  setCenteredFill(document.getElementById("filter-width-fill"), filterWidthSlider);
+  setCenteredFill(document.getElementById("filter-shift-fill"), filterShiftSlider);
+  setCenteredFill(document.getElementById("apf-fill"), apfSlider);
+  setCenteredFill(document.getElementById("apf-gain-fill"), apfGainSlider);
+}
 function updateFilterWidthLabel() {
   filterWidthValueEl.textContent = `${(Number(filterWidthSlider.value) / 1000).toFixed(2)} kHz`;
 }
@@ -2117,59 +2134,273 @@ hicutSlider.addEventListener("change", () => {
 // "PT", 700 Hz until it answers). No graphic for FSK/PSK (no shift/cut data
 // there).
 const CW_PITCH_HZ_ASSUMED = 700;
-function filterGraphParams() {
-  if (!lastState) return null;
-  const mode = lastState.mode || "";
-  if (lastState.audioHasLoHiCut) {
-    const lo = Number(locutSlider.value);
-    const hi = Number(hicutSlider.value);
-    return { lo, hi, axisMax: 5000, title: `LC: ${lo}   HC: ${hi}` };
+const filterGraphSvg = document.getElementById("filter-graph");
+// The graphic at the top of the filter settings is the live scope now (renderAscope below); the old
+// passband-only drawing is gone. Kept under its old name for the many places that redraw it.
+function drawFilterGraph() {
+  scheduleAscope();
+}
+
+// Audio scope on the desktop (Nutzer-Wunsch 2026-10-30), under the sliders: the radio's AF spectrum
+// (##DD3 lines, /audioscope-ws) drawn like the passband graphic of the filter settings, with the
+// header of the radio's own display (LC/BW/HC), the centre of the audio axis and the active roofing
+// filter (RFT). The radio only sends it while a browser asks (setAudioScope). The axis range per mode
+// is the one filterGraphParams uses; the radio's real range is not documented, so the spectrum and
+// the filter outline may be off by a constant factor until compared with the radio display.
+const ascopeSvg = document.getElementById("ascope");
+const ASCOPE_MAX_LEVEL = 50; // ##DD3 values are 00h..32h (0..50): 0 = top (0 dB), 50 = not shown (-50 dB), see the Kenwood reference
+let ascopeData = null;
+// What is drawn: ascopeData eased towards, so the ~8 lines a second the radio sends look like a fluid movement
+// instead of 8 jumps (Nutzer-Wunsch 2026-10-30). ascopeAnim runs only while something is still moving.
+let ascopeShown = null;
+let ascopeAnim = 0;
+let ascopeAnimLast = 0;
+let ascopeAnimDrawn = 0;
+const ASCOPE_EASE_MS = 50; // time constant of the easing (70 first, then 35 was too restless, Nutzer-Wunsch 2026-10-30)
+function ascopeStep(now) {
+  ascopeAnim = 0;
+  if (!ascopeData) {
+    ascopeShown = null;
+    return;
   }
-  if (!lastState.audioWidthSettable) return null;
-  const width = Number(filterWidthSlider.value);
-  if (lastState.audioHasShift) {
-    const shift = Number(filterShiftSlider.value);
-    if (mode.startsWith("CW")) {
-      const pitch = lastState.cwPitchHz || CW_PITCH_HZ_ASSUMED;
-      const center = pitch + shift;
-      return { lo: center - width / 2, hi: center + width / 2, axisMax: 2000, pitch, apf: lastState.apfOn && lastState.apfKnown ? pitch + Number(apfSlider.value) : undefined, apfBw: lastState.apfBwKnown ? lastState.apfBw : 1, title: `WIDTH: ${width}   SHIFT: ${shift}` };
+  if (!ascopeShown || ascopeShown.length !== ascopeData.length) ascopeShown = Float32Array.from(ascopeData);
+  const alpha = 1 - Math.exp(-(now - ascopeAnimLast) / ASCOPE_EASE_MS);
+  ascopeAnimLast = now;
+  let moving = false;
+  for (let i = 0; i < ascopeData.length; i++) {
+    const d = ascopeData[i] - ascopeShown[i];
+    if (Math.abs(d) > 0.15) {
+      ascopeShown[i] += d * alpha;
+      moving = true;
+    } else {
+      ascopeShown[i] = ascopeData[i];
     }
-    return { lo: shift - width / 2, hi: shift + width / 2, axisMax: 3500, title: `WIDTH: ${width}   SHIFT: ${shift}` };
+  }
+  if (now - ascopeAnimDrawn >= 30) { // at most ~33 drawings a second
+    ascopeAnimDrawn = now;
+    drawAscope();
+  }
+  if (moving) ascopeAnim = requestAnimationFrame(ascopeStep);
+  else drawAscope();
+}
+function startAscopeAnim() {
+  if (ascopeAnim) return;
+  ascopeAnimLast = performance.now();
+  ascopeAnim = requestAnimationFrame(ascopeStep);
+}
+let ascopeWs = null;
+let ascopeWanted = false;
+let ascopeRetry = null;
+let ascopeFrame = 0;
+const ascopeDesktop = window.matchMedia("(min-width: 800px)");
+// Per browser on/off switch (Nutzer-Wunsch 2026-10-30, to find out whether the scope makes the waterfall stutter).
+const ASCOPE_ENABLED_KEY = "open890rc.audioScope";
+let ascopeEnabled = true;
+try {
+  ascopeEnabled = localStorage.getItem(ASCOPE_ENABLED_KEY) !== "0";
+} catch (e) {}
+function openAscopeWs() {
+  if (ascopeWs) return;
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const sock = new WebSocket(`${proto}://${location.host}/audioscope-ws`);
+  ascopeWs = sock;
+  sock.binaryType = "arraybuffer";
+  sock.onmessage = (event) => {
+    const bytes = new Uint8Array(event.data);
+    window.hamrcReportTraffic(bytes.length, "scope");
+    ascopeData = bytes;
+    startAscopeAnim();
+  };
+  sock.onclose = () => {
+    if (ascopeWs === sock) ascopeWs = null;
+    if (ascopeWanted) {
+      clearTimeout(ascopeRetry);
+      ascopeRetry = setTimeout(() => {
+        if (ascopeWanted) openAscopeWs();
+      }, 2000);
+    }
+  };
+  sock.onerror = () => sock.close();
+}
+function syncAscopeStream() {
+  const want = !!(ascopeEnabled && (ascopeDesktop.matches || !filterSettingsOverlay.hidden) && lastState && lastState.connected && !document.hidden);
+  if (want === ascopeWanted) return;
+  ascopeWanted = want;
+  send({ type: "setAudioScope", enabled: want });
+  if (want) {
+    openAscopeWs();
+  } else {
+    clearTimeout(ascopeRetry);
+    if (ascopeWs) ascopeWs.close();
+    ascopeWs = null;
+    ascopeData = null;
+    ascopeShown = null;
+    scheduleAscope();
+  }
+}
+document.addEventListener("visibilitychange", syncAscopeStream);
+ascopeDesktop.addEventListener("change", syncAscopeStream);
+new MutationObserver(() => {
+  syncAscopeStream();
+  scheduleAscope();
+}).observe(filterSettingsOverlay, { attributes: true, attributeFilter: ["hidden"] });
+// At most ~15 redraws a second: the radio sends many lines per second and the state broadcasts (S meter)
+// come just as often, neither needs a redraw each.
+const ASCOPE_MIN_INTERVAL_MS = 66;
+let ascopeLastDraw = 0;
+function scheduleAscope() {
+  if (ascopeFrame) return;
+  const wait = Math.max(0, ascopeLastDraw + ASCOPE_MIN_INTERVAL_MS - performance.now());
+  ascopeFrame = setTimeout(() => {
+    ascopeFrame = requestAnimationFrame(() => {
+      ascopeFrame = 0;
+      ascopeLastDraw = performance.now();
+      drawAscope();
+    });
+  }, wait);
+}
+// The filter scope's frequency axis and the filter outline on it, from the live state (not the filter
+// window's sliders, which only follow the radio while that window is open). The scope's span depends
+// on the mode and filter, the rules are the ones open890 found out for this radio (audio_scope.ex):
+// SSB/FM hi/lo cut: 0-3000 Hz, or 0-5000 when HC >= 3400; AM: 0-5000; SSB shift/width: 0-3000, or
+// 0-5000 when shift + width/2 > 3000; FSK/PSK: 0-500 Hz for widths up to 500, else 0-3000; CW:
+// 1000 Hz (width < 700) or 3000 Hz wide, centred on the pitch (open890 has 500/1500 here, which did not
+// match photos of the radio display: width 300 fills 30% of the axis, width 800 about 27%). Where the
+// switch between the two lies is a guess (700, as in open890). Returns null without filter data.
+function ascopeGeometry(st) {
+  const mode = st.mode || "";
+  if (mode.startsWith("CW") && st.audioHasShift) {
+    const width = st.audioWidthHz, shift = st.audioShiftHz;
+    const pitch = st.cwPitchHz || CW_PITCH_HZ_ASSUMED;
+    const span = width < 700 ? 1000 : 3000; // measured on photos of the radio display (width 300: 1000 Hz, width 800: 3000 Hz)
+    const center = pitch + shift;
+    return { x0: pitch - span / 2, x1: pitch + span / 2, lo: center - width / 2, hi: center + width / 2, titles: [`WIDTH:${width}`, "", `SHIFT:${shift}`] };
+  }
+  if (st.audioHasLoHiCut) {
+    const lo = st.audioLoCutHz, hi = st.audioHiCutHz;
+    const total = mode === "AM" || mode === "AM-D" || hi >= 3400 ? 5000 : 3000;
+    return { x0: 0, x1: total, lo, hi, titles: [`LC: ${lo}`, `BW:${Math.max(0, hi - lo)}`, `HC:${hi}`] };
+  }
+  if (st.audioHasShift) {
+    const width = st.audioWidthHz, shift = st.audioShiftHz;
+    const total = shift + width / 2 > 3000 ? 5000 : 3000;
+    return { x0: 0, x1: total, lo: shift - width / 2, hi: shift + width / 2, titles: [`WIDTH:${width}`, "", `SHIFT:${shift}`] };
+  }
+  if (st.audioWidthHz > 0) {
+    const width = st.audioWidthHz;
+    const total = width <= 500 ? 500 : 3000;
+    return { x0: 0, x1: total, lo: total / 2 - width / 2, hi: total / 2 + width / 2, titles: [`WIDTH:${width}`, "", ""] };
   }
   return null;
 }
-
-function drawFilterGraph() {
-  const svg = document.getElementById("filter-graph");
-  const p = filterGraphParams();
-  svg.toggleAttribute("hidden", !p); // SVG elements have no .hidden property
-  if (!p) return;
-  const W = 232, H = 74, left = 4, right = W - 4, top = 18, base = 56;
-  const x = (hz) => left + (Math.max(0, Math.min(p.axisMax, hz)) / p.axisMax) * (right - left);
-  const xl = x(p.lo), xh = x(p.hi);
-  const slope = 4;
-  let out = `<rect class="fg-frame" x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="4"/>`;
-  out += `<text class="fg-title" x="${W / 2}" y="12" text-anchor="middle">${p.title}</text>`;
+// Draws the scope into an SVG: `st` = the filter state to show (the live state, or the live state with
+// the filter window's slider values while that window is open), apf = optional CW audio peak filter shift.
+function renderAscope(svg, st, apf) {
+  const g = ascopeGeometry(st) || { x0: 0, x1: 3000, lo: 0, hi: 0, titles: [st.mode || "", "", ""] };
+  const W = 232, H = 84, left = 4, right = W - 4, top = 24, base = 68;
+  // The axis end sits a little before the right edge so that a filter edge AT the end of the axis (HC 3000
+  // on the 0-3000 axis) still has room for its sloped flank, like on the radio's display; the spectrum
+  // data runs on to the right edge.
+  const slope = 8, plotRight = right - 10;
+  const x = (hz) => left + (Math.max(g.x0, Math.min(g.x1, hz)) - g.x0) / (g.x1 - g.x0) * (plotRight - left);
+  // like the radio's display: a grey strip on top with the active filter (A/B/C) in a white box, then
+  // LC on the left, BW in the middle and HC on the right; the labels below the axis have no background
+  let out = `<rect class="fg-frame" x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="5"/>`;
+  // the header strip is a dark grey gradient (per SVG id: a gradient inside a hidden SVG is not found)
+  const gid = `${svg.id}-head`;
+  out += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#58585b"/><stop offset="1" stop-color="#2c2c2f"/></linearGradient></defs>`;
+  out += `<rect x="1" y="1" width="${W - 2}" height="19" fill="url(#${gid})"/>`;
+  const filt = st.ifFilter || "";
+  if (filt) out += `<rect class="fg-a-box" x="4" y="3" width="12" height="14" rx="2"/><text class="fg-a-text" x="10" y="14.5" text-anchor="middle">${filt}</text>`;
+  out += `<text class="fg-hd" x="21" y="14.5">${g.titles[0]}</text>`;
+  if (g.titles[1]) out += `<text class="fg-hd" x="${W / 2 + 6}" y="14.5" text-anchor="middle">${g.titles[1]}</text>`;
+  if (g.titles[2]) out += `<text class="fg-hd" x="${W - 5}" y="14.5" text-anchor="end">${g.titles[2]}</text>`;
+  // The spectrum polygon is a placeholder in the static markup; only its points change with every line of
+  // data (the markup is only rebuilt when something else changed), which keeps the page's main thread free
+  // for the waterfall (Nutzer-Report 2026-10-30: the waterfall stuttered with the scope running).
+  const spectrum = ascopeShown || ascopeData;
+  const hasSpectrum = !!(spectrum && spectrum.length > 1);
+  if (hasSpectrum) out += `<polygon class="fg-spectrum" points=""/>`;
   out += `<line class="fg-axis" x1="${left}" y1="${base}" x2="${right}" y2="${base}"/>`;
-  const step = p.axisMax > 3000 ? 1000 : 500;
-  for (let hz = 0; hz <= p.axisMax; hz += step) {
-    const tx = x(hz);
-    out += `<line class="fg-axis" x1="${tx}" y1="${base}" x2="${tx}" y2="${base + 3}"/>`;
-    const anchor = hz === 0 ? "start" : hz === p.axisMax ? "end" : "middle";
-    out += `<text x="${tx}" y="${base + 13}" text-anchor="${anchor}">${hz}</text>`;
+  const centerHz = (g.x0 + g.x1) / 2;
+  const mid = x(centerHz);
+  out += `<line class="fg-center" x1="${mid}" y1="${top}" x2="${mid}" y2="${base}"/>`;
+  out += `<text class="fg-ft" x="${mid + 3}" y="${base + 11}">${Math.round(centerHz)}</text>`;
+  const rft = st.ifFilter && st.filterWidthHz ? st.filterWidthHz[st.ifFilter] : 0;
+  if (rft) out += `<text class="fg-ft" x="${right - 2}" y="${base + 11}" text-anchor="end">RFT:${rft / 1000} k</text>`;
+  if (g.hi > g.lo) {
+    // the left flank is vertical when the low edge sits at the start of the axis (LC 0), else sloped
+    const xl = x(g.lo), xh = x(g.hi);
+    const lowStart = g.lo <= g.x0 ? `${xl},${base}` : `${Math.max(left, xl - slope)},${base}`;
+    const highEnd = `${Math.min(right, xh + slope)},${base}`;
+    out += `<polyline class="fg-shape-line" points="${lowStart} ${xl},${top} ${xh},${top} ${highEnd}"/>`;
   }
-  if (p.pitch !== undefined) {
-    out += `<line class="fg-pitch" x1="${x(p.pitch)}" y1="${top - 2}" x2="${x(p.pitch)}" y2="${base}"/>`;
-  }
-  if (p.apf !== undefined) {
-    // Audio peak filter: a narrow peak at pitch + APF shift.
-    const ax = x(p.apf);
-    const half = [3, 5, 8][p.apfBw] || 5; // visual only, not to scale
+  if (apf) {
+    // audio peak filter (CW): a narrow peak at pitch + APF shift, width only visual
+    const ax = x(apf.hz);
+    const half = [3, 5, 8][apf.bw] || 5;
     out += `<polygon class="fg-apf" points="${ax - half},${base} ${ax},${top + 4} ${ax + half},${base}"/>`;
     out += `<text class="fg-apf-label" x="${ax + 7}" y="${top + 12}">APF</text>`;
   }
-  out += `<polygon class="fg-shape" points="${xl - slope},${base} ${xl},${top + 2} ${xh},${top + 2} ${xh + slope},${base}"/>`;
-  svg.innerHTML = out;
+  if (svg._ascopeMarkup !== out) {
+    svg.innerHTML = out;
+    svg._ascopeMarkup = out;
+  }
+  if (hasSpectrum) {
+    const n = spectrum.length;
+    const parts = [`${left},${base}`];
+    for (let i = 0; i < n; i++) {
+      const v = Math.min(spectrum[i], ASCOPE_MAX_LEVEL);
+      parts.push(`${(left + (i / (n - 1)) * (right - left)).toFixed(1)},${(base - ((ASCOPE_MAX_LEVEL - v) / ASCOPE_MAX_LEVEL) * (base - top - 2)).toFixed(1)}`);
+    }
+    parts.push(`${right},${base}`);
+    svg.querySelector(".fg-spectrum").setAttribute("points", parts.join(" "));
+  }
+}
+// Both scopes: the one under the sliders (desktop) and the one in the filter settings window.
+// While transmitting the radio's display shows the TX filter (menu items TX Filter Low/High Cut, read at
+// connect) with LC/BW/HC, no filter letter and no RFT; the spectrum is that of the transmit signal, which
+// the radio keeps sending as ##DD3 (empty in the photo only because nothing was being said). Returns that view of the
+// state, or null when not transmitting or the radio has no TX filter in this mode (CW, FM, FSK/PSK).
+function ascopeTxView(st) {
+  if (!st.tx || st.tuning || !st.txFilterLoCutHz || !st.txFilterHiCutHz) return null;
+  return Object.assign({}, st, {
+    txView: true,
+    audioHasLoHiCut: true,
+    audioHasShift: false,
+    audioLoCutHz: st.txFilterLoCutHz,
+    audioHiCutHz: st.txFilterHiCutHz,
+    ifFilter: "",
+  });
+}
+function drawAscope() {
+  if (!lastState) return;
+  const txView = ascopeTxView(lastState);
+  const show = !!(ascopeEnabled && ascopeDesktop.matches && lastState.connected);
+  ascopeSvg.toggleAttribute("hidden", !show); // SVG elements have no .hidden property
+  if (show) renderAscope(ascopeSvg, txView || lastState);
+  if (!ascopeEnabled) {
+    filterGraphSvg.toggleAttribute("hidden", true);
+  } else if (!filterSettingsOverlay.hidden && txView) {
+    filterGraphSvg.toggleAttribute("hidden", false);
+    renderAscope(filterGraphSvg, txView);
+  } else if (!filterSettingsOverlay.hidden) {
+    updateFilterFills();
+    // the window follows its sliders while they are dragged, ahead of the radio's confirmation
+    const st = Object.assign({}, lastState);
+    if (st.audioHasLoHiCut) {
+      st.audioLoCutHz = Number(locutSlider.value);
+      st.audioHiCutHz = Number(hicutSlider.value);
+    } else if (st.audioHasShift || st.audioWidthHz > 0) {
+      st.audioWidthHz = Number(filterWidthSlider.value);
+      if (st.audioHasShift) st.audioShiftHz = Number(filterShiftSlider.value);
+    }
+    const isCW = (st.mode || "").startsWith("CW");
+    const pitch = st.cwPitchHz || CW_PITCH_HZ_ASSUMED;
+    const apf = isCW && st.apfOn && st.apfKnown ? { hz: pitch + Number(apfSlider.value), bw: st.apfBwKnown ? st.apfBw : 1 } : undefined;
+    filterGraphSvg.toggleAttribute("hidden", !st.connected);
+    if (st.connected) renderAscope(filterGraphSvg, st, apf);
+  }
 }
 
 // APF (audio peak filter, CW only): on/off button + shift slider (-200..+200
@@ -4063,6 +4294,16 @@ for (const slider of [trimTriggerSlider, trimTargetSlider]) {
   });
 }
 const rxServoSlipInput = document.getElementById("rx-servo-slip");
+const audioScopeInput = document.getElementById("audio-scope-enabled");
+audioScopeInput.checked = ascopeEnabled;
+audioScopeInput.addEventListener("change", () => {
+  ascopeEnabled = audioScopeInput.checked;
+  try {
+    localStorage.setItem(ASCOPE_ENABLED_KEY, ascopeEnabled ? "1" : "0");
+  } catch (e) {}
+  syncAscopeStream();
+  scheduleAscope();
+});
 rxServoSlipInput.addEventListener("change", () => {
   if (window.hamrcSetRxServoSlip) window.hamrcSetRxServoSlip(rxServoSlipInput.checked);
 });
@@ -5315,6 +5556,8 @@ function applyState(state) {
   if (window.hamrcSetRemoteTxActive) window.hamrcSetRemoteTxActive(state.tx && !myTX);
   currentTX = state.tx;
   paintTxButton();
+  syncAscopeStream();
+  scheduleAscope();
 
   atCycle.setCurrent(state.tunerOn);
   tuneButton.classList.toggle("active", state.tuning);
@@ -5489,7 +5732,10 @@ function connect() {
 
   // The server only asks the radio for ALC readings while a browser has the
   // ALC mode selected, so (re)announce the stored mode on every connect.
-  ws.onopen = () => send({ type: "setMeterMode", mode: analogMeterMode });
+  ws.onopen = () => {
+    ascopeWanted = false; // the server forgets a client's scope request when its WebSocket goes away
+    send({ type: "setMeterMode", mode: analogMeterMode });
+  };
 
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);

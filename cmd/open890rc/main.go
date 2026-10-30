@@ -86,7 +86,7 @@ func meterCode(mode string) string {
 var initialQueries = []string{
 	"AI2", "FR", "FA", "FB", "OM0", "RM21", "GC", "NR", "NB1", "NB2", "RG",
 	"SQ", "BY", "BC", "RL1", "RL2", "NL1", "NL2", "NBT", "NBD", "NBW", "EQR0", "EQR1", "PR0", "PR1", "AN", "PC", "MG", "PL", "AC", "FL0", "RA", "PA",
-	"FL10", "FL11", "FL12", "EX00611", "EX00612", "SH0", "SL0", "##KN4", "##KN30", "##KN31", "PT", "AP0", "AP1", "AP2", "AP3", "BS4", "DD01",
+	"FL10", "FL11", "FL12", "EX00611", "EX00612", "EX00606", "EX00607", "EX00608", "EX00609", "SH0", "SL0", "##KN4", "##KN30", "##KN31", "PT", "AP0", "AP1", "AP2", "AP3", "BS4", "DD01",
 	"RT", "RF", "XT", "MO0", "ML",
 }
 
@@ -363,6 +363,7 @@ func main() {
 	pcmHub := hub.New()
 	opusHub := hub.New()
 	waterfallHub := hub.New()
+	audioScopeHub := hub.New()
 
 	// With the PA on, the TS-890 may only drive so much — the UI slider is
 	// capped at ampMaxPowerW, and whenever the PA switches on while the radio
@@ -484,6 +485,10 @@ func main() {
 	// switching. Moving the non-urgent state processing to its own
 	// goroutine keeps onMsg itself fast, so a slow burst there can never
 	// delay the next band-scope line.
+	// Beep volume ("EX00100") answers, read by muteBeep further down.
+	beepReplies := make(chan string, 8)
+	// Whether any browser shows the audio scope (DD11), re-sent after every (re)connect.
+	var audioScopeWanted atomic.Bool
 	stateMsgs := make(chan string, 128)
 	go func() {
 		for msg := range stateMsgs {
@@ -516,7 +521,33 @@ func main() {
 		}
 	}()
 
+	// Audio scope lines are forwarded to the browsers at most every 40 ms (the radio sends about 8 a second,
+	// measured 2026-10-30; the limit only guards against a faster stream).
+	var dd3Last atomic.Int64 // unix nanoseconds of the last forwarded line
 	onMsg := func(msg string) {
+		// Scope lines first and before every other check: they are by far the most frequent messages.
+		// Band scope lines are high-frequency data, not part of the JSON state snapshot: relayed straight
+		// to their own hub instead of through st.Update. Audio scope lines (only while a browser shows
+		// the scope, see SetAudioScope) go the same way.
+		if strings.HasPrefix(msg, "##DD") {
+			if line, ok := cat.ParseBandScopeLine(msg); ok {
+				waterfallHub.Broadcast(line)
+				return
+			}
+			if line, ok := cat.ParseAudioScopeLine(msg); ok {
+				if now := time.Now().UnixNano(); now-dd3Last.Load() >= int64(40*time.Millisecond) {
+					dd3Last.Store(now)
+					audioScopeHub.Broadcast(line)
+				}
+				return
+			}
+		}
+		if strings.HasPrefix(msg, "EX00100") {
+			select {
+			case beepReplies <- msg:
+			default:
+			}
+		}
 		if len(msg) == 5 && strings.HasPrefix(msg, "EQT0") {
 			select {
 			case eqReplies <- msg:
@@ -600,14 +631,6 @@ func main() {
 			case psReplies <- msg:
 			default:
 			}
-		}
-		// Band scope lines are high-frequency binary-ish data, not part of
-		// the JSON state snapshot — relay them straight to their own hub
-		// instead of running them through st.Update (which wouldn't
-		// recognize "##DD2" anyway).
-		if line, ok := cat.ParseBandScopeLine(msg); ok {
-			waterfallHub.Broadcast(line)
-			return
 		}
 
 		// Everything else (state updates, PA enforcement, EQ/mic-gain
@@ -1602,6 +1625,62 @@ func main() {
 		log.Printf("radio: restoring TX monitor %s", onOffWord(orig))
 		conn.Send(cat.EncodeTXMonitor(orig))
 	}
+	// Beep volume (menu "EX00100", Nutzer-Wunsch 2026-10-30): the radio beeps when a TX
+	// message recording starts and that beep lands in the recording. While the TX
+	// Messages overlay is open the beep is muted (volume 0) and the original volume is put
+	// back when it closes, and, like the other settings, on disconnect/power-off/exit.
+	// beepWanted follows the overlay so a close that comes before the radio's answer
+	// cannot be overtaken by the late mute.
+	var beepMu sync.Mutex
+	var beepApplied bool
+	var beepOrig int
+	var beepWanted atomic.Bool
+	muteBeep := func(conn *radio.Conn) {
+		if conn == nil {
+			return
+		}
+		beepMu.Lock()
+		defer beepMu.Unlock()
+		if beepApplied {
+			return
+		}
+		for len(beepReplies) > 0 {
+			<-beepReplies
+		}
+		if err := conn.Send(cat.EncodeBeepVolumeQuery()); err != nil {
+			return
+		}
+		select {
+		case m := <-beepReplies:
+			v, err := cat.ParseBeepVolume(m)
+			if err != nil {
+				log.Printf("main: reading the beep volume: %v", err)
+				return
+			}
+			beepOrig = v
+		case <-time.After(2 * time.Second):
+			log.Println("radio: beep volume (EX00100) not answered")
+			return
+		}
+		if beepOrig == 0 || !beepWanted.Load() {
+			return // already silent, or the overlay is closed again
+		}
+		log.Printf("radio: beep volume %d muted for the TX message recording", beepOrig)
+		if err := conn.Send(cat.EncodeBeepVolume(0)); err == nil {
+			beepApplied = true
+		}
+	}
+	restoreBeep := func(conn *radio.Conn) {
+		beepMu.Lock()
+		applied, orig := beepApplied, beepOrig
+		beepApplied = false
+		beepMu.Unlock()
+		if conn == nil || !applied {
+			return
+		}
+		log.Printf("radio: restoring beep volume %d", orig)
+		conn.Send(cat.EncodeBeepVolume(orig))
+	}
 	// Everything we changed on the radio for our session, put back.
 	//
 	// Deliberately does NOT touch remoteActive (an earlier version cleared it
@@ -1626,6 +1705,7 @@ func main() {
 		restoreEffects(conn, txEff, "TX", cat.TXEQApplies, cat.EncodeTXEQEffect)
 		restoreEffects(conn, rxEff, "RX", cat.RXEQApplies, cat.EncodeRXEQEffect)
 		restoreTXMon(conn)
+		restoreBeep(conn)
 		restoreProcSettings(conn)
 		restoreTXSource(conn)
 		restoreBandScopeMode(conn)
@@ -1723,6 +1803,9 @@ func main() {
 			_ = conn.Send("RM" + code + "1")
 		}
 		wantMeterMu.Unlock()
+		if audioScopeWanted.Load() {
+			_ = conn.Send(cat.EncodeAudioScope(true))
+		}
 		// Remote-operation overrides (MIC input/PROC/TX-EQ/RX-EQ/TX monitor/band scope mode) only belong
 		// here if a browser client was ALREADY connected at the moment this
 		// (re)dial happened — e.g. the radio power-cycled and redialled while
@@ -3310,9 +3393,12 @@ func main() {
 			if err := conn.Send(cat.EncodePBListDisplay(open)); err != nil {
 				return err
 			}
+			beepWanted.Store(open)
 			if !open {
+				restoreBeep(conn)
 				return nil
 			}
+			go muteBeep(conn) // reads the old volume first, which can take a moment
 			// The reference notes PB1-PB6 refuse ("?") until the Voice
 			// Message List display is actually on, which isn't instant — so
 			// these follow a short delay rather than going out right behind
@@ -3432,6 +3518,14 @@ func main() {
 			}
 			return conn.Send(startCmd)
 		},
+		SetAudioScope: func(on bool) error {
+			audioScopeWanted.Store(on)
+			conn := rm.current()
+			if conn == nil {
+				return nil // sent after the next connect
+			}
+			return conn.Send(cat.EncodeAudioScope(on))
+		},
 		SetTXAttenuation: func(tenthsPercent int) error {
 			if sender := txm.current(); sender != nil {
 				sender.SetAttenuation(float64(tenthsPercent) / 1000)
@@ -3523,6 +3617,7 @@ func main() {
 		Relay:      broadcastRXAudio,
 	}
 	srv = web.New(h, st, controls, web.AudioHubs{PCM: pcmHub, Opus: opusHub}, txAudio, waterfallHub)
+	srv.SetAudioScopeHub(audioScopeHub)
 
 	// Graceful shutdown on Ctrl-C/SIGTERM. Without this, killing the process
 	// (there was no signal handling at all before) leaves the OS to just

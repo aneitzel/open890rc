@@ -153,6 +153,8 @@ type Controls struct {
 	// different, per-channel command family than RE above, see
 	// cat.EncodeVoiceMsgDelete's own comment).
 	DeleteVoiceMsg func(channel int) error
+	// SetAudioScope switches the radio's audio scope stream on/off (cat.EncodeAudioScope).
+	SetAudioScope func(on bool) error
 	// SetTXAttenuation sets the TX audio scale factor in tenths of a percent
 	// (0 = the default 1%) - used for voice message recording, which needs far more
 	// level than a real transmission.
@@ -209,6 +211,11 @@ type Server struct {
 	audio     AudioHubs
 	txAudio   TXAudio
 	waterfall *hub.Hub
+	// audioScope streams the radio's audio scope lines (nil until SetAudioScopeHub); scopeWanted
+	// records which /ws clients currently show the scope, so the radio only sends it while someone does.
+	audioScope   *hub.Hub
+	scopeWantedM sync.Mutex
+	scopeWanted  map[uint64]bool
 
 	clientsMu sync.Mutex
 	clients   map[uint64]*clientInfo // connected /ws clients, by connection id
@@ -312,6 +319,32 @@ func (s *Server) TXAudioActive() bool {
 // and waterfall (band scope) hub.
 func New(h *hub.Hub, st *state.State, controls Controls, audioHubs AudioHubs, txAudio TXAudio, waterfall *hub.Hub) *Server {
 	return &Server{hub: h, state: st, controls: controls, audio: audioHubs, txAudio: txAudio, waterfall: waterfall, clients: map[uint64]*clientInfo{}}
+}
+
+// SetAudioScopeHub wires the hub the audio scope lines (cat.ParseAudioScopeLine) are
+// broadcast on; /audioscope-ws streams it.
+func (s *Server) SetAudioScopeHub(h *hub.Hub) { s.audioScope = h }
+
+// setClientAudioScope records that a client does or does not show the audio scope and
+// tells the radio to start/stop the stream when the "anyone wants it" state changes.
+func (s *Server) setClientAudioScope(id uint64, on bool) {
+	s.scopeWantedM.Lock()
+	if s.scopeWanted == nil {
+		s.scopeWanted = map[uint64]bool{}
+	}
+	before := len(s.scopeWanted) > 0
+	if on {
+		s.scopeWanted[id] = true
+	} else {
+		delete(s.scopeWanted, id)
+	}
+	after := len(s.scopeWanted) > 0
+	s.scopeWantedM.Unlock()
+	if before != after && s.controls.SetAudioScope != nil {
+		if err := s.controls.SetAudioScope(after); err != nil {
+			log.Printf("web: switching the audio scope: %v", err)
+		}
+	}
 }
 
 // clientMessage is the JSON shape browser clients send over the WebSocket.
@@ -431,6 +464,9 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 		}
 	case "audioCodec":
 		s.setClientCodec(id, msg.Codec)
+		return
+	case "setAudioScope":
+		s.setClientAudioScope(id, msg.Enabled)
 		return
 	case "rxTrim":
 		// The browser's RX audio ring buffer dropped its oldest samples because
@@ -679,6 +715,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/audio-ws", requireAuth(s.handleAudioWS))
 	mux.HandleFunc("/audio-tx-ws", requireAuth(requireTX(s.handleTXAudioWS)))
 	mux.HandleFunc("/waterfall-ws", requireAuth(s.handleWaterfallWS))
+	mux.HandleFunc("/audioscope-ws", requireAuth(s.handleAudioScopeWS))
 	mux.HandleFunc("/ca.crt", handleCACert)
 	mux.HandleFunc("/auth/status", handleAuthStatus)
 	mux.HandleFunc("/auth/login", handleLogin)
@@ -756,6 +793,21 @@ func (s *Server) handleWaterfallWS(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 	streamHubFrames(conn, s.waterfall, websocket.BinaryMessage)
+}
+
+// handleAudioScopeWS streams the audio scope lines (cat.ParseAudioScopeLine) as binary frames.
+func (s *Server) handleAudioScopeWS(w http.ResponseWriter, r *http.Request) {
+	if s.audioScope == nil {
+		http.Error(w, "audio scope not available", http.StatusServiceUnavailable)
+		return
+	}
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("web: audio scope websocket upgrade failed: %v", err)
+		return
+	}
+	defer conn.Close()
+	streamHubFrames(conn, s.audioScope, websocket.BinaryMessage)
 }
 
 // handleAudioWS streams one audio delivery mode's binary frames to a
@@ -927,6 +979,7 @@ func (s *Server) addClient(id uint64, ip, user, name string) {
 }
 
 func (s *Server) removeClient(id uint64) {
+	s.setClientAudioScope(id, false)
 	s.clientsMu.Lock()
 	delete(s.clients, id)
 	empty := len(s.clients) == 0
