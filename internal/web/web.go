@@ -141,18 +141,22 @@ type Controls struct {
 	VoiceMsgControl    func(channel, op int) error
 	SetVoiceMsgRepeat  func(channel int, on bool) error
 	SetVoiceMsgName    func(channel int, name string) error
-	// SetVoiceMsgRecording starts/stops a recording on one channel, via LM
-	// (cat.EncodeVoiceMsgRecordStart/Stop) — RE alone has no channel
-	// parameter and could only ever record to whatever the radio's own
-	// on-screen cursor happened to have selected, see
-	// cat.EncodeVoiceMsgRecording's own comment on why that was dropped. On
-	// start, sets the recording source (PB5) first — source is ignored on
+	// SetVoiceMsgRecording starts/stops a recording on one channel via LM
+	// only (LM<channel>2 start, LM<channel>0 stop, see cat.EncodeVoiceMsgRecordStart/Stop).
+	// On start, sets the recording source (PB5) first — source is ignored on
 	// stop (cat.VoiceMsgSourceMic/ACC2/USB/LAN).
 	SetVoiceMsgRecording func(channel int, recording bool, source int) error
+	// PrepareVoiceMsgRecording sends the source (PB5) and "ready" (LM<ch>1)
+	// before the browser starts the mic and then calls SetVoiceMsgRecording.
+	PrepareVoiceMsgRecording func(channel, source int) error
 	// DeleteVoiceMsg erases a channel's recording (LM<channel>3 — a
 	// different, per-channel command family than RE above, see
 	// cat.EncodeVoiceMsgDelete's own comment).
 	DeleteVoiceMsg func(channel int) error
+	// SetTXAttenuation sets the TX audio scale factor in tenths of a percent
+	// (0 = the default 1%) - used for voice message recording, which needs far more
+	// level than a real transmission.
+	SetTXAttenuation func(tenthsPercent int) error
 	// QuickSendVoiceMsg sends a channel without the overlay having been
 	// opened first (Nutzer-Wunsch 2026-10-28: short click on the TX MSG
 	// button) — PB1 refuses while the Voice Message List display (PB0) is
@@ -631,8 +635,12 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 		err = s.controls.SetVoiceMsgRepeat(msg.Channel, msg.Enabled)
 	case "setVoiceMsgName":
 		err = s.controls.SetVoiceMsgName(msg.Channel, msg.Name)
+	case "prepareVoiceMsgRecording":
+		err = s.controls.PrepareVoiceMsgRecording(msg.Channel, msg.Value)
 	case "setVoiceMsgRecording":
 		err = s.controls.SetVoiceMsgRecording(msg.Channel, msg.Enabled, msg.Value)
+	case "setTxAtten":
+		err = s.controls.SetTXAttenuation(msg.Value)
 	case "deleteVoiceMsg":
 		err = s.controls.DeleteVoiceMsg(msg.Channel)
 	case "voiceMsgQuickSend":

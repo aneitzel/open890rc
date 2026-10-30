@@ -1052,8 +1052,38 @@
   // history (meaningless once drawn at a different resolution), makes a
   // live resize behave the same as the reload the old comment here used to
   // say was required.
+  // Desktop, window higher than the page (Nutzer-Wunsch 2026-10-30): the panel then fills
+  // the window and the waterfall grows with it, one canvas row per CSS pixel, up to
+  // WATERFALL_MAX_ROWS. A lower window keeps the 266 rows and the wrap cuts the bottom off
+  // (style.css). Growing/shrinking keeps the lines already drawn (the newest are at the top).
+  const WATERFALL_MAX_ROWS = 1000;
+  function fitWaterfallToWindow() {
+    if (!desktopQuery.matches) return;
+    const wrap = canvas.parentElement;
+    const avail = Math.round(wrap.clientHeight - spectrum.getBoundingClientRect().height);
+    const rows = Math.max(waterfallRowsFor(true), Math.min(avail, WATERFALL_MAX_ROWS));
+    if (rows === height) return;
+    const old = document.createElement("canvas");
+    old.width = width;
+    old.height = height;
+    old.getContext("2d").drawImage(canvas, 0, 0);
+    height = rows;
+    canvas.height = height; // resizing clears the canvas
+    canvas.style.height = height + "px";
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(old, 0, 0);
+    overlayHeight = spectrumHeight + height;
+    overlay.height = overlayHeight;
+    overlay.style.height = overlayHeight + "px";
+    resetVerticalSmooth();
+    drawOverlay();
+  }
+  if (window.ResizeObserver) new ResizeObserver(fitWaterfallToWindow).observe(canvas.parentElement);
   desktopQuery.addEventListener("change", () => {
     const newHeight = waterfallRowsFor(desktopQuery.matches);
+    canvas.style.height = "";
+    overlay.style.height = "";
     if (newHeight === height) return;
     height = newHeight;
     canvas.height = height;
@@ -1067,5 +1097,6 @@
     resetMaxHold();
     resetVerticalSmooth();
     drawOverlay();
+    fitWaterfallToWindow();
   });
 })();

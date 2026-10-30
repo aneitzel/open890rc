@@ -59,6 +59,18 @@ type TXSender struct {
 	conn *net.UDPConn
 	mu   sync.Mutex
 	seq  uint16
+	// atten overrides TXAttenuation when set (> 0), see SetAttenuation.
+	atten float64
+}
+
+// SetAttenuation changes the sample scale factor used by Send (0 restores the
+// TXAttenuation default). Voice message recording needs a much higher level
+// than a real transmission (Nutzer-Report 2026-10-29: the recording was far
+// too quiet at the 1% that suits TX).
+func (t *TXSender) SetAttenuation(factor float64) {
+	t.mu.Lock()
+	t.atten = factor
+	t.mu.Unlock()
 }
 
 // NewTXSender opens the local UDP socket and targets it at the radio's
@@ -86,6 +98,10 @@ func (t *TXSender) Send(samples []int16) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	atten := TXAttenuation
+	if t.atten > 0 {
+		atten = t.atten
+	}
 	packet := make([]byte, rtpHeaderSize+len(samples)*2)
 	packet[0] = 0x80 // V=2, P=0, X=0, CC=0
 	packet[1] = 96   // M=0, PT=96
@@ -101,7 +117,7 @@ func (t *TXSender) Send(samples []int16) error {
 		// adds avoidable quantization distortion in an already narrow range
 		// — round-to-nearest at least uses that narrow range as accurately
 		// as possible.
-		scaled := int32(math.Round(float64(s) * TXAttenuation))
+		scaled := int32(math.Round(float64(s) * atten))
 		binary.BigEndian.PutUint16(packet[rtpHeaderSize+i*2:], uint16(scaled+32768))
 	}
 

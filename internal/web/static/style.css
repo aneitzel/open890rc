@@ -174,6 +174,14 @@ main {
 .filter-info-row > .busy-indicator {
   justify-self: start;
 }
+/* The phone's busy/TX LED now lives in .brand-row (between logo and model
+   text), so the filter info is the only item left in .filter-info-row. */
+.filter-info-row > .audio-filter-info {
+  grid-column: 2;
+}
+.brand-row .busy-indicator {
+  flex: none;
+}
 
 /* Busy/TX indicator, open890 style: an LED bar that's dark when idle, green
    when the squelch opens (RX busy), and red while transmitting. Faintly
@@ -1955,6 +1963,8 @@ main {
 
 /* Same [hidden] trap as elsewhere: .ctrl-row's display:flex would win over it. */
 #pa-row[hidden] { display: none; }
+/* phone: the desktop-only extras row stays out of the layout */
+#extras-row { display: none; }
 
 /* RIT/XIT knobs — desktop only (2026-10-13 user request), hidden here on
    phone; sit under the Filter dropdown on desktop (app.js relocates them
@@ -2110,7 +2120,7 @@ main [inert] {
        freq+selectors row-span and stretches to fill it, pulling TX visibly
        taller too ("langgezogen", same report). */
     grid-template-columns: minmax(0, 3.4fr) minmax(0, 3.2fr) minmax(0, 0.8fr) minmax(0, 2.6fr);
-    grid-template-rows: auto auto auto auto auto auto auto auto auto auto 1fr auto;
+    grid-template-rows: auto auto auto auto auto auto auto auto auto auto auto minmax(110px, 1fr) auto;
     grid-template-areas:
       "status     status     status  status"
       "brand      brand      brand   brand"
@@ -2119,8 +2129,9 @@ main [inert] {
       "meter      selectors  sliders sliders"
       "meter      filterinfo .       ."
       "metercontrols eqmid   controlsx controlsx"
-      "metercontrols eqmid   buttons buttons"
       "metercontrols eqmid   pa      pa"
+      "metercontrols eqmid   buttons buttons"
+      "metercontrols eqmid   extras  extras"
       "wfrow      wfrow      wfrow   wfrow"
       "wf         wf         wf      wf"
       "wfscale    wfscale    wfscale wfscale";
@@ -2240,7 +2251,8 @@ main [inert] {
   /* The original instance stays in the DOM (phone needs it there) but is
      now redundant on desktop since the one above replaces it visually —
      without this it showed in both places at once. */
-  .filter-info-row .busy-indicator {
+  .filter-info-row .busy-indicator,
+  .brand-row .busy-indicator {
     display: none;
   }
   /* display:none removes #busy-indicator from grid participation entirely
@@ -2574,6 +2586,10 @@ main [inert] {
   #pa-row {
     grid-area: pa;
   }
+  #extras-row {
+    display: flex;
+    grid-area: extras;
+  }
   /* RIT/XIT knobs (desktop only): app.js moves both into #eq-row, which
      already has grid-area: eqmid (same column as the Band/Mode/Filter
      dropdowns, directly under Filter) and is otherwise empty on desktop now
@@ -2706,6 +2722,22 @@ main [inert] {
   }
   .waterfall-overlay {
     height: 336px;
+  }
+  /* A window lower than the page (Nutzer-Wunsch 2026-10-30): the panel never grows past the
+     window and the kHz row below the waterfall stays; the waterfall window just ends higher
+     up (shows fewer past lines) and is NOT squeezed - the canvases keep their size 1:1 and
+     the wrap (overflow hidden) cuts off the bottom. The newest lines are at the top. At the
+     lowest the waterfall keeps 40px; below that the page scrolls as before. */
+  main {
+    /* 590px = the panel's height with the waterfall at that minimum (measured);
+       lower windows scroll instead of letting the content spill out of the panel */
+    max-height: max(100dvh, 590px);
+    /* a higher window: the panel fills it, the extra room goes to the waterfall
+       (waterfall.js, fitWaterfallToWindow) */
+    min-height: 100dvh;
+  }
+  .waterfall-wrap {
+    min-height: 0;
   }
 }
 
@@ -3240,17 +3272,15 @@ main #txmsg-button.active::before {
 main #agc-button.active {
   color: #bdb8a4;
 }
+/* LED colours swapped 2026-10-30 (Nutzer-Wunsch): PA ON red, PA OPER green. (OPER used to be
+   the red one, a solid LED instead of the earlier pulsing "hot amplifier" glow, 2026-10-12.) */
 main #pa-power-button.active::before {
-  background: rgb(110, 190, 60);
-  box-shadow: 0 0 6px rgb(110, 190, 60);
-}
-/* PA OPER: solid red LED instead of the earlier pulsing "hot amplifier"
-   glow on the whole button (2026-10-12 user request: "das glimmen
-   entfernen und stattdessen die LED rot leuchten lassen wenn aktiv") —
-   the button face itself stays the same muted green as PA power. */
-main #pa-oper-button.active::before {
   background: rgb(230, 40, 40);
   box-shadow: 0 0 6px rgb(230, 40, 40);
+}
+main #pa-oper-button.active::before {
+  background: rgb(110, 190, 60);
+  box-shadow: 0 0 6px rgb(110, 190, 60);
 }
 main #pa-power-button.active,
 main #pa-oper-button.active {
@@ -3962,34 +3992,6 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
   color: #fff;
   border-color: #cc2222;
 }
-/* Source picker next to REC (Nutzer-Wunsch 2026-10-27) — sent as PB5 when
-   REC starts a recording. Styled like the TX Mic Limiter preset dropdown
-   in the VOIP settings tab (Nutzer-Wunsch 2026-10-27, see
-   #mic-limiter-preset's own comment on why: no box/border, dimmed text, a
-   quiet secondary control rather than something as prominent as REC
-   itself). */
-.txmsg-source-group {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.txmsg-source-label {
-  font-size: 0.75rem;
-  color: var(--text-dim);
-  flex: none;
-}
-#txmsg-source {
-  background: transparent;
-  border: none;
-  color: var(--text-dim);
-  font-size: 0.75rem;
-  padding: 0;
-  margin: 0;
-}
-#txmsg-source:hover,
-#txmsg-source:focus {
-  color: var(--accent);
-}
 .txmsg-remaining {
   font-size: 0.75rem;
   color: var(--text-dim);
@@ -4652,4 +4654,35 @@ main.controls-off .slider::-moz-range-thumb {
 #tx-button-mode:hover,
 #tx-button-mode:focus {
   color: var(--accent);
+}
+
+/* The confirm dialog opens from other overlays (e.g. deleting a TX message);
+   with the same z-index it sat behind them when it came earlier in the DOM. */
+#confirm-overlay {
+  z-index: 200;
+}
+
+/* ALC meter in the TX Messages overlay: reuses the .mic-meter LED look. */
+.txmsg-alc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.6rem 0 0.4rem;
+}
+.txmsg-alc-label {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
+/* Confirm dialog: message centred, readable size, space above the buttons,
+   buttons centred (Nutzer-Wunsch 2026-10-30). */
+#confirm-overlay #confirm-message {
+  text-align: center;
+  font-size: 0.95rem;
+  color: #d5dadd;
+  margin: 0.4rem 0 1.4rem;
+}
+#confirm-overlay .overlay-actions {
+  justify-content: center;
+  gap: 0.8rem;
 }

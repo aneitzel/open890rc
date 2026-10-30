@@ -589,7 +589,10 @@ func main() {
 		// happens even sending a TX Message from the front panel, which
 		// shows nothing on its own screen) can be tied to the EXACT 3-digit
 		// code instead of just "somewhere in that range".
-		if _, id, err := cat.ParseMessageID(msg); err == nil {
+		// 0 (message cleared) and 8/9/10 (routine status of TX message recording and
+		// playback, nothing shown by the radio) are not logged: they came with every
+		// TX message action and drowned the log (Nutzer-Wunsch 2026-10-30).
+		if _, id, err := cat.ParseMessageID(msg); err == nil && !(id == 7 && st.VoiceRecRecent()) && id != 0 && id != 8 && id != 9 && id != 10 {
 			log.Printf("radio: pop-up message %q (text: %q)", msg, cat.MessageText(id))
 		}
 		if strings.HasPrefix(msg, "PS") && len(msg) >= 3 {
@@ -3374,64 +3377,66 @@ func main() {
 			}
 			return conn.Send(cmd)
 		},
-		// Mirrors the manual's own two-step physical procedure for recording
-		// a voice message (Nutzer-Screenshot, 2026-10-28, "Aufzeichnen einer
-		// Sprachnachricht"): (1) HOLD the channel's F-key (F2-F7) — arms that
-		// channel and shows a "recording is about to start" prompt — THEN,
-		// separately, (2) HOLD the on-screen F4 [REC] key (a context-only
-		// soft key inside the Voice Message screen, NOT the physical REC
-		// button on the front panel — Nutzer-Klarstellung 2026-10-28: "TX
-		// Messages werden nicht über die REC Taste vorne an der Front
-		// aufgenommen") to actually capture audio; releasing it stops and
-		// saves. Mapped here as: PB5 (REC IN / source, step 4) once, then
-		// LM<channel>2 (step 3's channel hold, cat.EncodeVoiceMsgRecordStart)
-		// — RE has no channel parameter at all and could only ever land on
-		// whatever channel the radio's own on-screen cursor had selected,
-		// see cat.EncodeVoiceMsgRecording's own comment — THEN RE1 (step 5's
-		// REC hold). Stopping is the reverse: RE0 (step 6, release REC)
-		// first, then LM<channel>0. Not live-verified against the real radio
-		// yet; the short pause between the two start commands gives the
-		// radio a moment to actually arm the channel first, same "give it a
-		// moment" pattern as resetRXAudio's ##VP0/##VP1 above.
+		// First half of a recording: source (PB5) and "ready" (LM<ch>1, the
+		// first LM2 try, 2026-10-29, was refused with "?" because the
+		// reference allows the start only while the channel is ready; that
+		// op 1 can be SET is an assumption that worked live). The browser
+		// then starts the mic so the radio's ALC settles, and only then sends
+		// the start (SetVoiceMsgRecording, LM<ch>2) - Nutzer-Wunsch 2026-10-30.
+		PrepareVoiceMsgRecording: func(channel, source int) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			readyCmd, err := cat.EncodeVoiceMsgChannelOp(channel, cat.VoiceMsgLMOpReady)
+			if err != nil {
+				return err
+			}
+			st.MarkVoiceRecActivity()
+			if err := conn.Send(readyCmd); err != nil {
+				return err
+			}
+			// source only after the ready command went out (Nutzer-Wunsch 2026-10-30)
+			sourceCmd, err := cat.EncodePBRecordingSource(source)
+			if err != nil {
+				return err
+			}
+			return conn.Send(sourceCmd)
+		},
+		// Recording uses LM only (Nutzer-Screenshot of the LM reference,
+		// 2026-10-29): LM<channel>2 starts recording (valid only while the
+		// channel's recording is "ready" and the Voice Message List display
+		// PB0 is on), LM<channel>0 ends it. The earlier RE1/RE0 second step
+		// is gone: RE has no channel parameter and the reference ties the
+		// start to LM. PB5 (source) is sent once before starting. The radio
+		// refuses with "?" when it is not ready; the "radio: > LM.." and
+		// "radio: reply" log lines show that. Not live-verified yet.
 		SetVoiceMsgRecording: func(channel int, recording bool, source int) error {
 			conn := rm.current()
 			if conn == nil {
 				return fmt.Errorf("not connected to radio")
 			}
 			if !recording {
-				stopCmd, err := cat.EncodeVoiceMsgRecording(cat.VoiceMsgRecOpStop)
+				if sender := txm.current(); sender != nil {
+					sender.SetAttenuation(0) // back to the TX default
+				}
+				stopCmd, err := cat.EncodeVoiceMsgRecordStop(channel)
 				if err != nil {
 					return err
 				}
-				if err := conn.Send(stopCmd); err != nil {
-					return err
-				}
-				armOffCmd, err := cat.EncodeVoiceMsgRecordStop(channel)
-				if err != nil {
-					return err
-				}
-				return conn.Send(armOffCmd)
+				return conn.Send(stopCmd)
 			}
-			sourceCmd, err := cat.EncodePBRecordingSource(source)
+			startCmd, err := cat.EncodeVoiceMsgRecordStart(channel)
 			if err != nil {
 				return err
 			}
-			if err := conn.Send(sourceCmd); err != nil {
-				return err
+			return conn.Send(startCmd)
+		},
+		SetTXAttenuation: func(tenthsPercent int) error {
+			if sender := txm.current(); sender != nil {
+				sender.SetAttenuation(float64(tenthsPercent) / 1000)
 			}
-			armCmd, err := cat.EncodeVoiceMsgRecordStart(channel)
-			if err != nil {
-				return err
-			}
-			if err := conn.Send(armCmd); err != nil {
-				return err
-			}
-			time.Sleep(150 * time.Millisecond)
-			recCmd, err := cat.EncodeVoiceMsgRecording(cat.VoiceMsgRecOpRecord)
-			if err != nil {
-				return err
-			}
-			return conn.Send(recCmd)
+			return nil
 		},
 		DeleteVoiceMsg: func(channel int) error {
 			conn := rm.current()

@@ -250,6 +250,8 @@
 
   <div class="brand-row">
     <img class="brand-logo" src="kenwood-logo.png" alt="KENWOOD" draggable="false">
+    <!-- phone: busy/TX LED between the logo and the model text (Nutzer-Wunsch 2026-10-30) -->
+    <div id="busy-indicator" class="busy-indicator"></div>
     <span class="brand-model"><span class="brand-model-sub">HF/50MHz TRANSCEIVER</span><span class="brand-model-name">TS-890</span></span>
   </div>
   <div id="busy-indicator-desktop" class="busy-indicator busy-indicator-desktop"></div>
@@ -283,7 +285,6 @@
     </div>
   </div>
   <div class="filter-info-row">
-    <div id="busy-indicator" class="busy-indicator"></div>
     <span class="audio-filter-info" id="audio-filter-info"></span>
   </div>
 
@@ -319,11 +320,15 @@
       <div class="btn-group"><button type="button" id="txeq-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">TX EQ</button></div>
       <div class="btn-group"><button type="button" id="rxeq-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">RX EQ</button></div>
     </div>
+    <!-- Desktop only (Nutzer-Wunsch 2026-10-30): TX MSG / TX MON / RX EQ / TX EQ sit here, in
+         the row where the PA buttons used to be (the PA row moved above NR/NB). Filled by
+         relocateEqButtonsForLayout (app.js); empty and hidden on the phone. -->
+    <div class="ctrl-row ctrl-row-buttons" id="extras-row"></div>
     <div class="ctrl-row ctrl-row-buttons" id="pa-row" hidden>
       <div class="btn-group"><button type="button" id="pa-power-button">PA ON</button></div>
       <div class="btn-group"><button type="button" id="pa-tune-button">PA TUNE</button></div>
-      <div class="btn-group"><button type="button" id="pa-oper-button">PA OPER</button></div>
       <div class="btn-group"><button type="button" id="pa-level-button">500W</button></div>
+      <div class="btn-group"><button type="button" id="pa-oper-button">PA OPER</button></div>
     </div>
     <!-- RIT/XIT: identical knob (same .rit-knob* classes, reused — only the
          SVG gradient ids differ per instance, since id="..." must be unique
@@ -1003,23 +1008,12 @@
     <!-- Kein Kanal-Parameter im RE-Befehl selbst (siehe
          cat.EncodeVoiceMsgRecording) — welcher der sechs Kanäle bespielt
          wird, bestimmt vermutlich die Cursor-Position in der Liste am
-         Radio-Display selbst, nicht steuerbar von hier. Die Quelle (PB5)
-         wird beim Start der Aufnahme mitgesetzt (Nutzer-Wunsch 2026-10-27:
-         kleines Dropdown neben REC, Default LAN — das ist, was dieses Tool
-         selbst dem Radio zuspielt, aber eine andere Wahl soll möglich
-         bleiben). -->
+         Radio-Display selbst, nicht steuerbar von hier. Die Quelle (PB5) ist
+         bei Aufnahmen über dieses Overlay fest LAN (Nutzer-Wunsch 2026-10-30)
+         und wird gesetzt, sobald der "bereit"-Befehl raus ist. -->
     <div class="txmsg-source-row">
       <button type="button" id="txmsg-rec-button" class="txmsg-rec" title="Aufnahme starten/stoppen">REC</button>
       <span class="txmsg-remaining" id="txmsg-remaining" title="Verbleibende Aufnahmezeit, alle Kanäle zusammen"></span>
-      <span class="txmsg-source-group">
-        <span class="txmsg-source-label">Aufnahmequelle:</span>
-        <select id="txmsg-source" title="Aufnahmequelle (wird beim Start gesetzt)">
-          <option value="0">Mikrofon</option>
-          <option value="1">ACC 2</option>
-          <option value="2">USB Audio</option>
-          <option value="3" selected>LAN</option>
-        </select>
-      </span>
     </div>
     <!-- Only "Wiederholen" stays per row (each channel repeats
          independently) — PLAY/SEND/STOP/DELETE below act on whichever
@@ -1028,6 +1022,12 @@
          the shared row below between STOP and DELETE). DELETE uses
          LM<channel>3 (cat.EncodeVoiceMsgDelete) — a separate,
          per-channel command from RE, see that function's own comment. -->
+    <!-- ALC level of the radio while recording (Nutzer-Wunsch 2026-10-30), same LED
+         look as the browser-mic meter in the VoIP overlay. -->
+    <div class="txmsg-alc-row" title="ALC-Aussteuerung des TS890 (bis zur Mitte grün = in Ordnung)">
+      <span class="txmsg-alc-label">ALC</span>
+      <div class="mic-meter" id="txmsg-alc-meter"></div>
+    </div>
     <div class="txmsg-channels" id="txmsg-channels"></div>
     <div class="txmsg-controls" id="txmsg-controls">
       <button type="button" id="txmsg-play" class="txmsg-play" title="Lokal anhören (sendet nicht)">PLAY</button>

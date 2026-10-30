@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -102,6 +103,12 @@ func (c *Conn) Send(cmd string) error {
 func (c *Conn) send(cmd string) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
+	// Voice message commands are logged when sent, so a following
+	// `radio: reply "?"` can be matched to the command the radio refused
+	// (the reply itself doesn't name it). Diagnosis for the TX Messages work.
+	if strings.HasPrefix(cmd, "PB") || strings.HasPrefix(cmd, "LM") || strings.HasPrefix(cmd, "RE") {
+		log.Printf("radio: > %s", cmd)
+	}
 	_, err := c.conn.Write([]byte(cmd + ";"))
 	return err
 }

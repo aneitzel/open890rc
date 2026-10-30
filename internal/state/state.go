@@ -5,6 +5,7 @@ package state
 import (
 	"slices"
 	"sync"
+	"time"
 
 	"open890rc/internal/cat"
 )
@@ -123,9 +124,10 @@ type State struct {
 	voiceMsgOp          int
 	voiceMsgElapsed     int
 	voiceMsgChannels    [6]VoiceMsgChannel
-	voiceMsgRemaining   int // seconds of recording time left, all channels combined (PB6)
-	voiceMsgRecChannel  int // which of the 1-6 channels LM last reported recording to (0 = none)
-	voiceMsgRecOp       int // cat.VoiceMsgLMOp* (LM) — recording in progress, separate from PB1 playback above
+	voiceMsgRemaining   int       // seconds of recording time left, all channels combined (PB6)
+	voiceMsgRecChannel  int       // which of the 1-6 channels LM last reported recording to (0 = none)
+	voiceMsgRecOp       int       // cat.VoiceMsgLMOp* (LM) — recording in progress, separate from PB1 playback above
+	voiceMsgRecSeenAt   time.Time // last LM reply (recording activity), see the ME 007 filter in Update
 	voiceMsgRecProgress int
 }
 
@@ -716,6 +718,13 @@ func (s *State) Update(msg string) bool {
 	}
 
 	if src, id, err := cat.ParseMessageID(msg); err == nil {
+		// "Reference signal input error" (007) fires while recording a TX
+		// message although the radio itself shows nothing (Nutzer-Report
+		// 2026-10-30); ignored during and shortly after a recording only, a
+		// real reference signal fault at any other time is still shown.
+		if id == 7 && s.voiceRecRecent() {
+			return false
+		}
 		before := s.radioMessage()
 		s.msgID[src] = id
 		return s.radioMessage() != before
@@ -1008,6 +1017,7 @@ func (s *State) Update(msg string) bool {
 	// (main.go) already re-queries PB2/PB4 for the actual result, and showing a
 	// transient "recording" status after every delete would be wrong.
 	if channel, op, elapsed, err := cat.ParseVoiceMsgChannelOp(msg); err == nil && op != cat.VoiceMsgLMOpDelete {
+		s.voiceMsgRecSeenAt = time.Now()
 		if s.voiceMsgRecChannel == channel && s.voiceMsgRecOp == op && s.voiceMsgRecProgress == elapsed {
 			return false
 		}
@@ -1016,6 +1026,29 @@ func (s *State) Update(msg string) bool {
 	}
 
 	return false
+}
+
+// voiceRecRecent reports whether a TX message recording was active within
+// the last 10 s; s.mu must be held.
+func (s *State) voiceRecRecent() bool {
+	return time.Since(s.voiceMsgRecSeenAt) < 10*time.Second
+}
+
+// VoiceRecRecent is voiceRecRecent for callers without the lock (main.go's
+// pop-up logging, which hides the harmless ME 007 during a recording).
+func (s *State) VoiceRecRecent() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.voiceRecRecent()
+}
+
+// MarkVoiceRecActivity notes that a TX message recording is about to start
+// (called when the ready command goes out), so a pop-up the radio raises
+// before its first LM reply is attributed to the recording too.
+func (s *State) MarkVoiceRecActivity() {
+	s.mu.Lock()
+	s.voiceMsgRecSeenAt = time.Now()
+	s.mu.Unlock()
 }
 
 // cacheAudioWidth recomputes the audio filter's width for the current mode/

@@ -937,6 +937,7 @@ function meterFrame(now) {
     updateMeter(key, meterShown[key]);
     if (key === "s") sMeterValue = meterShown[key];
   }
+  if (txMsgOpen) updateTxMsgAlcMeter(meterShown.alc);
   requestAnimationFrame(meterFrame);
 }
 requestAnimationFrame(meterFrame);
@@ -1234,22 +1235,17 @@ const preCycle = makeCycleButton(
   const txMonGroup = document.getElementById("txmon-button")?.closest(".btn-group");
   const txEqGroup = document.getElementById("txeq-button")?.closest(".btn-group");
   const rxEqGroup = document.getElementById("rxeq-button")?.closest(".btn-group");
-  const micProcRow = document.querySelector(".mic-proc-row");
+  // Nutzer-Wunsch 2026-10-30: on desktop the four buttons sit in #extras-row (grid
+  // area where the PA row used to be), no longer next to PROC.
+  const extrasRow = document.getElementById("extras-row");
   const ctrlRow2 = document.querySelector(".ctrl-row-2");
   const nbButtons = document.getElementById("nb-buttons");
-  if (!txMsgGroup || !txMonGroup || !txEqGroup || !rxEqGroup || !micProcRow || !ctrlRow2 || !nbButtons) return;
+  if (!txMsgGroup || !txMonGroup || !txEqGroup || !rxEqGroup || !extrasRow || !ctrlRow2 || !nbButtons) return;
   const desktopQuery = window.matchMedia("(min-width: 800px)");
   function apply() {
     if (desktopQuery.matches) {
-      micProcRow.insertBefore(txEqGroup, micProcRow.firstChild);
-      micProcRow.insertBefore(rxEqGroup, micProcRow.firstChild);
-      // TX Monitor (desktop only, CSS-hidden on phone — see .desktop-only-group):
-      // inserted last so it lands leftmost of all three, i.e. left of RX EQ
-      // (Nutzer-Wunsch, 2026-10-14).
-      micProcRow.insertBefore(txMonGroup, micProcRow.firstChild);
-      // TX MSG (desktop only): inserted last of all so it lands leftmost,
-      // i.e. left of TX MON (Nutzer-Wunsch, 2026-10-29).
-      micProcRow.insertBefore(txMsgGroup, micProcRow.firstChild);
+      // order left to right: TX MSG, TX MON, RX EQ, TX EQ
+      extrasRow.append(txMsgGroup, txMonGroup, rxEqGroup, txEqGroup);
     } else {
       // Phone (Nutzer-Wunsch, 2026-10-14: "NB1, NB2, BC in mobilansicht
       // entfernen und dafür RX EQ, TX EQ hinzufügen"): NB1/NB2/BC stay in
@@ -1351,14 +1347,22 @@ let myTXDeadline = 0;
 // Bluetooth profile switch, ...) is the slow part, so it runs in parallel with
 // the radio's own TX switch-over (Nutzer-Wunsch 2026-10-15).
 function micWantedNow(state) {
+  // A voice message recording with the LAN source (PB5 3) takes its audio
+  // from the same TX audio path as a real transmission, but the radio does
+  // not transmit - so the mic must stream without myTX (Nutzer-Report
+  // 2026-10-29: recording stayed silent).
+  if (txMsgRecMic) return true;
   return myTX && !state.tuning && !state.ampTuning && !tuneSuppressMic && !isCwMode(state.mode);
 }
+let txMsgRecMic = false;
+let txMsgRecSeenActive = false;
+let txMsgRecDeadline = 0;
 function syncMicNow() {
   if (!lastState || !lastState.connected || !window.hamrcSetMicStreaming) return;
   const want = micWantedNow(lastState);
   if (want === currentMicStreaming) return;
   currentMicStreaming = want;
-  window.hamrcSetMicStreaming(want);
+  return window.hamrcSetMicStreaming(want);
 }
 // The TX button turns red as soon as THIS client asks for TX (we assume the command
 // reaches the radio, Nutzer-Wunsch 2026-10-21) and does not wait for the radio's
@@ -2563,15 +2567,51 @@ const txMsgOverlay = document.getElementById("txmsg-overlay");
 const txMsgButton = document.getElementById("txmsg-button");
 const txMsgChannelsEl = document.getElementById("txmsg-channels");
 let txMsgOpen = false;
+// ALC meter (LED bar, like the browser-mic one): raw 0-70, 35 = end of the "OK"
+// range. The radio is only asked for ALC readings (RM1) while some client has
+// that meter mode selected, so the overlay asks for it while open (without
+// changing the meter's own mode) and restores the meter's mode on close.
+const TXMSG_ALC_SEGMENTS = 24;
+const TXMSG_ALC_MAX_RAW = 70;
+const txMsgAlcSegs = [];
+{
+  const el = document.getElementById("txmsg-alc-meter");
+  for (let i = 0; i < TXMSG_ALC_SEGMENTS; i++) {
+    const raw = ((i + 1) * TXMSG_ALC_MAX_RAW) / TXMSG_ALC_SEGMENTS; // upper edge of the segment
+    const seg = document.createElement("span");
+    seg.className = raw <= ANALOG_ALC_OK_RAW ? "g" : raw <= ANALOG_ALC_OK_RAW + 10 ? "y" : "r";
+    el.appendChild(seg);
+    txMsgAlcSegs.push(seg);
+  }
+}
+let txMsgAlcHoldIdx = -1;
+let txMsgAlcHoldUntil = 0;
+function updateTxMsgAlcMeter(raw) {
+  const lit = Math.min(TXMSG_ALC_SEGMENTS, Math.max(0, Math.round((raw / TXMSG_ALC_MAX_RAW) * TXMSG_ALC_SEGMENTS)));
+  const now = performance.now();
+  if (lit - 1 >= txMsgAlcHoldIdx || now > txMsgAlcHoldUntil) {
+    txMsgAlcHoldIdx = lit - 1;
+    txMsgAlcHoldUntil = now + 1200;
+  }
+  txMsgAlcSegs.forEach((s, i) => {
+    s.classList.toggle("on", i < lit);
+    s.classList.toggle("hold", i === txMsgAlcHoldIdx && i >= lit);
+  });
+}
 function openTxMsgOverlay() {
   if (txMsgOpen) return;
   txMsgOpen = true;
+  // Ask the server for ALC readings WITHOUT touching analogMeterMode, so the
+  // meter's own mode button and needle keep showing what the user picked.
+  send({ type: "setMeterMode", mode: "alc" });
   send({ type: "voiceMsgOverlay", enabled: true });
   txMsgOverlay.hidden = false;
 }
 function closeTxMsgOverlay() {
   if (!txMsgOpen) return;
   txMsgOpen = false;
+  send({ type: "setMeterMode", mode: analogMeterMode }); // back to what the meter itself shows
+  updateTxMsgAlcMeter(0);
   send({ type: "voiceMsgOverlay", enabled: false });
   txMsgOverlay.hidden = true;
 }
@@ -2610,11 +2650,10 @@ txMsgOverlay.addEventListener("click", (e) => {
 
 // Plain seconds, not min:sec — the reference caps every one of these values
 // at 100 (channel length, playback/recording elapsed, remaining recording
-// time) and the radio's own display shows them the same way (Nutzer-Report
-// 2026-10-27, photo of the actual TS-890 screen: "Aufnahme für TX Messages
-// frei = 83sec").
+// time). Shown as e.g. "4s" (Nutzer-Wunsch 2026-10-30; the radio's own
+// display says "83sec").
 function formatTxMsgTime(sec) {
-  return `${sec || 0} sec`;
+  return `${sec || 0}s`;
 }
 function txMsgOpLabel(op) {
   switch (op) {
@@ -2638,11 +2677,38 @@ function txMsgOpLabel(op) {
 // selection PLAY/STOP/SEND/DELETE already act on), so REC itself sits above
 // the channel list once, not duplicated per row.
 const txMsgRecButton = document.getElementById("txmsg-rec-button");
-const txMsgSourceSelect = document.getElementById("txmsg-source");
+// recordings made here always use the LAN source (PB5 3), see prepareVoiceMsgRecording
+const TXMSG_REC_SOURCE_LAN = 3;
 const txMsgRemainingEl = document.getElementById("txmsg-remaining");
-txMsgRecButton.addEventListener("click", () => {
+// Recording level: fixed 10% (tenths of a percent), found by listening
+// (Nutzer-Wunsch 2026-10-30) - the TX default of 1% is far too quiet here.
+const TXMSG_REC_LEVEL_TENTHS_PERCENT = 100;
+txMsgRecButton.addEventListener("click", async () => {
   const recording = !txMsgRecButton.classList.contains("active");
-  send({ type: "setVoiceMsgRecording", channel: txMsgSelectedChannel, enabled: recording, value: Number(txMsgSourceSelect.value) });
+  const source = TXMSG_REC_SOURCE_LAN;
+  txMsgRecSeenActive = false;
+  txMsgRecDeadline = performance.now() + 15000; // covers a slow mic start
+  if (recording) {
+    // Order (Nutzer-Wunsch 2026-10-30): "ready" first, then the source (LAN),
+    // then the mic streams so the radio's ALC settles, then (400 ms later)
+    // the start.
+    send({ type: "prepareVoiceMsgRecording", channel: txMsgSelectedChannel, value: source });
+    // recording needs far more level than the 1% a real TX uses; the server
+    // resets it to the default when the recording stops
+    send({ type: "setTxAtten", value: TXMSG_REC_LEVEL_TENTHS_PERCENT });
+    txMsgRecMic = true;
+    try {
+      await syncMicNow();
+    } catch {
+      // a failed mic start is reported by audio.js itself
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    txMsgRecDeadline = performance.now() + 5000;
+  } else {
+    txMsgRecMic = false;
+    syncMicNow();
+  }
+  send({ type: "setVoiceMsgRecording", channel: txMsgSelectedChannel, enabled: recording, value: source });
 });
 
 // Built once (6 near-identical rows, same reasoning as the EQ effect/NB
@@ -2839,7 +2905,7 @@ function updateTxMsgOverlay(state) {
       r.setLastSentName(chState.name);
     }
     r.name.disabled = !chState.registered;
-    r.length.textContent = chState.registered ? `(${formatTxMsgTime(chState.lengthSec)})` : "(leer)";
+    r.length.textContent = chState.registered ? formatTxMsgTime(chState.lengthSec) : "leer";
     r.status.textContent = isActive ? `${txMsgOpLabel(state.voiceMsgOp)} ${formatTxMsgTime(state.voiceMsgElapsedSec)}` : "";
     r.repeatCheck.disabled = !chState.registered;
     r.repeatCheck.checked = chState.repeat;
@@ -3744,6 +3810,10 @@ ampAutoInput.addEventListener("change", () => {
 // it answers.
 paPowerButton.addEventListener("click", () => {
   if (!paOn) {
+    // shown right at the click (the PA needs a few seconds to answer); the "PA is on"
+    // message follows from the transition in updatePaInfo
+    paInfoMessage = "PA wird eingeschaltet...";
+    if (lastState) applyState(lastState);
     send({ type: "ampPowerOn" });
   } else {
     // Shown right at the click: the PA only counts as off a few seconds later
@@ -3765,7 +3835,7 @@ paLevelButton.addEventListener("click", () => send({ type: "ampCycleLevel" }));
 const paTuneButton = document.getElementById("pa-tune-button");
 paTuneButton.addEventListener("click", () => send({ type: "ampTune" }));
 
-// Event messages for the status line ("PA wird eingeschaltet... Verstärkung aktivieren mit PA OPER" etc.):
+// Event messages for the status line ("PA wird eingeschaltet...", "PA OPER aktiviert Verstärkung" etc.):
 // derived from PA state TRANSITIONS seen by this browser and kept until
 // something newer replaces them (statusMessageFor ranks them below errors).
 let paInfoMessage = "";
@@ -3808,7 +3878,7 @@ function updatePaInfo(state) {
   const operMsg = level ? `PA Leistungsstufe = ${level}` : "PA - OPERATING";
   const standbyMsg = "PA - STANDBY";
   if (prevAmp) {
-    if (cur.on && !prevAmp.on) paInfoMessage = cur.oper ? operMsg : "PA wird eingeschaltet... Verstärkung aktivieren mit PA OPER";
+    if (cur.on && !prevAmp.on) paInfoMessage = cur.oper ? operMsg : "PA OPER aktiviert Verstärkung";
     else if (!cur.on && prevAmp.on) {
       clearTimeout(paOffWatchTimer);
       showPaOffMessage(5000, false);
@@ -5223,6 +5293,13 @@ function applyState(state) {
   if (myTX) {
     if (state.tx) myTXSeenHigh = true;
     else if (myTXSeenHigh || performance.now() >= myTXDeadline) myTX = false;
+  }
+  // stop streaming for a recording once the radio reports it ended (or never
+  // started within 5 s, e.g. refused with "?")
+  if (txMsgRecMic) {
+    // op 2 = recording (1 = ready, which is reported before the start)
+    if (state.voiceMsgRecOp === 2) txMsgRecSeenActive = true;
+    else if (txMsgRecSeenActive || performance.now() >= txMsgRecDeadline) txMsgRecMic = false;
   }
   const micShouldStream = micWantedNow(state);
   if (micShouldStream !== currentMicStreaming && window.hamrcSetMicStreaming) {
