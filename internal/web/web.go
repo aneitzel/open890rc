@@ -70,6 +70,9 @@ type Controls struct {
 	SetNBType         func(typeB bool) error
 	SetNBDepth        func(v int) error
 	SetNBWidth        func(v int) error
+	SetNotch          func(on bool) error
+	SetNotchWidth     func(w int) error
+	SetNotchPos       func(pos int) error
 	SetTXEQ           func(on bool) error
 	SetTXEQEffect     func(effect int) error
 	SetRXEQ           func(on bool) error
@@ -105,7 +108,6 @@ type Controls struct {
 	SetScopeRate      func(rate string) error
 	SetScopeSpan      func(hz int) error
 	ResetRXAudio      func() error
-	SetVoipAutoSync   func(enabled bool, minutes int) error
 	Disconnect        func() error
 	// OnAllClientsGone is called once, clientIdleRestoreDelay after the last
 	// connected /ws client disconnected, if the server is STILL clientless at
@@ -556,6 +558,12 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 		err = s.controls.SetNBType(msg.Enabled)
 	case "setNbDepth":
 		err = s.controls.SetNBDepth(msg.Value)
+	case "setNotch":
+		err = s.controls.SetNotch(msg.Enabled)
+	case "setNotchWidth":
+		err = s.controls.SetNotchWidth(msg.Value)
+	case "setNotchPos":
+		err = s.controls.SetNotchPos(msg.Value)
 	case "setNbWidth":
 		err = s.controls.SetNBWidth(msg.Value)
 	case "setTxEq":
@@ -630,8 +638,6 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 		err = s.controls.SetScopeRate(msg.Rate)
 	case "setScopeSpan":
 		err = s.controls.SetScopeSpan(msg.Value)
-	case "setVoipAutoSync":
-		err = s.controls.SetVoipAutoSync(msg.Enabled, msg.Value)
 	case "resetRxAudio":
 		err = s.controls.ResetRXAudio()
 	case "disconnect":

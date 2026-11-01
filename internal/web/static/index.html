@@ -14,10 +14,11 @@
 <meta name="apple-mobile-web-app-title" content="Open890RC">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#080a0d">
+<link rel="preload" href="fonts/digital-7-mono.ttf" as="font" type="font/ttf" crossorigin>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main class="controls-off">
+<main class="controls-off booting">
   <div class="status-row">
     <div class="btn-group">
       <button type="button" id="power-button" class="audio-btn" title="TS-890 ein-/ausschalten">
@@ -293,6 +294,9 @@
 
   <div class="controls">
     <div class="ctrl-row-group">
+      <!-- Desktop: AF/SQL on top (relocateAfSqlForLayout), the ANT 1 rows at the bottom of the cell under the meter -->
+      <div class="left-stack" id="left-stack">
+        <div class="left-sliders" id="left-sliders"></div>
       <div class="ctrl-row ctrl-row-buttons ctrl-row-1">
         <div class="btn-group"><button type="button" id="at-button">AT OFF</button></div>
         <div class="btn-group"><button type="button" id="tune-button">TUNE</button></div>
@@ -300,10 +304,12 @@
         <div class="btn-group"><button type="button" id="ant-button">ANT 1</button></div>
         <div class="btn-group"><button type="button" id="att-button">ATT OFF</button></div>
       </div>
+      </div>
       <div class="ctrl-row ctrl-row-buttons ctrl-row-2">
         <div class="btn-group"><button type="button" id="nr-button">NR OFF</button></div>
         <div class="btn-group" id="nb-buttons"></div>
         <div class="btn-group"><button type="button" id="bc-button">BC OFF</button></div>
+        <div class="btn-group desktop-only-group"><button type="button" id="nch-button" class="longpress" title="Notch Ein/Aus - lange drücken für die Breite (N/M/W)">NOTCH</button></div>
         <div class="btn-group"><button type="button" id="pre-button">PRE OFF</button></div>
       </div>
     </div>
@@ -329,9 +335,9 @@
     <div class="ctrl-row ctrl-row-buttons" id="extras-row"></div>
     <div class="ctrl-row ctrl-row-buttons" id="pa-row" hidden>
       <div class="btn-group"><button type="button" id="pa-power-button">PA ON</button></div>
-      <div class="btn-group"><button type="button" id="pa-tune-button">PA TUNE</button></div>
+      <div class="btn-group"><button type="button" id="pa-tune-button" title="PA TUNE">TUNE</button></div>
       <div class="btn-group"><button type="button" id="pa-level-button">500W</button></div>
-      <div class="btn-group"><button type="button" id="pa-oper-button">PA OPER</button></div>
+      <div class="btn-group"><button type="button" id="pa-oper-button" title="PA OPERATE">OPER</button></div>
     </div>
     <!-- RIT/XIT: identical knob (same .rit-knob* classes, reused — only the
          SVG gradient ids differ per instance, since id="..." must be unique
@@ -382,24 +388,29 @@
     </div>
     <div class="slider-tx-block">
       <div class="slider-col">
-      <div class="ctrl-row">
+      <div class="ctrl-row" id="af-row" data-i18n-title title="Lautstärke">
         <span class="ctrl-label">AF</span>
         <input type="range" class="slider" id="af-slider" min="0" max="255" value="0">
       </div>
-      <div class="ctrl-row">
+      <div class="ctrl-row" id="sql-row">
         <span class="ctrl-label">SQL</span>
         <input type="range" class="slider" id="sql-slider" min="0" max="255" value="0">
       </div>
-      <div class="ctrl-row">
+      <div class="ctrl-row" data-i18n-title title="RF Gain Regler - nach links zum reduzieren">
         <span class="ctrl-label">RFG</span>
         <input type="range" class="slider" id="rf-slider" min="0" max="255" value="0">
       </div>
-      <div class="ctrl-row pwr-row">
+      <div class="ctrl-row pwr-row" data-i18n-title title="Sendeleistung TS890">
         <span class="ctrl-label">PWR</span>
         <div class="slider-wrap">
           <input type="range" class="slider" id="pwr-slider" min="5" max="100" value="5">
           <span class="ctrl-max" id="pwr-value">0W</span>
         </div>
+      </div>
+      <!-- Desktop only: the manual notch position (BP), enabled while the notch is on -->
+      <div class="ctrl-row notch-row" id="notch-row" data-i18n-title title="Notch - Verschieben der Hüllkurve">
+        <span class="ctrl-label">NCH</span>
+        <input type="range" class="slider" id="notch-slider" min="0" max="255" step="1" value="128" disabled>
       </div>
       </div>
       <button type="button" id="tx-button" class="tx-button" title="Senden/Empfangen umschalten (T-Taste gedrückt halten = Senden)">TX</button>
@@ -413,44 +424,23 @@
     <div class="btn-group scope-keep"><button type="button" id="scope-toggle-button" title="Spektrum/Wasserfall ein- und ausschalten">SPEC</button></div>
     <div class="btn-group scope-keep simple-mode-group"><button type="button" id="simple-mode-button" title="Einfachmodus: grosses Meter + grosser TX-Taster in einem eigenen Fenster">EASY MODE</button></div>
     <div class="btn-group"><button type="button" id="scope-rate-button" class="small-btn" title="Spektrum-Geschwindigkeit (Hi/Mid/Lo)">Hi</button></div>
-    <select id="scope-span-select" class="scope-span-select"></select>
-    <label class="scope-auto-label max-hold-group" title="Spitzenwerte je Frequenz dauerhaft festhalten (leicht durchsichtig hinter der live weiterlaufenden Hüllkurve) — setzt sich beim Ein-/Ausschalten oder Verstimmen zurück">
+    <select id="scope-span-select" class="scope-span-select" data-i18n-title title="Breite des Spectrum"></select>
+    <label class="scope-auto-label max-hold-group" title="Spitzenwerte im Hintergrund halten">
       <input type="checkbox" id="scope-maxhold-checkbox">
       Max Hold
     </label>
-    <label class="scope-auto-label scope-smooth-group" title="Waagerechte Dehnung weich (an) oder in scharfen Blöcken (aus) darstellen — wirkt nur auf unsere Anzeige">
+    <label class="scope-auto-label scope-smooth-group">
       <input type="checkbox" id="scope-smooth-checkbox" checked>
       Smooth
     </label>
-    <div class="scope-smooth-tuning" id="scope-smooth-tuning">
-      <label class="smooth-tune-select" title="Stärke der waagerechten Glättung je Zeile (nur bei aktivem Smooth wirksam)">
-        H
-        <select id="scope-hsmooth-select" class="scope-span-select">
-          <option value="0">Aus</option>
-          <option value="25">Leicht</option>
-          <option value="50" selected>Mittel</option>
-          <option value="75">Stark</option>
-          <option value="100">Maximal</option>
-        </select>
-      </label>
-      <label class="smooth-tune-select" title="Stärke der senkrechten Glättung über die Zeit (Schmiereffekt), nur bei aktivem Smooth wirksam">
-        V
-        <select id="scope-vsmooth-select" class="scope-span-select">
-          <option value="0">Aus</option>
-          <option value="25">Leicht</option>
-          <option value="50" selected>Mittel</option>
-          <option value="75">Stark</option>
-          <option value="100">Maximal</option>
-        </select>
-      </label>
-    </div>
-    <div class="dual-slider scope-level-slider" title="Darstellung anpassen (wirkt nur auf unsere Anzeige, ändert nichts am Radio) — linker Griff: Nullpunkt/Rauschboden, rechter Griff: Höhe/Kontrast der Werte">
+    <select id="scope-color-select" class="scope-span-select" aria-label="Farbschema für Wasserfall" data-i18n-title title="Farbschema für Wasserfall"></select>
+    <div class="dual-slider scope-level-slider" data-i18n-title title="Links = Nullpunkt/Rauschboden / Rechts = Kontrast">
       <div class="dual-slider-track"></div>
       <div class="dual-slider-fill" id="scope-level-fill"></div>
       <input type="range" id="scope-floor-slider" min="90" max="255" step="1">
       <input type="range" id="scope-ceiling-slider" min="90" max="255" step="1">
     </div>
-    <label class="scope-auto-label" title="Floor/Ceiling automatisch aus den echten Werten je Zeile nachführen, träge geglättet statt sofort zu springen">
+    <label class="scope-auto-label" data-i18n-title title="Spectrum floor automatisch ermitteln">
       <input type="checkbox" id="scope-auto-level" checked>
       Auto
     </label>
@@ -632,15 +622,6 @@
               </svg>
             </button>
             <span>TS890 VoIP reset</span>
-          </div>
-          <div class="audio-sync" data-i18n-title title="Der Server startet den VoIP-Strom des TS890 in diesem Abstand selbst neu (wirkt auf alle Clients, wartet während Senden/Tunen)">
-            <label class="overlay-checkbox">
-              <input type="checkbox" id="voip-auto-sync">
-              Auto
-            </label>
-            <select id="voip-auto-sync-min" aria-label="Abstand in Minuten">
-              <option value="1">1 min</option><option value="2">2 min</option><option value="3">3 min</option><option value="4">4 min</option><option value="5">5 min</option><option value="6">6 min</option><option value="7">7 min</option><option value="8">8 min</option><option value="9">9 min</option><option value="10">10 min</option>
-            </select>
           </div>
         </div>
         <div class="audio-codec-row">

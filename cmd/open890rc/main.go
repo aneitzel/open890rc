@@ -85,7 +85,7 @@ func meterCode(mode string) string {
 // happens at startup (via flags) or later from the browser's setup dialog.
 var initialQueries = []string{
 	"AI2", "FR", "FA", "FB", "OM0", "RM21", "GC", "NR", "NB1", "NB2", "RG",
-	"SQ", "BY", "BC", "RL1", "RL2", "NL1", "NL2", "NBT", "NBD", "NBW", "EQR0", "EQR1", "PR0", "PR1", "AN", "PC", "MG", "PL", "AC", "FL0", "RA", "PA",
+	"SQ", "BY", "BC", "RL1", "RL2", "NL1", "NL2", "NBT", "NBD", "NBW", "NT", "NW", "BP", "EQR0", "EQR1", "PR0", "PR1", "AN", "PC", "MG", "PL", "AC", "FL0", "RA", "PA",
 	"FL10", "FL11", "FL12", "EX00611", "EX00612", "EX00606", "EX00607", "EX00608", "EX00609", "SH0", "SL0", "##KN4", "##KN30", "##KN31", "PT", "AP0", "AP1", "AP2", "AP3", "BS4", "DD01",
 	"RT", "RF", "XT", "MO0", "ML",
 }
@@ -468,8 +468,8 @@ func main() {
 	// Mode-change hook for the TX/RX equalizers (set further down, after the
 	// equalizer state exists).
 	var onModeChanged func()
-	// TX-confirmed hook for the VoIP auto sync (set further down, after that
-	// machinery exists) — see its own assignment for why.
+	// TX-confirmed hook for the TX-triggered VoIP stream reset (set further
+	// down, after that machinery exists) — see its own assignment for why.
 	var onRadioTXConfirmed func(radioTX bool)
 
 	// Every message from the radio is read and dispatched by ONE goroutine
@@ -2017,13 +2017,8 @@ func main() {
 	// delay between the two so the radio has a moment to actually tear down
 	// its RTP sender before being asked to start a new one (not measured
 	// against real hardware — a reasonable margin, not a confirmed value).
-	// One reset at a time (manual button and the auto sync below may overlap);
-	// lastRXSync is when the stream was last reset, by either.
+	// One reset at a time (manual button and the TX-triggered reset may overlap).
 	var rxResetMu sync.Mutex
-	var lastRXSync atomic.Int64 // unix nanoseconds
-	// Last moment the radio was (or was just asked to be) transmitting or tuning; the
-	// auto sync below stays away for a few seconds after it.
-	var lastTXActivity atomic.Int64
 	resetRXAudio := func() error {
 		rxResetMu.Lock()
 		defer rxResetMu.Unlock()
@@ -2053,58 +2048,9 @@ func main() {
 		if err := conn.Send("##VP1"); err != nil {
 			return fmt.Errorf("restarting RX audio stream: %w", err)
 		}
-		lastRXSync.Store(time.Now().UnixNano())
 		return nil
 	}
 
-	// "VOIP auto sync" (Nutzer-Wunsch, 2026-10-16): the radio's LAN audio
-	// stream sometimes drifts into a state with a delayed echo that only a
-	// ##VP0/##VP1 cycle clears (see the notes), so the server repeats that
-	// cycle on its own every N minutes (1-10, default 5, on by default).
-	// It waits while the radio tunes and when nobody is listening, and
-	// restarts its window whenever the setting changes.
-	//
-	// This periodic version is a trial run the operator intends to remove
-	// once the TX-triggered reset below (added 2026-10-24) is confirmed
-	// sufficient on its own — kept here unmodified for now, running
-	// alongside it, specifically so the two can be compared/either one
-	// relied on as a fallback while that's still being decided.
-	var voipCfg struct {
-		Auto    *bool `json:"auto"` // nil = never saved = on
-		Minutes int   `json:"minutes"`
-	}
-	if data, ok := cfgStore.Read("voip"); ok {
-		json.Unmarshal(data, &voipCfg)
-	}
-	var voipMu sync.Mutex
-	voipAuto := voipCfg.Auto == nil || *voipCfg.Auto
-	voipMinutes := voipCfg.Minutes
-	if voipMinutes < 1 || voipMinutes > 10 {
-		voipMinutes = 5
-	}
-	st.SetVoipAutoSync(voipAuto, voipMinutes)
-	setVoipAutoSync := func(enabled bool, minutes int) error {
-		if minutes < 1 {
-			minutes = 1
-		}
-		if minutes > 10 {
-			minutes = 10
-		}
-		voipMu.Lock()
-		voipAuto, voipMinutes = enabled, minutes
-		data, _ := json.Marshal(struct {
-			Auto    bool `json:"auto"`
-			Minutes int  `json:"minutes"`
-		}{enabled, minutes})
-		if err := cfgStore.Write("voip", data); err != nil {
-			log.Printf("main: saving auto sync setting to %s failed: %v", *configFile, err)
-		}
-		voipMu.Unlock()
-		st.SetVoipAutoSync(enabled, minutes)
-		lastRXSync.Store(time.Now().UnixNano()) // a full new window
-		broadcastState()
-		return nil
-	}
 	// TX-triggered RX stream reset (2026-10-24, Nutzer-Wunsch): fires the
 	// instant the radio confirms it is now transmitting (onMsg, every
 	// incoming CAT line — front-panel PTT included, not just this tool's own
@@ -2148,37 +2094,6 @@ func main() {
 			}
 		}()
 	}
-	go func() {
-		lastRXSync.Store(time.Now().UnixNano())
-		for range time.Tick(5 * time.Second) {
-			voipMu.Lock()
-			on, window := voipAuto, time.Duration(voipMinutes)*time.Minute
-			voipMu.Unlock()
-			if !on || !st.Connected() || pcmHub.Len()+opusHub.Len() == 0 {
-				lastRXSync.Store(time.Now().UnixNano()) // nothing to keep in sync: wait a full window after this
-				continue
-			}
-			if radioTX, _, ampTX := st.TXFlags(); radioTX || ampTX || st.Tuner().TuningActive {
-				lastTXActivity.Store(time.Now().UnixNano())
-				continue // try again right after
-			}
-			// Also not in the first seconds after TX/tune ended (or was just
-			// requested, before the radio confirmed it).
-			if time.Since(time.Unix(0, lastTXActivity.Load())) < 5*time.Second {
-				continue
-			}
-			if time.Since(time.Unix(0, lastRXSync.Load())) < window {
-				continue
-			}
-			if err := resetRXAudio(); err != nil {
-				log.Printf("audio: auto sync failed: %v", err)
-				lastRXSync.Store(time.Now().UnixNano())
-			} else {
-				log.Printf("audio: auto sync (VoIP stream restarted, every %d min)", int(window.Minutes()))
-			}
-		}
-	}()
-
 	// disconnectRadio is the setup overlay's manual "Trennen" button — lets
 	// the operator drop the current KNS session without having to close the
 	// browser tab (e.g. to free it up for another KNS client, or before a
@@ -2864,6 +2779,44 @@ func main() {
 			}
 			return conn.Send(fmt.Sprintf("NL%d", which))
 		},
+		SetNotch: func(on bool) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			if err := conn.Send(cat.EncodeNotch(on)); err != nil {
+				return err
+			}
+			return conn.Send("NT")
+		},
+		SetNotchWidth: func(w int) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			cmd, err := cat.EncodeNotchWidth(w)
+			if err != nil {
+				return err
+			}
+			if err := conn.Send(cmd); err != nil {
+				return err
+			}
+			return conn.Send("NW")
+		},
+		SetNotchPos: func(pos int) error {
+			conn := rm.current()
+			if conn == nil {
+				return fmt.Errorf("not connected to radio")
+			}
+			cmd, err := cat.EncodeNotchPos(pos)
+			if err != nil {
+				return err
+			}
+			if err := conn.Send(cmd); err != nil {
+				return err
+			}
+			return conn.Send("BP")
+		},
 		SetNBType: func(typeB bool) error {
 			conn := rm.current()
 			if conn == nil {
@@ -3136,7 +3089,6 @@ func main() {
 			return nil
 		},
 		SetTune: func() error {
-			lastTXActivity.Store(time.Now().UnixNano())
 			// The PA has its own tuner (PA TUNE); only a running internal
 			// tune may still be stopped.
 			if _, ampOn := st.PowerAndAmp(); ampOn && !st.Tuner().TuningActive {
@@ -3148,7 +3100,6 @@ func main() {
 			})
 		},
 		SetTX: func(transmitting bool) error {
-			lastTXActivity.Store(time.Now().UnixNano()) // keep the VOIP auto sync away, also before the radio confirms
 			return sendEncoded(func() (string, error) { return cat.EncodeTX(transmitting), nil })
 		},
 		SetAudioWidth: func(widthHz int) error {
@@ -3316,9 +3267,8 @@ func main() {
 		SetScopeSpan: func(hz int) error {
 			return sendEncoded(func() (string, error) { return cat.EncodeBandScopeSpan(hz), nil })
 		},
-		ResetRXAudio:    resetRXAudio,
-		SetVoipAutoSync: setVoipAutoSync,
-		Disconnect:      disconnectRadio,
+		ResetRXAudio: resetRXAudio,
+		Disconnect:   disconnectRadio,
 		// Idle restore (Nutzer-Wunsch, 2026-10-14): "last browser gone" (+15s
 		// grace, see clientIdleRestoreDelay in web.go) puts PROC/MIC
 		// input/TX-EQ/RX-EQ/TX monitor back to normal shack operation, same

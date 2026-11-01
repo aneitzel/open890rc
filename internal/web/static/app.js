@@ -635,12 +635,16 @@ try {
 // even though the needle itself is hidden — see setDesktopMeterView's own
 // comment). The server only streams a given extra meter (ALC/IC) while some
 // client has asked for it (main.go), hence the explicit send here.
-function setAnalogMeterMode(mode) {
+// persist=false: a mode forced by the desktop bars view (ALC data for the bar) is not the user's choice and
+// must not overwrite the stored one, or after a reload in bars view the needle came back on ALC.
+function setAnalogMeterMode(mode, persist = true) {
   if (analogMeterMode === mode) return;
   analogMeterMode = mode;
-  try {
-    localStorage.setItem("open890rc.meterMode", analogMeterMode);
-  } catch (e) {}
+  if (persist) {
+    try {
+      localStorage.setItem("open890rc.meterMode", analogMeterMode);
+    } catch (e) {}
+  }
   for (const b of document.querySelectorAll(".meter-mode-btn")) b.classList.toggle("active", b.dataset.mode === analogMeterMode);
   send({ type: "setMeterMode", mode: analogMeterMode });
 }
@@ -1115,10 +1119,16 @@ const nrCycle = makeCycleButton(
       aiNrPendingUntil = performance.now() + AI_NR_PENDING_MS;
       send({ type: "setNR", value: 0 });
       window.hamrcSetRNNoise(true);
+      nrCycle.setCurrent("ai");
     } else {
       aiNrPendingUntil = 0;
-      if (window.hamrcGetRNNoise()) window.hamrcSetRNNoise(false);
+      const wasAi = window.hamrcGetRNNoise();
+      if (wasAi) window.hamrcSetRNNoise(false);
       send({ type: "setNR", value });
+      // Leaving AI NR changes nothing the radio reports (its NR was 0 all along), so no state broadcast
+      // follows and the button kept showing "AI NR" until some unrelated broadcast came in: show the
+      // new step at once.
+      if (wasAi) nrCycle.setCurrent(value);
     }
   }
 );
@@ -1132,6 +1142,65 @@ const bcCycle = makeCycleButton(
   ],
   (value) => send({ type: "setBC", value })
 );
+
+// Desktop: AF and SQL sit directly under the meter, above the ANT 1 rows, flush with the buttons (Nutzer-Wunsch
+// 2026-11-01), which leaves room in the right slider block for the NOTCH row below PWR. On a phone they
+// stay in the slider block, before RFG.
+(function relocateAfSqlForLayout() {
+  const afRow = document.getElementById("af-row");
+  const sqlRow = document.getElementById("sql-row");
+  const leftSliders = document.getElementById("left-sliders");
+  const leftStack = document.getElementById("left-stack");
+  const meterBlock = document.querySelector(".meter-block");
+  const sliderCol = document.querySelector(".slider-col");
+  if (!afRow || !sqlRow || !leftSliders || !leftStack || !meterBlock || !sliderCol) return;
+  const desktopQuery = window.matchMedia("(min-width: 800px)");
+  function apply() {
+    if (desktopQuery.matches) {
+      leftSliders.append(afRow, sqlRow);
+      meterBlock.append(leftSliders); // directly under the meter-mode keys
+    } else {
+      leftStack.prepend(leftSliders);
+      sliderCol.insertBefore(sqlRow, sliderCol.firstChild);
+      sliderCol.insertBefore(afRow, sqlRow);
+    }
+  }
+  apply();
+  desktopQuery.addEventListener("change", apply);
+  // AF/SQL are exactly as long as the RFG/PWR/NOTCH sliders on the right (Nutzer-Wunsch 2026-11-01); the
+  // right ones take whatever their column gives them, so follow that width.
+  const rfSlider = document.getElementById("rf-slider");
+  const syncWidth = () => {
+    const w = rfSlider.getBoundingClientRect().width;
+    if (w > 0) leftSliders.style.setProperty("--sw", `${w}px`);
+  };
+  // ... and start level with the front of the ANT 1 button (the button rows are not always flush left)
+  const antGroup = document.getElementById("ant-button").parentElement;
+  const syncIndent = () => {
+    if (!desktopQuery.matches) return;
+    const d = antGroup.getBoundingClientRect().left - leftSliders.getBoundingClientRect().left;
+    if (Number.isFinite(d)) leftSliders.style.setProperty("--al", `${Math.max(0, d)}px`);
+  };
+  const syncAll = () => {
+    syncWidth();
+    syncIndent();
+  };
+  syncAll();
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(syncAll);
+    ro.observe(rfSlider);
+    ro.observe(antGroup.parentElement);
+  }
+  window.addEventListener("resize", syncAll);
+})();
+
+// Manual notch: a click switches it on/off, a long press steps the width N -> M -> W (NW0/1/2).
+// Its position is the NOTCH slider on the audio scope (positionNotchSlider).
+const nchButton = document.getElementById("nch-button");
+nchButton.addEventListener("click", () => {
+  if (lastState && notchAvailable(lastState.mode)) send({ type: "setNotch", enabled: !lastState.notchOn });
+});
+onLongPress(nchButton, () => lastState && notchAvailable(lastState.mode) && send({ type: "setNotchWidth", value: ((lastState && lastState.notchWidth) + 1) % 3 }));
 
 // RF attenuator: 0=off, 1=6dB, 2=12dB, 3=18dB ("RA" on the wire).
 const attCycle = makeCycleButton(
@@ -1251,17 +1320,22 @@ const preCycle = makeCycleButton(
   const txMonGroup = document.getElementById("txmon-button")?.closest(".btn-group");
   const txEqGroup = document.getElementById("txeq-button")?.closest(".btn-group");
   const rxEqGroup = document.getElementById("rxeq-button")?.closest(".btn-group");
+  const nchGroup = document.getElementById("nch-button")?.closest(".btn-group");
+  const bcGroup = document.getElementById("bc-button")?.closest(".btn-group");
+  const procGroup = document.getElementById("proc-button")?.closest(".btn-group");
+  const procRow = document.querySelector(".mic-proc-row");
   // Nutzer-Wunsch 2026-10-30: on desktop the four buttons sit in #extras-row (grid
   // area where the PA row used to be), no longer next to PROC.
   const extrasRow = document.getElementById("extras-row");
   const ctrlRow2 = document.querySelector(".ctrl-row-2");
   const nbButtons = document.getElementById("nb-buttons");
-  if (!txMsgGroup || !txMonGroup || !txEqGroup || !rxEqGroup || !extrasRow || !ctrlRow2 || !nbButtons) return;
+  if (!txMsgGroup || !txMonGroup || !txEqGroup || !rxEqGroup || !nchGroup || !bcGroup || !procGroup || !procRow || !extrasRow || !ctrlRow2 || !nbButtons) return;
   const desktopQuery = window.matchMedia("(min-width: 800px)");
   function apply() {
     if (desktopQuery.matches) {
       // order left to right: TX MSG, TX MON, RX EQ, TX EQ
-      extrasRow.append(txMsgGroup, txMonGroup, rxEqGroup, txEqGroup);
+      // PROC joins right of TX EQ (Nutzer-Wunsch 2026-11-01)
+      extrasRow.append(txMsgGroup, txMonGroup, rxEqGroup, txEqGroup, procGroup);
     } else {
       // Phone (Nutzer-Wunsch, 2026-10-14: "NB1, NB2, BC in mobilansicht
       // entfernen und dafür RX EQ, TX EQ hinzufügen"): NB1/NB2/BC stay in
@@ -1270,8 +1344,10 @@ const preCycle = makeCycleButton(
       // right after NR OFF, in the row's existing flex order.
       ctrlRow2.insertBefore(rxEqGroup, nbButtons.nextSibling);
       ctrlRow2.insertBefore(txEqGroup, rxEqGroup.nextSibling);
+      procRow.append(procGroup); // phone: PROC sits under the TX button again
     }
   }
+  bcGroup.after(nchGroup); // NOTCH sits right of BC (desktop only, hidden on a phone)
   apply();
   desktopQuery.addEventListener("change", apply);
 })();
@@ -2329,6 +2405,44 @@ function ascopeGeometry(st) {
 }
 // Draws the scope into an SVG: `st` = the filter state to show (the live state, or the live state with
 // the filter window's slider values while that window is open), apf = optional CW audio peak filter shift.
+// x position (viewBox units) of the notch for BP value `pos`: on the 0-3000 Hz axis it is pos/255*3000 Hz
+// (open890 draws it so on its 0-3000 and 0-5000 axes); in CW the radio spreads it over the whole 1000 Hz
+// axis (narrow) or the middle part of the 3000 Hz axis (wide). Both are taken from open890, not yet
+// compared with the radio's display.
+// AM and FM (also the -D modes) have no notch on the TS-890 (Kenwood PC Command Reference, user hint).
+function notchAvailable(mode) {
+  return !["AM", "AM-D", "FM", "FM-D"].includes(mode || "");
+}
+// Positions are on the spectrum data's own scale (the data runs from `left` to `right`, a little wider than the
+// filter axis), so that the notch line sits in the middle of the dip the radio puts into the curve.
+const NOTCH_WIDTH_HZ = [150, 300, 600]; // Normal, Middle, Wide (estimates)
+function notchX(st, g, pos, left, right) {
+  const xd = (hz) => left + (Math.max(g.x0, Math.min(g.x1, hz)) - g.x0) / (g.x1 - g.x0) * (right - left);
+  if ((st.mode || "").startsWith("CW") && st.audioHasShift) {
+    const narrow = g.x1 - g.x0 <= 1000;
+    const frac = narrow ? pos / 255 : 70 / 212 + pos / 255 / 3;
+    return left + frac * (right - left);
+  }
+  return xd((pos / 255) * 3000);
+}
+const notchSlider = document.getElementById("notch-slider");
+const notchSender = makeLiveSender("setNotchPos");
+let notchDragging = false;
+notchSlider.addEventListener("pointerdown", () => {
+  notchDragging = true;
+});
+notchSlider.addEventListener("input", () => {
+  if (lastState) lastState.notchPos = Number(notchSlider.value); // the marker follows the finger at once
+  scheduleAscope();
+  notchSender.live(Number(notchSlider.value));
+});
+notchSlider.addEventListener("change", () => {
+  notchDragging = false;
+  notchSender.final(Number(notchSlider.value));
+});
+for (const type of ["pointerup", "pointercancel"]) {
+  document.addEventListener(type, () => setTimeout(() => (notchDragging = false), 0));
+}
 function renderAscope(svg, st, apf) {
   const g = ascopeGeometry(st) || { x0: 0, x1: 3000, lo: 0, hi: 0, titles: [st.mode || "", "", ""] };
   // The scope under the sliders is as wide as the layout gives it at a fixed height, so the drawing
@@ -2396,6 +2510,34 @@ function renderAscope(svg, st, apf) {
     const half = [3, 5, 8][apf.bw] || 5;
     out += `<polygon class="fg-apf" points="${ax - half},${base} ${ax},${top + 4} ${ax + half},${base}"/>`;
     out += `<text class="fg-apf-label" x="${ax + 7}" y="${top + 12}">APF</text>`;
+  }
+  // manual notch at the notch frequency (BP 0-255), drawn like the radio does (see below). Shown only for the live view, not while the TX filter is on display.
+  const dspLabels = [];
+  if (st.notchOn && !st.txView && notchAvailable(st.mode)) {
+    const nx = notchX(st, g, st.notchPos, left, right);
+    // like the radio's display: a thin vertical line, topped by a small "Y" (two arms meeting on the line).
+    // The line stops at about 80% of the plot height (Nutzer-Wunsch), the Y is as wide as the notch itself:
+    // NOTCH_WIDTH_HZ are estimates for Normal/Middle/Wide (the Hz values are not in the Kenwood reference).
+    const half = (NOTCH_WIDTH_HZ[st.notchWidth] || NOTCH_WIDTH_HZ[0]) / 2 * ((right - left) / (g.x1 - g.x0));
+    const armY = top + Math.min(half * 1.2, 14);
+    const lineEnd = top + (base - top) * 0.8;
+    out += `<polyline class="fg-notch-line" fill="none" points="${nx - half},${top} ${nx},${armY} ${nx + half},${top}"/>`;
+    out += `<line class="fg-notch-line" x1="${nx}" y1="${armY}" x2="${nx}" y2="${lineEnd}"/>`;
+    dspLabels.push(`NOTCH ${["N", "M", "W"][st.notchWidth] || "N"}`);
+  }
+  // active noise functions are listed the same way (Nutzer-Wunsch 2026-11-01): NR1/NR2 (or NR AI for the
+  // browser-side noise reduction), NB1, NB2, BC1/BC2, left to right along the bottom edge
+  if (!st.txView) {
+    if (st.nr) dspLabels.push(`NR${st.nr}`);
+    else if (window.hamrcGetRNNoise && window.hamrcGetRNNoise()) dspLabels.push("NR AI");
+    if (st.nb1) dspLabels.push("NB1");
+    if (st.nb2) dspLabels.push("NB2");
+    if (st.bc) dspLabels.push(`BC${st.bc}`);
+  }
+  let labelX = left + 2;
+  for (const text of dspLabels) {
+    out += `<text class="fg-notch-label" x="${labelX}" y="${base + 11}">${text}</text>`;
+    labelX += text.length * 5.4 + 3.5; // 8px label font, measured about 5.3 per character
   }
   if (svg._ascopeMarkup !== out) {
     svg.innerHTML = out;
@@ -3947,7 +4089,7 @@ function setDesktopMeterView(view) {
   if (view === desktopMeterView) return;
   if (view === "bars") {
     preBarsNeedleMode = analogMeterMode;
-    setAnalogMeterMode("alc");
+    setAnalogMeterMode("alc", false);
   } else if (preBarsNeedleMode !== null) {
     setAnalogMeterMode(preBarsNeedleMode);
     preBarsNeedleMode = null;
@@ -3961,7 +4103,11 @@ function setDesktopMeterView(view) {
   applyDesktopMeterView();
 }
 applyDesktopMeterView();
-if (desktopMeterView === "bars") setAnalogMeterMode("alc"); // page loaded straight into bars-view
+if (desktopMeterView === "bars") {
+  // page loaded straight into bars-view: the stored choice is still the needle's own, remember it
+  preBarsNeedleMode = analogMeterMode;
+  setAnalogMeterMode("alc", false);
+}
 meterTxToggle.addEventListener("click", (e) => {
   if (!window.matchMedia("(min-width: 800px)").matches) return;
   if (e.target.closest(".meter-mode-row")) return; // those buttons have their own click handler
@@ -4186,6 +4332,8 @@ function applyAmpState(state) {
   updatePaInfo(state);
   const present = !!state.ampPort;
   paRow.hidden = !present;
+  // phone: without the PA row the page is shorter, the waterfall takes that room (style.css)
+  document.querySelector("main").classList.toggle("pa-row-hidden", !present);
   ampConnectButton.textContent = present ? "trennen" : "verbinden";
   ampAutoInput.checked = !!state.ampAuto;
   if (document.activeElement !== ampTxTimeoutInput) ampTxTimeoutInput.value = state.ampTxTimeout || 0;
@@ -5005,7 +5153,7 @@ function setScopeControlsAvailable(available) {
     kpEntry = "";
     kpRender();
   }
-  for (const el of document.querySelectorAll("#scope-span-select, .scope-level-slider")) {
+  for (const el of document.querySelectorAll("#scope-span-select, #scope-color-select, .scope-level-slider")) {
     el.inert = !available;
     el.classList.toggle("scope-off", !available);
   }
@@ -5305,6 +5453,8 @@ function setControlsDisabled(disabled) {
   }
   // The meter-mode keys sit inside .meter-block (skipped above for the status message).
   for (const el of document.querySelectorAll(".meter-mode-row")) el.inert = disabled;
+  // AF/SQL sit under the meter on desktop (inside .meter-block, like the keys above)
+  document.getElementById("left-sliders").inert = disabled;
   // #audio-button sits inside .status-row itself, so the loop above never
   // reaches it (the whole top bar — setup, power, audio — is deliberately
   // left usable, see this function's own opening comment). But starting the
@@ -5359,8 +5509,8 @@ const AMP_STATE_OFF = {
   ampSWR: 0,
 };
 function applyState(state) {
+  revealMain();
   if (!paAllowed) state = { ...state, ...AMP_STATE_OFF };
-  syncVoipAutoSync(state);
   updateTxMsgOverlay(state);
   // While powering on, the radio is treated as still off (the connection is
   // redialed once after it came up) — no "RADIO OFF", no half-working UI.
@@ -5659,6 +5809,13 @@ function applyState(state) {
     (state.nr === 0 || aiPending) && window.hamrcGetRNNoise && window.hamrcGetRNNoise() ? "ai" : state.nr;
   nrCycle.setCurrent(nrDisplay);
   bcCycle.setCurrent(state.bc);
+  // the label never changes (the LED shows on/off, the width is shown in the audio scope)
+  nchButton.textContent = "NOTCH";
+  const notchOk = notchAvailable(state.mode);
+  nchButton.disabled = !notchOk;
+  notchSlider.disabled = !(notchOk && state.notchOn);
+  nchButton.classList.toggle("active", !!state.notchOn && notchOk);
+  if (!notchDragging) notchSlider.value = String(state.notchPos);
   attCycle.setCurrent(state.att);
   preCycle.setCurrent(state.pre);
 
@@ -6209,9 +6366,14 @@ document.getElementById("connect-form").addEventListener(
       el.style.setProperty("--tw", 1 / dpr + "px");
       el.style.setProperty("--tick", Math.max(3, Math.round((w * dpr) / 40)) / dpr + "px");
     });
-    requestAnimationFrame(paint);
   }
-  requestAnimationFrame(paint);
+  function loop() {
+    paint();
+    requestAnimationFrame(loop);
+  }
+  // Paint once synchronously (before the first frame is drawn) so the scale
+  // doesn't flash its CSS fallbacks on load, then keep re-reading.
+  loop();
 })();
 
 // "Smooth" (waterfall row checkbox): smooth (browser interpolation, default) or
@@ -6231,45 +6393,6 @@ document.getElementById("connect-form").addEventListener(
     if (window.hamrcSetWaterfallSmooth) window.hamrcSetWaterfallSmooth(box.checked);
   });
   apply();
-})();
-
-// Smooth strength dropdowns (desktop only, 2026-10-14: "regelbar machen... H/V"):
-// H scales the horizontal (per-line) blend from the Smooth block above, V adds
-// an independent vertical/temporal blend (a smear effect). Same load-order
-// pattern as Max Hold below — app.js runs before waterfall.js (index.html's
-// script order), so each select reads its own persisted value straight from
-// localStorage for its initial position instead of calling a getter that
-// doesn't exist yet, and only calls window.hamrcSetWaterfallXSmooth on an
-// actual change (by then waterfall.js has long since loaded).
-(() => {
-  function wireSmoothSelect(selectId, storageKey, fallbackPct, setterName) {
-    const sel = document.getElementById(selectId);
-    if (!sel) return;
-    sel.value = String(fallbackPct);
-    try {
-      // getItem returns null for a key that was never saved, and Number(null)
-      // is 0 — easy to mistake for an actually-saved "0" unless checked for
-      // explicitly first (same trap already found and fixed once for the mic
-      // limiter's threshold/attack, 2026-10-14 — recurring here because 0 is
-      // a valid saved value for both H and V, not just a missing-key stand-in).
-      const raw = localStorage.getItem(storageKey);
-      if (raw !== null) {
-        const saved = Number(raw);
-        if (Number.isFinite(saved) && saved >= 0 && saved <= 100) sel.value = String(saved);
-      }
-    } catch (e) {
-      // keep fallback
-    }
-    sel.addEventListener("change", () => {
-      const pct = Number(sel.value);
-      try {
-        localStorage.setItem(storageKey, String(pct));
-      } catch (e) {}
-      if (window[setterName]) window[setterName](pct);
-    });
-  }
-  wireSmoothSelect("scope-hsmooth-select", "open890rc.scopeHSmooth", 50, "hamrcSetWaterfallHSmooth");
-  wireSmoothSelect("scope-vsmooth-select", "open890rc.scopeVSmooth", 50, "hamrcSetWaterfallVSmooth");
 })();
 
 // "Max Hold" (waterfall row checkbox, desktop only): keeps the loudest value
@@ -6376,21 +6499,6 @@ micDeviceSelect.addEventListener("change", () => {
 window.hamrcOnMicDevicesChanged = () => {
   if (audioTxTabVisible()) refreshMicDevices();
 };
-// VOIP auto sync (server-side periodic ##VP0/##VP1): checkbox + interval, one
-// setting for all clients, kept in the server config and echoed in the state.
-const voipAutoSyncBox = document.getElementById("voip-auto-sync");
-const voipAutoSyncMin = document.getElementById("voip-auto-sync-min");
-function sendVoipAutoSync() {
-  send({ type: "setVoipAutoSync", enabled: voipAutoSyncBox.checked, value: Number(voipAutoSyncMin.value) });
-}
-voipAutoSyncBox.addEventListener("change", sendVoipAutoSync);
-voipAutoSyncMin.addEventListener("change", sendVoipAutoSync);
-function syncVoipAutoSync(state) {
-  if (state.voipAutoSyncMin) {
-    if (document.activeElement !== voipAutoSyncBox) voipAutoSyncBox.checked = !!state.voipAutoSync;
-    if (document.activeElement !== voipAutoSyncMin) voipAutoSyncMin.value = String(state.voipAutoSyncMin);
-  }
-}
 // Output device dropdown (RX tab): hidden where setSinkId() is missing (iOS).
 const audioOutputRow = document.getElementById("audio-output-row");
 const audioOutputSelect = document.getElementById("audio-output");
@@ -6427,3 +6535,26 @@ function syncMicMeter() {
 // a flash on page load. (index.html already carries main.controls-off for the
 // pure-CSS part, so this only has to mark the boxes inert/dimmed.)
 setControlsDisabled(true);
+
+// Everything below the top bar stays hidden (main.booting) until the first
+// state arrives, so the sliders/keys don't visibly switch from the dimmed
+// "off" look to the lit one right after load. The timeout keeps the page
+// usable if the server never answers.
+let firstStateSeen = false;
+let fontsReady = false;
+function revealMain(force) {
+  if (force !== true) {
+    firstStateSeen = true;
+    if (!fontsReady) return;
+  }
+  document.querySelector("main").classList.remove("booting");
+}
+// The frequency display uses the Digital-7 web font: wait for it too, or the
+// digits first show in a fallback font and jump to their design.
+(document.fonts && document.fonts.load ? document.fonts.load('1em "Digital-7 Mono"') : Promise.resolve())
+  .catch(() => {})
+  .then(() => {
+    fontsReady = true;
+    if (firstStateSeen) revealMain();
+  });
+setTimeout(() => revealMain(true), 2500);

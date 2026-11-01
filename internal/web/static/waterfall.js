@@ -195,7 +195,76 @@
 
   const RED_AT = 200;
 
+  // Colour schemes of the waterfall (Nutzer-Wunsch 2026-11-01). "Standard" is the open890 rainbow above; the
+  // others are the gradient presets wfview offers (they are QCustomPlot's QCPColorGradient presets, wfview
+  // default is Jet): colour stops [position 0..1, [r, g, b]] interpolated in RGB or HSV like QCustomPlot does.
+  // The stop values are from memory of QCustomPlot's source (the library is not part of the wfview tree in
+  // CLAUDE/wfview-2.25), so they may differ slightly from wfview's own rendering.
+  const SCHEMES = [
+    { id: "standard", label: "o890rc" },
+    { id: "jet", label: "Jet", mode: "rgb", stops: [[0, [0, 0, 100]], [0.15, [0, 50, 255]], [0.35, [0, 255, 255]], [0.65, [255, 255, 0]], [0.85, [255, 30, 0]], [1, [100, 0, 0]]] },
+    { id: "cold", label: "Cold", mode: "rgb", stops: [[0, [0, 0, 50]], [0.2, [0, 10, 180]], [0.4, [0, 50, 245]], [0.6, [10, 150, 255]], [0.8, [50, 255, 255]], [1, [255, 255, 255]]] },
+    { id: "hot", label: "Hot", mode: "rgb", stops: [[0, [50, 0, 0]], [0.2, [180, 10, 0]], [0.4, [245, 50, 0]], [0.6, [255, 150, 10]], [0.8, [255, 255, 50]], [1, [255, 255, 255]]] },
+    { id: "thermal", label: "Therm", mode: "rgb", stops: [[0, [0, 0, 50]], [0.15, [20, 0, 120]], [0.33, [200, 30, 140]], [0.6, [255, 100, 0]], [0.85, [255, 255, 40]], [1, [255, 255, 255]]] },
+    { id: "night", label: "Night", mode: "hsv", stops: [[0, [10, 20, 30]], [1, [250, 255, 250]]] },
+    { id: "ion", label: "Ion", mode: "hsv", stops: [[0, [50, 10, 10]], [0.45, [0, 0, 255]], [0.8, [0, 255, 255]], [1, [0, 255, 0]]] },
+    { id: "gray", label: "Gray", mode: "rgb", stops: [[0, [0, 0, 0]], [1, [255, 255, 255]]] },
+    { id: "geo", label: "Geo", mode: "rgb", stops: [[0, [70, 170, 210]], [0.2, [90, 160, 180]], [0.25, [45, 130, 175]], [0.3, [100, 140, 125]], [0.5, [100, 140, 100]], [0.6, [130, 145, 120]], [0.7, [140, 130, 120]], [0.9, [180, 190, 190]], [1, [210, 210, 230]]] },
+    { id: "hues", label: "Hues", mode: "hsv", stops: [[0, [255, 0, 0]], [1 / 3, [0, 0, 255]], [2 / 3, [0, 255, 0]], [1, [255, 0, 0]]] },
+    { id: "polar", label: "Polar", mode: "rgb", stops: [[0, [50, 255, 255]], [0.18, [10, 70, 255]], [0.28, [10, 10, 190]], [0.5, [0, 0, 0]], [0.72, [190, 10, 10]], [0.82, [255, 70, 10]], [1, [255, 255, 50]]] },
+    { id: "spectrum", label: "Spect", mode: "hsv", stops: [[0, [50, 0, 50]], [0.15, [0, 0, 255]], [0.35, [0, 255, 0]], [0.6, [255, 255, 0]], [0.75, [255, 30, 0]], [1, [50, 0, 0]]] },
+    { id: "candy", label: "Candy", mode: "hsv", stops: [[0, [0, 0, 255]], [1, [255, 250, 250]]] },
+  ];
+  const SCHEME_KEY = "open890rc.scopeColors";
+  let scheme = SCHEMES[0];
+  try {
+    const saved = SCHEMES.find((s) => s.id === localStorage.getItem(SCHEME_KEY));
+    if (saved) scheme = saved;
+  } catch (e) {}
+
+  function rgb2hsv(r, g, b) {
+    r /= 255;
+    g /= 255;
+    b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0;
+    if (d > 0) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+      if (h < 0) h += 1;
+    }
+    return [h, max === 0 ? 0 : d / max, max];
+  }
+  function hsv2rgb(h, s, v) {
+    const i = Math.floor(h * 6) % 6, f = h * 6 - Math.floor(h * 6);
+    const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+    const [r, g, b] = [[v, t, p], [q, v, p], [p, v, t], [p, q, v], [t, p, v], [v, p, q]][i];
+    return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+  }
+  function gradientColor(sch, t) {
+    const stops = sch.stops;
+    t = Math.max(0, Math.min(1, t));
+    let i = 0;
+    while (i < stops.length - 2 && t > stops[i + 1][0]) i++;
+    const [p0, c0] = stops[i], [p1, c1] = stops[i + 1];
+    const f = p1 > p0 ? Math.max(0, Math.min(1, (t - p0) / (p1 - p0))) : 0;
+    if (sch.mode === "hsv") {
+      const a = rgb2hsv(c0[0], c0[1], c0[2]), b = rgb2hsv(c1[0], c1[1], c1[2]);
+      let dh = b[0] - a[0];
+      if (dh > 0.5) dh -= 1; // the shorter way round the hue circle
+      else if (dh < -0.5) dh += 1;
+      let h = a[0] + dh * f;
+      if (h < 0) h += 1;
+      if (h >= 1) h -= 1;
+      return hsv2rgb(h, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f);
+    }
+    return [0, 1, 2].map((k) => Math.round(c0[k] + (c1[k] - c0[k]) * f));
+  }
+
   function colorFor(v) {
+    if (scheme.stops) return gradientColor(scheme, v / 255);
     if (v < 7) return [0, 0, 0];
     // open890 maps 0..255 to hue 240..0; we reach pure red already at RED_AT
     // so strong signals actually turn red (the top of the scale was never used).
@@ -225,11 +294,10 @@
   // "Smooth" option (waterfall row checkbox, same localStorage key as app.js):
   // besides the browser's own interpolation when the 640 bins are stretched,
   // each line is blurred horizontally with a 9-tap binomial kernel before drawing
-  // (display only; the auto-level estimate still uses the raw line). On desktop
-  // two dropdowns (H/V, 2026-10-14) scale the horizontal blend's strength and
-  // add an independent vertical/temporal blend (a smear/persistence effect,
-  // "Schmiereffekt") — both only take effect while this checkbox is on; at 0%
-  // each behaves exactly like having no effect at all.
+  // (display only; the auto-level estimate still uses the raw line). A fixed-
+  // strength vertical/temporal blend (a smear/persistence effect,
+  // "Schmiereffekt") comes on top — both only take effect while this checkbox
+  // is on.
   let smoothOn = true;
   try {
     smoothOn = localStorage.getItem("open890rc.scopeSmooth") !== "0";
@@ -239,49 +307,22 @@
     resetVerticalSmooth(); // don't blend stale history back in on re-enable
   };
 
-  // H/V strength, both 0..1, persisted like every other scope preference.
-  // Both default to 50% ("Mittel", Nutzer-Wunsch 2026-10-14).
-  function loadSmoothFraction(key, fallbackPct) {
-    let pct = fallbackPct;
-    try {
-      // See app.js's wireSmoothSelect for why raw !== null is checked
-      // explicitly: Number(null) is 0, indistinguishable from an actually
-      // saved "0" otherwise, and 0 is a valid value for both H and V here.
-      const raw = localStorage.getItem(key);
-      if (raw !== null) {
-        const saved = Number(raw);
-        if (Number.isFinite(saved) && saved >= 0 && saved <= 100) pct = saved;
-      }
-    } catch (e) {}
-    return pct / 100;
-  }
-  let hSmoothAmount = loadSmoothFraction("open890rc.scopeHSmooth", 50);
-  let vSmoothAmount = loadSmoothFraction("open890rc.scopeVSmooth", 50);
-  window.hamrcGetWaterfallHSmooth = () => Math.round(hSmoothAmount * 100);
-  window.hamrcGetWaterfallVSmooth = () => Math.round(vSmoothAmount * 100);
-  // Persistence is app.js's job (same division as the Smooth checkbox
-  // itself) — these just apply the live value.
-  window.hamrcSetWaterfallHSmooth = function (pct) {
-    hSmoothAmount = Math.max(0, Math.min(100, pct)) / 100;
-  };
-  window.hamrcSetWaterfallVSmooth = function (pct) {
-    vSmoothAmount = Math.max(0, Math.min(100, pct)) / 100;
-    resetVerticalSmooth(); // avoid blending at the old strength into the new one
-  };
+  // Fixed strengths, both 0..1 (the former H/V dropdowns are gone, Nutzer-Wunsch
+  // 2026-11-01): H = "Leicht" (25%), V = "Mittel" (50%).
+  const hSmoothAmount = 0.25;
+  const vSmoothAmount = 0.5;
 
   // Level-dependent smoothing: a 9-tap binomial kernel [1 8 28 56 70 56 28 8 1]/256
   // (sigma = 2 bins) is blended with the raw line by a weight that is 1 at the noise
   // floor and falls to 0 for signals SMOOTH_SPAN above it — weak crackle/noise just
   // above the floor is smoothed away fully, strong signals keep their raw shape.
   // "Floor" is the same level the colour scale uses (Auto = median of the line);
-  // the raw bytes are inverted (low = strong), hence the 255 - x below. The H
-  // dropdown scales this blend's weight directly (0% = wgt always 0 = raw line).
+  // the raw bytes are inverted (low = strong), hence the 255 - x below. hSmoothAmount scales this blend's weight directly.
   const SMOOTH_KERNEL = [1, 8, 28, 56, 70, 56, 28, 8, 1];
   const SMOOTH_HALF = 4;
   const SMOOTH_SPAN_FRACTION = 0.3; // of the range between floor and full scale
   const SMOOTH_SPAN_MIN = 20;
   function smoothBytes(bytes) {
-    if (hSmoothAmount <= 0) return bytes;
     const n = bytes.length;
     const out = new Uint8Array(bytes); // the outer 4 bins at each edge stay raw
     const span = Math.max(SMOOTH_SPAN_MIN, (255 - floor) * SMOOTH_SPAN_FRACTION);
@@ -307,8 +348,8 @@
   // need to track screen shifts during small in-view retunes, only a full
   // reset when the picture itself resets (same call sites as resetMaxHold;
   // blending stale content across a frequency jump would smear the wrong
-  // thing). V dropdown at 0% = alpha 1 = no history blended in at all,
-  // 100% = alpha V_SMOOTH_MIN_ALPHA = long, visible trailing persistence.
+  // thing). vSmoothAmount sets alpha between 1 (no history) and
+  // V_SMOOTH_MIN_ALPHA (long, visible trailing persistence).
   // vSmoothLine itself stays a Float64Array (full precision carried between
   // lines) rather than the Uint8Array the rest of this pipeline otherwise
   // uses — found live: at a low alpha (strong smear), rounding the carried
@@ -325,7 +366,6 @@
     vSmoothLine = null;
   }
   function verticalSmooth(bytes) {
-    if (vSmoothAmount <= 0) return bytes;
     if (!vSmoothLine || vSmoothLine.length !== bytes.length) {
       vSmoothLine = Float64Array.from(bytes);
       return bytes;
@@ -624,6 +664,20 @@
     updateLevelFill();
     persistLevel(CEILING_KEY, ceiling);
   });
+
+  // Colour scheme dropdown (right of Smooth): kept per browser.
+  const colorSelect = document.getElementById("scope-color-select");
+  if (colorSelect) {
+    for (const sch of SCHEMES) colorSelect.add(new Option(sch.label, sch.id));
+    colorSelect.value = scheme.id;
+    colorSelect.addEventListener("change", () => {
+      scheme = SCHEMES.find((x) => x.id === colorSelect.value) || SCHEMES[0];
+      PALETTE = buildPalette();
+      try {
+        localStorage.setItem(SCHEME_KEY, scheme.id);
+      } catch (e) {}
+    });
+  }
 
   // Auto-level: continuously re-estimates the FLOOR (only — Ceiling stays
   // manual, see below) from each incoming line's own actual values, so it

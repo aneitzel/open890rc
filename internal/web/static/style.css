@@ -2,6 +2,7 @@
 @font-face {
   font-family: "Digital-7 Mono";
   src: url("fonts/digital-7-mono.ttf") format("truetype");
+  font-display: block;
 }
 
 :root {
@@ -283,20 +284,6 @@ main {
   color: var(--text-dim);
   margin: 0 0 0.75rem;
 }
-/* VOIP auto sync (2026-10-16): right of the VoIP reset button; wraps below it on a narrow panel. */
-.audio-reset-row {
-  flex-wrap: wrap;
-  row-gap: 0.5rem;
-}
-.audio-sync {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
-}
-.audio-sync .overlay-checkbox {
-  margin: 0;
-}
 .audio-reset-btn {
   display: flex;
   align-items: center;
@@ -552,27 +539,6 @@ main {
    Fenster max hold Funktion"). */
 .max-hold-group {
   display: none;
-}
-
-/* Horizontal/vertical smoothing strength (2026-10-14 follow-up to the
-   Smooth checkbox: "regelbar machen... zwei kleine Regler" — a dropdown
-   turned out to fit the already-tight desktop toolbar row better than two
-   more drag sliders, same reasoning as the existing scope-span-select
-   right next to it). Desktop only, same convention as Max Hold above — on
-   phone there's no room and the plain on/off Smooth checkbox is enough. */
-.scope-smooth-tuning {
-  display: none;
-}
-.smooth-tune-select {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-  font-size: 0.7rem;
-  color: var(--text-dim);
-}
-.smooth-tune-select select {
-  padding: 0.2rem 0.3rem;
-  font-size: 0.7rem;
 }
 
 /* Disabled while Auto drives floor/ceiling itself — dimmed to signal the
@@ -1540,6 +1506,12 @@ main {
   padding: 0.4rem 0.5rem;
   font: inherit;
   font-size: 0.9rem; /* same as the other overlay fields */
+  /* a device with a very long name must not make the select (and with it the tab) wider than the window:
+     the select sizes itself to its longest option by default; the full name is still in the list */
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  text-overflow: ellipsis;
 }
 
 .overlay-panel input:focus {
@@ -2277,7 +2249,7 @@ main [inert] {
        RFG/PWR + TX), itself align-self:center in the same row range, and
        the whole page below it. min-height pins the row to the needle
        view's own height in both views, so nothing downstream ever moves. */
-    min-height: 192px;
+    min-height: 250px; /* needle view 186px + the two AF/SQL rows under it (they are pinned at 196px) */
   }
   /* S bar stays replaced by the analog gauge. SWR went through a few
      rounds: digital bar kept ("wir müssen wohl für SWR das digitale
@@ -2589,6 +2561,8 @@ main [inert] {
   #extras-row {
     display: flex;
     grid-area: extras;
+    /* five keys now (NCH joined right of TX EQ, 2026-11-01): a little tighter so they stay on one line */
+    column-gap: 0.45rem;
   }
   /* RIT/XIT knobs (desktop only): app.js moves both into #eq-row, which
      already has grid-area: eqmid (same column as the Band/Mode/Filter
@@ -2673,7 +2647,7 @@ main [inert] {
     /* Gap sliders to TX button: the visible distance used to be ~60px (3.2rem reserved for the
        value + 0.75rem column gap); halved to ~30px (Nutzer-Wunsch 2026-10-30). The reservation
        itself is gone on desktop (see below), so the gap is set here. */
-    column-gap: 1.7rem;
+    column-gap: 0.85rem; /* halved again 2026-11-01 (was 1.7rem) so the sliders shrink later when the window gets narrower */
   }
   /* Phone's version spans only AF/SQL/RFG (grid-row 1/span 3, stretched to
      fill that 3-row height) with a margin-top hand-tuned to land it on the
@@ -2712,11 +2686,6 @@ main [inert] {
        side" element is the standard flex trick for a two-group split
        without wrapping the children in extra markup. */
     justify-content: flex-start;
-  }
-  .scope-smooth-tuning {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
   }
   .max-hold-group {
     display: flex;
@@ -3036,8 +3005,8 @@ main [inert] {
 }
 /* All panels share one grid cell and a hidden one only turns invisible, so the
    overlay keeps the height of the tallest tab. */
-.overlay-tabpanels { display: grid; }
-.overlay-tabpanel { grid-area: 1 / 1; }
+.overlay-tabpanels { display: grid; grid-template-columns: minmax(0, 1fr); } /* minmax(0, ...): a long device name must not widen the tab */
+.overlay-tabpanel { grid-area: 1 / 1; min-width: 0; }
 .overlay-tabpanel[hidden] { display: block; visibility: hidden; }
 /* Users tab: the list takes all spare height of the (constant) window instead
    of leaving a gap above Abbrechen/OK; its own height does not count toward
@@ -4773,14 +4742,15 @@ main.controls-off .slider::-moz-range-thumb {
   opacity: 0.85;
 }
 
-/* PA buttons (only with a PA connected): on desktop app.js moves #pa-row into the first button row, as its
-   own line above ANT 1 (Nutzer-Wunsch 2026-10-30). */
+/* PA buttons (only with a PA connected): on desktop app.js moves #pa-row into the first button row, now on the
+   line of AT / TUNE, right of TUNE (Nutzer-Wunsch 2026-11-01; it used to be a line of its own above ANT 1). If the
+   line is too narrow for it the whole group wraps below. */
 @media (min-width: 800px) {
   .ctrl-row-1 > #pa-row {
-    order: 0;
-    flex: 0 0 100%;
+    order: 7;
+    flex: 0 0 auto;
     padding-left: 0;
-    margin: 0;
+    margin: 0 0 0 0.5rem;
     justify-content: flex-start;
   }
 }
@@ -4816,5 +4786,134 @@ main.controls-off .slider::-moz-range-thumb {
   .scope-divider:hover::after,
   .scope-divider.dragging::after {
     background: rgba(255, 255, 255, 0.4);
+  }
+}
+
+/* Whole page fades in once the first state and the fonts are there (see
+   revealMain in app.js), instead of jumping from the dimmed boot look. */
+main {
+  transition: opacity 0.35s ease-out;
+}
+main.booting {
+  opacity: 0;
+}
+
+.left-stack, .left-sliders { display: contents; }
+/* NOTCH slider row (desktop only, below PWR in the right slider block). */
+.notch-row { display: none; }
+@media (min-width: 800px) {
+  .notch-row { display: flex; }
+  /* AF/SQL (app.js relocateAfSqlForLayout) sit at the top of the cell under the meter, the ANT 1 rows at its
+     bottom (Nutzer-Wunsch 2026-11-01: the sliders were far too low, right above the buttons). The wrapper
+     takes over the grid cell the ANT 1 row had. */
+  .left-stack {
+    grid-area: metercontrols;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-self: stretch;
+    gap: 0.5rem;
+  }
+  .left-stack > .ctrl-row-1 { align-self: stretch; }
+  /* AF/SQL directly under the meter keys, inside .meter-block (app.js relocateAfSqlForLayout) */
+  /* Pinned at a fixed offset (the bottom of the needle view: gauge 150px + mode row, 186px) so they stay where they are
+     when the meter is switched to the bars view (Nutzer-Wunsch 2026-11-01); the block's min-height reserves the room. */
+  .meter-block > .left-sliders {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 210px; /* 196px was right under the keys; moved down a little, there is room now that the PA row is gone from above ANT 1 */
+    padding-left: var(--al, 0px);
+    text-align: left;
+  }
+  .meter-block > .left-sliders[inert] { opacity: 0.4; }
+  .left-sliders {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+  .left-sliders > .ctrl-row {
+    padding-left: 0;
+    margin: 0;
+    justify-content: flex-start;
+  }
+  /* the label text starts at the left edge, level with the front of the ANT 1 button */
+  .left-sliders > .ctrl-row .ctrl-label { text-align: left; }
+  /* same length as the sliders on the right (--sw is set from their width in app.js) */
+  .left-sliders .slider {
+    flex: none;
+    width: var(--sw, 218px);
+    max-width: none;
+  }
+  .slider-tx-block .tx-button { grid-row: 1 / span 3; }
+  /* desktop sliders at most about 75% of their former length (Nutzer-Wunsch 2026-11-01; they were 218 px at
+     1280 px window width). The AF/SQL ones on the left follow the RFG slider's length (--sw, app.js). */
+  .slider-col .slider { max-width: 180px; }
+  .slider-col .pwr-row .slider-wrap { max-width: 180px; }
+}
+.notch-row .slider:disabled { opacity: 0.4; }
+.ascope .fg-notch-line, .filter-graph .fg-notch-line { stroke: #f2c94c; stroke-width: 1.2; }
+.ascope .fg-notch-label, .filter-graph .fg-notch-label { fill: #f2c94c; font-size: 8px; }
+/* positioned parent no longer needed by the notch slider, kept harmless */
+main { position: relative; }
+
+/* PROC (desktop) sits in the extras row right of TX EQ (app.js relocateEqButtonsForLayout): in the normal flow
+   there, not absolutely positioned under the TX button any more. */
+@media (min-width: 800px) {
+  #extras-row #proc-button {
+    position: static;
+    transform: none;
+    right: auto;
+    top: auto;
+  }
+}
+#nch-button { padding-left: 0.2rem; padding-right: 0.2rem; } /* keeps NR / NB1 / NB2 / BC / NOTCH on one line at 1024 px */
+
+/* Smaller PWR/SWR/ALC/IC selection keys under the desktop gauge (Nutzer-Wunsch 2026-11-01). */
+@media (min-width: 800px) {
+  .meter-block .meter-mode-btn {
+    width: 2.4rem;
+    gap: 0.16rem;
+    padding: 0.18rem 0 0.16rem;
+    font-size: 0.56rem;
+  }
+  .meter-block .meter-mode-btn .mm-slit {
+    width: 5px;
+    height: 5px;
+  }
+  .meter-block .meter-mode-row {
+    gap: 0.9rem;
+  }
+}
+
+/* The button rows on the right reach further left into the (otherwise empty) lower part of the middle column when the
+   window gets narrower, instead of wrapping onto another line (Nutzer-Wunsch 2026-11-01): up to 5.5rem, growing
+   1px per px of window width below 1230px (the page is at most 1200px wide, so nothing changes above that). */
+@media (min-width: 800px) {
+  .ctrl-row-2,
+  #extras-row {
+    margin-left: calc(-1 * clamp(0px, 1230px - 100vw, 5.5rem));
+  }
+  /* the same on the left: the ANT 1 / AT rows under the meter reach to the right, into the free part of the middle
+     column, before they would wrap (Nutzer-Wunsch 2026-11-01) */
+  .left-stack > .ctrl-row-1 {
+    margin-right: calc(-1 * clamp(0px, 1230px - 100vw, 4.5rem)); /* stops short of the RIT knob at 800px */
+  }
+}
+
+@media (max-width: 799px) {
+  /* no speed key and no Smooth checkbox on a phone either (Nutzer-Wunsch 2026-11-01); the stored Smooth value still applies */
+  .waterfall-row .btn-group:has(#scope-rate-button),
+  .waterfall-row .scope-smooth-group { display: none; }
+}
+
+/* Phone: no PA row (no PA rights, or no PA connected) makes the page about one row shorter; the waterfall gets
+   that height instead, so the window keeps its size (Nutzer-Wunsch 2026-11-01). The overlay spans spectrum + waterfall. */
+@media (max-width: 799px) {
+  main.pa-row-hidden .waterfall-canvas {
+    height: calc(128px + var(--pa-row-room, 36px));
+  }
+  main.pa-row-hidden .waterfall-overlay {
+    height: calc(198px + var(--pa-row-room, 36px));
   }
 }

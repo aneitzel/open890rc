@@ -49,6 +49,9 @@ type State struct {
 	nb2TypeB           bool
 	nb2Depth           int
 	nb2Width           int
+	notchOn            bool
+	notchWidth         int // 0 narrow, 1 mid, 2 wide
+	notchPos           int // 0-255
 	txEq               bool
 	txEqEffect         int
 	rxEq               bool
@@ -83,37 +86,35 @@ type State struct {
 	xitOn              bool
 
 	// SPE Expert PA (internal/spe), optional.
-	ampSavedPort    string // last port used (for prefilling the UI)
-	ampAuto         bool
-	knsAuto         bool
-	knsMac          string
-	voipAutoSync    bool // server resets the radio's VoIP stream every voipAutoSyncMin minutes
-	voipAutoSyncMin int
-	ampTxTimeout    int
-	ampMaxPowerW    int    // transceiver PWR cap while the PA is on (0 before the first SetAmpMaxPower call)
-	ampPort         string // serial port currently open, "" if none
-	ampOn           bool
-	ampOperate      bool
-	ampTX           bool
-	ampLevel        string
-	ampWarning      string
-	ampAlarm        string
-	jitterMs        int
-	voipInLevel     int
-	voipOutLevel    int
-	pitchHz         int
-	apfOn           bool
-	apfBwKnown      bool
-	apfBw           int
-	apfGainKnown    bool
-	apfGain         int
-	apfKnown        bool
-	apfShiftHz      int
-	msgID           [2]int // last pop-up message ID per source (ME0, ME1)
-	ampTuning       bool
-	ampModel        string
-	ampPowerW       float64
-	ampSWR          float64
+	ampSavedPort string // last port used (for prefilling the UI)
+	ampAuto      bool
+	knsAuto      bool
+	knsMac       string
+	ampTxTimeout int
+	ampMaxPowerW int    // transceiver PWR cap while the PA is on (0 before the first SetAmpMaxPower call)
+	ampPort      string // serial port currently open, "" if none
+	ampOn        bool
+	ampOperate   bool
+	ampTX        bool
+	ampLevel     string
+	ampWarning   string
+	ampAlarm     string
+	jitterMs     int
+	voipInLevel  int
+	voipOutLevel int
+	pitchHz      int
+	apfOn        bool
+	apfBwKnown   bool
+	apfBw        int
+	apfGainKnown bool
+	apfGain      int
+	apfKnown     bool
+	apfShiftHz   int
+	msgID        [2]int // last pop-up message ID per source (ME0, ME1)
+	ampTuning    bool
+	ampModel     string
+	ampPowerW    float64
+	ampSWR       float64
 
 	// Voice message memory ("TX Messages" in the UI, desktop only — see
 	// cat/voicemsg.go). voiceMsgChannel/Op/Elapsed is PB1's own "what's
@@ -312,13 +313,6 @@ func (s *State) SetAmpConfig(savedPort string, auto bool, txTimeout int) {
 	s.ampSavedPort, s.ampAuto, s.ampTxTimeout = savedPort, auto, txTimeout
 }
 
-// SetVoipAutoSync records the periodic VoIP stream reset setting.
-func (s *State) SetVoipAutoSync(enabled bool, minutes int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.voipAutoSync, s.voipAutoSyncMin = enabled, minutes
-}
-
 // SetAmpMaxPower records the configured transceiver PWR cap while the PA is on.
 func (s *State) SetAmpMaxPower(watts int) {
 	s.mu.Lock()
@@ -369,6 +363,9 @@ type Snapshot struct {
 	NB2TypeB             bool                  `json:"nb2TypeB"`
 	NB2Depth             int                   `json:"nb2Depth"`
 	NB2Width             int                   `json:"nb2Width"`
+	NotchOn              bool                  `json:"notchOn"`
+	NotchWidth           int                   `json:"notchWidth"`
+	NotchPos             int                   `json:"notchPos"`
 	TXEq                 bool                  `json:"txEq"`
 	TXEqEffect           int                   `json:"txEqEffect"`
 	RXEq                 bool                  `json:"rxEq"`
@@ -435,8 +432,6 @@ type Snapshot struct {
 	AmpAuto              bool                  `json:"ampAuto"`
 	KnsAuto              bool                  `json:"knsAuto"`
 	KnsMac               string                `json:"knsMac"`
-	VoipAutoSync         bool                  `json:"voipAutoSync"`
-	VoipAutoSyncMin      int                   `json:"voipAutoSyncMin"`
 	AmpTxTimeout         int                   `json:"ampTxTimeout"`
 	AmpMaxPowerW         int                   `json:"ampMaxPowerW"`
 	AmpOn                bool                  `json:"ampOn"`
@@ -782,6 +777,28 @@ func (s *State) Update(msg string) bool {
 			return false
 		}
 		s.nb2Width = v
+		return true
+	}
+
+	if on, err := cat.ParseNotch(msg); err == nil {
+		if s.notchOn == on {
+			return false
+		}
+		s.notchOn = on
+		return true
+	}
+	if w, err := cat.ParseNotchWidth(msg); err == nil {
+		if s.notchWidth == w {
+			return false
+		}
+		s.notchWidth = w
+		return true
+	}
+	if p, err := cat.ParseNotchPos(msg); err == nil {
+		if s.notchPos == p {
+			return false
+		}
+		s.notchPos = p
 		return true
 	}
 
@@ -1231,6 +1248,9 @@ func (s *State) Snapshot() Snapshot {
 		NB2TypeB:             s.nb2TypeB,
 		NB2Depth:             s.nb2Depth,
 		NB2Width:             s.nb2Width,
+		NotchOn:              s.notchOn,
+		NotchWidth:           s.notchWidth,
+		NotchPos:             s.notchPos,
 		TXEq:                 s.txEq,
 		TXEqEffect:           s.txEqEffect,
 		RXEq:                 s.rxEq,
@@ -1285,8 +1305,6 @@ func (s *State) Snapshot() Snapshot {
 		AmpAuto:              s.ampAuto,
 		KnsAuto:              s.knsAuto,
 		KnsMac:               s.knsMac,
-		VoipAutoSync:         s.voipAutoSync,
-		VoipAutoSyncMin:      s.voipAutoSyncMin,
 		AmpTxTimeout:         s.ampTxTimeout,
 		AmpMaxPowerW:         s.ampMaxPowerW,
 		AmpOn:                s.ampOn,
