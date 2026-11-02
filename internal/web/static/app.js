@@ -1133,10 +1133,13 @@ const nrCycle = makeCycleButton(
   }
 );
 
+// OFF state shows just "BC", no "OFF" suffix (Nutzer-Wunsch, 2026-11-02:
+// "wenn er nicht leuchtet ist er ja aus" — same reasoning PROC already
+// uses, unlit already says off).
 const bcCycle = makeCycleButton(
   "bc-button",
   [
-    { value: 0, label: "BC OFF" },
+    { value: 0, label: "BC" },
     { value: 1, label: "BC1" },
     { value: 2, label: "BC2" },
   ],
@@ -1269,13 +1272,19 @@ const preCycle = makeCycleButton(
   const paRow = document.getElementById("pa-row");
   if (!ritWrap || !xitWrap || !eqRow || !paRow) return;
   const desktopQuery = window.matchMedia("(min-width: 800px)");
+  // Desktop: the BW/shift/RIT text line sits right above the RIT/XIT knobs (Nutzer-Wunsch 2026-11-02, the tuning
+  // wheel took its old place under the dropdowns); phone: back where it was.
+  const infoRow = document.querySelector(".filter-info-row");
+  const infoHome = infoRow ? { parent: infoRow.parentNode, next: infoRow.nextSibling } : null;
   function apply() {
     if (desktopQuery.matches) {
       eqRow.insertBefore(ritWrap, eqRow.firstChild);
       eqRow.insertBefore(xitWrap, ritWrap.nextSibling);
+      if (infoRow) eqRow.insertBefore(infoRow, eqRow.firstChild);
     } else {
       paRow.insertAdjacentElement("afterend", ritWrap);
       ritWrap.insertAdjacentElement("afterend", xitWrap);
+      if (infoRow) infoHome.parent.insertBefore(infoRow, infoHome.next);
     }
   }
   apply();
@@ -4205,10 +4214,20 @@ async function loadSerialPorts() {
 }
 
 // One button: "PA verbinden" while no port is open, "PA trennen" while one is.
+// The server acks BOTH directions with the same {type:"ampOk"} (connectAmp
+// with an empty port disconnects, same handler as connecting one) — so the
+// ampOk handler below can't tell success-at-connecting from
+// success-at-disconnecting apart on its own and used to always print
+// "verbunden", even right after a successful Trennen (Nutzer-Report,
+// 2026-11-02, screenshot: button already back to "verbinden", "verbunden"
+// stuck behind it anyway). This flag records which direction is in flight
+// so the ack can be read correctly.
+let ampDisconnecting = false;
 ampConnectButton.addEventListener("click", () => {
   if (lastState && lastState.ampPort) {
+    ampDisconnecting = true;
+    setAmpStatus("trenne …", false);
     send({ type: "connectAmp", serialPort: "" });
-    setAmpStatus("", false);
     return;
   }
   const port = ampPortInput.value.trim();
@@ -4216,6 +4235,7 @@ ampConnectButton.addEventListener("click", () => {
     setAmpStatus("Serial port angeben.", true);
     return;
   }
+  ampDisconnecting = false;
   setAmpStatus("verbinde …", false);
   send({ type: "connectAmp", serialPort: port });
 });
@@ -5146,8 +5166,175 @@ window.matchMedia("(max-width: 799px)").addEventListener("change", (e) => {
   if (!e.matches) setSimpleMode(false);
 });
 
+// Easy Mode tuning wheel (Nutzer-Wunsch 2026-11-02): a knurled thumbwheel seen from its edge. Dragging turns it
+// (finger speed = surface speed at the centre), letting go while moving lets it coast and slow down by friction.
+// One ridge = TUNE_WHEEL_HZ_PER_RIDGE; the frequency moves in whole ridges through adjustFreq (same throttled,
+// optimistic send path as the digit wheel).
+const TUNE_WHEEL_HZ_PER_RIDGE = 100;
+const TUNE_WHEEL_RIDGES = 40;
+const TUNE_WHEEL_FRICTION_TAU_S = 0.2; // velocity decays e^(-t/tau) while coasting
+function initTuneWheel(cv) {
+  const ctx = cv.getContext("2d");
+  const STEP = (2 * Math.PI) / TUNE_WHEEL_RIDGES;
+  let rot = 0; // radians; rot/STEP = ridges turned
+  let applied = 0; // whole ridges already sent to the radio
+  let vel = 0; // rad/s
+  let dragging = false;
+  let lastX = 0;
+  let lastT = 0;
+  let raf = 0;
+  const shade = (c, k) => `rgb(${c.map((x) => Math.round(x * k)).join(",")})`;
+  function draw() {
+    const W = cv.width;
+    const H = cv.height;
+    if (!W || !H) return;
+    for (let i = 0; i < W; i++) {
+      const t = (i / W - 0.5) * Math.PI * 0.98;
+      ctx.fillStyle = shade([30, 31, 34], 0.35 + 0.65 * Math.cos(t) ** 1.5);
+      ctx.fillRect(i, 0, 1, H);
+    }
+    const first = Math.floor((-rot - Math.PI / 2) / STEP);
+    const last = Math.ceil((-rot + Math.PI / 2) / STEP);
+    for (let j = first; j <= last; j++) {
+      const a = j * STEP + rot;
+      if (Math.abs(a) > (Math.PI / 2) * 0.98) continue;
+      const x = W / 2 + Math.sin(a) * (W / 2) * 0.98;
+      const cs = Math.cos(a);
+      const w = Math.max(1, 0.38 * STEP * (W / 2) * cs);
+      const mark = ((j % TUNE_WHEEL_RIDGES) + TUNE_WHEEL_RIDGES) % TUNE_WHEEL_RIDGES === 0;
+      ctx.fillStyle = mark ? shade([255, 140, 30], 0.4 + 0.6 * cs) : shade([8, 8, 10], 0.5 + 0.5 * cs);
+      ctx.fillRect(x - w / 2 - 0.5, 0, w + 1, H);
+      ctx.fillStyle = mark ? shade([255, 190, 90], 0.4 + 0.6 * cs) : shade([78, 80, 86], 0.35 + 0.65 * cs);
+      ctx.fillRect(x - w * 0.5, 0, Math.max(1, w * 0.45), H);
+    }
+    ctx.fillStyle = "rgba(0,0,0,.75)";
+    ctx.fillRect(0, H * 0.45, W, H * 0.1);
+    ctx.fillStyle = "rgba(255,255,255,.12)";
+    ctx.fillRect(0, H * 0.55, W, Math.max(1, H * 0.04));
+    const e = ctx.createLinearGradient(0, 0, W, 0);
+    e.addColorStop(0, "rgba(0,0,0,.65)");
+    e.addColorStop(0.12, "rgba(0,0,0,0)");
+    e.addColorStop(0.88, "rgba(0,0,0,0)");
+    e.addColorStop(1, "rgba(0,0,0,.65)");
+    ctx.fillStyle = e;
+    ctx.fillRect(0, 0, W, H);
+    const v = ctx.createLinearGradient(0, 0, 0, H);
+    v.addColorStop(0, "rgba(255,255,255,.1)");
+    v.addColorStop(0.15, "rgba(0,0,0,0)");
+    v.addColorStop(0.85, "rgba(0,0,0,0)");
+    v.addColorStop(1, "rgba(0,0,0,.35)");
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, W, H);
+  }
+  function turn(dr) {
+    rot += dr;
+    const whole = Math.trunc(rot / STEP);
+    if (whole !== applied) {
+      if (!controlsDisabled) adjustFreq((whole - applied) * TUNE_WHEEL_HZ_PER_RIDGE);
+      applied = whole;
+    }
+    draw();
+  }
+  function coast(now) {
+    raf = 0;
+    if (dragging || cv.offsetParent === null) return;
+    const dt = Math.min(0.05, (now - lastT) / 1000);
+    lastT = now;
+    vel *= Math.exp(-dt / TUNE_WHEEL_FRICTION_TAU_S);
+    if (Math.abs(vel) < 0.08) {
+      vel = 0;
+      return;
+    }
+    turn(vel * dt);
+    raf = requestAnimationFrame(coast);
+  }
+  function startCoast() {
+    if (raf || Math.abs(vel) < 0.08) return;
+    lastT = performance.now();
+    raf = requestAnimationFrame(coast);
+  }
+  cv.addEventListener("pointerdown", (e) => {
+    if (controlsDisabled) return;
+    cv.setPointerCapture(e.pointerId);
+    dragging = true;
+    vel = 0;
+    lastX = e.clientX;
+    lastT = performance.now();
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const now = performance.now();
+    const dt = Math.max(0.001, (now - lastT) / 1000);
+    const dr = (e.clientX - lastX) / (cv.clientWidth / 2);
+    // smoothed finger velocity, so one jittery sample doesn't decide how long it coasts
+    vel = vel * 0.6 + (dr / dt) * 0.4;
+    lastX = e.clientX;
+    lastT = now;
+    turn(dr);
+  });
+  const release = () => {
+    if (!dragging) return;
+    dragging = false;
+    // a finger that stopped before lifting must not fling the wheel
+    if (performance.now() - lastT > 80) vel = 0;
+    startCoast();
+  };
+  cv.addEventListener("pointerup", release);
+  cv.addEventListener("pointercancel", release);
+  cv.addEventListener(
+    "wheel",
+    (e) => {
+      e.preventDefault();
+      if (controlsDisabled) return;
+      vel += -(e.deltaY || e.deltaX) * 0.02;
+      startCoast();
+    },
+    { passive: false }
+  );
+  // follows the CSS size (also when the overlay opens: 0 -> real size); sharp on high-DPI screens
+  new ResizeObserver(() => {
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.round(cv.clientWidth * dpr);
+    cv.height = Math.round(cv.clientHeight * dpr);
+    draw();
+  }).observe(cv);
+}
+// one wheel in the Easy Mode overlay, one on desktop under RIT/XIT (each keeps its own angle; the frequency moves by
+// whole ridges either way)
+for (const id of ["tune-wheel", "tune-wheel-desktop"]) initTuneWheel(document.getElementById(id));
+
+// ANALOG key (phone, spectrum off): the analog meter (+ its PWR/SWR/ALC/IC keys) takes the place of the frequency
+// keypad in the spectrum area. Same relocate-don't-clone trick as the Simple Mode overlay (Nutzer-Wunsch 2026-11-02).
+const analogArea = document.getElementById("analog-area");
+const analogModeButton = document.getElementById("analog-mode-button");
+let analogOn = false;
+let analogHome = null;
+function setAnalogMode(on) {
+  if (on === analogOn || (on && simpleModeOn)) return;
+  analogOn = on;
+  if (on) {
+    analogHome = [document.getElementById("meter-analog"), document.querySelector(".meter-mode-row")].map((node) => ({
+      node,
+      parent: node.parentNode,
+      next: node.nextSibling,
+    }));
+    for (const h of analogHome) analogArea.appendChild(h.node);
+  } else if (analogHome) {
+    for (const h of [...analogHome].reverse()) if (h.node.parentNode === analogArea) h.parent.insertBefore(h.node, h.next);
+    analogHome = null;
+  }
+  analogArea.hidden = !on;
+  analogModeButton.classList.toggle("active", on);
+  freqKeypad.hidden = on || !scopeRateOff;
+}
+analogModeButton.addEventListener("click", () => setAnalogMode(!analogOn));
+window.matchMedia("(min-width: 800px)").addEventListener("change", (e) => {
+  if (e.matches) setAnalogMode(false);
+});
+
 function setScopeControlsAvailable(available) {
-  freqKeypad.hidden = available;
+  if (available) setAnalogMode(false);
+  freqKeypad.hidden = available || analogOn;
   document.querySelector(".waterfall-row").classList.toggle("scope-is-off", !available);
   if (available) {
     kpEntry = "";
@@ -5289,7 +5476,7 @@ function watchRxLostExpiry(state) {
   rxLostWatchValue = lost;
 }
 
-const RADIO_OFF_MESSAGE = "OFF - Einschalten über PowerON links"; // Nutzer-Wunsch, 2026-10-14
+const RADIO_OFF_MESSAGE = "OFF - Station Einschalten mit PowerON"; // Nutzer-Wunsch, 2026-10-14
 
 // Clients currently connected to the server (Traffic window, "Verbundene Clients").
 let clientList = [];
@@ -5401,9 +5588,29 @@ function onConnectedChange(connected) {
 // (no clicks, no focus, dimmed) — the top bar (setup, power, audio) and the
 // status line stay usable, the frequency display shows "RADIO OFF".
 let controlsDisabled = null;
+// Elements marked inert/off-blur by the last pass. Which elements are "real
+// boxes" depends on the layout (display:contents differs between desktop and
+// phone), so after a breakpoint change the old marks must be undone and the
+// pass redone, otherwise buttons keep stale/missing blur (Nutzer-Report 2026-11-02).
+let lastDimTargets = [];
 function setControlsDisabled(disabled) {
   if (disabled === controlsDisabled) return;
   controlsDisabled = disabled;
+  applyControlsDisabled(disabled);
+}
+window.matchMedia("(min-width: 800px)").addEventListener("change", () => {
+  // let the relocate*ForLayout handlers move their buttons first
+  setTimeout(() => {
+    for (const el of lastDimTargets) {
+      el.inert = false;
+      el.classList.remove("off-blur");
+    }
+    lastDimTargets = [];
+    if (controlsDisabled !== null) applyControlsDisabled(controlsDisabled);
+  }, 0);
+});
+function applyControlsDisabled(disabled) {
+  lastDimTargets = [];
   // CSS hook: unlit keys and a dimmed meter while the radio is off/disconnected (desktop)
   document.querySelector("main").classList.toggle("controls-off", disabled);
   // collectDimTargets (not a plain "main > *") because .controls is
@@ -5450,11 +5657,15 @@ function setControlsDisabled(disabled) {
     }
     el.inert = disabled;
     el.classList.toggle("off-blur", disabled);
+    lastDimTargets.push(el);
   }
   // The meter-mode keys sit inside .meter-block (skipped above for the status message).
   for (const el of document.querySelectorAll(".meter-mode-row")) el.inert = disabled;
   // AF/SQL sit under the meter on desktop (inside .meter-block, like the keys above)
   document.getElementById("left-sliders").inert = disabled;
+  // Desktop: #left-sliders is a real box inside .meter-block and gets its own blur
+  // (on phone it is display:contents, its rows are blurred by the loop above).
+  document.getElementById("left-sliders").classList.toggle("off-blur", disabled);
   // #audio-button sits inside .status-row itself, so the loop above never
   // reaches it (the whole top bar — setup, power, audio — is deliberately
   // left usable, see this function's own opening comment). But starting the
@@ -5478,6 +5689,8 @@ function setControlsDisabled(disabled) {
   // the generic loop, disabled from applyAdminUi) since it IS reached by
   // that loop, living inside <main> itself.
   document.getElementById("tx-area-button").inert = disabled;
+  document.getElementById("tune-wheel").inert = disabled;
+  document.getElementById("tune-wheel-desktop").inert = disabled;
 }
 
 // PA access (LAN, admins, users with the PA flag): everybody else gets the PA
@@ -5592,7 +5805,7 @@ function applyState(state) {
   // recomputed every call (not just when radioOff just became true) so it
   // also correctly un-hides again on reconnect, same formula
   // setScopeControlsAvailable already uses for the non-off case.
-  freqKeypad.hidden = radioOff || !scopeRateOff;
+  freqKeypad.hidden = radioOff || !scopeRateOff || analogOn;
   // Power button: red while the radio is off (also while powering on), the
   // usual active color once it's on.
   powerButton.classList.toggle("power-off", radioOff);
@@ -5973,7 +6186,7 @@ function connect() {
       return;
     }
     if (data.type === "ampOk") {
-      setAmpStatus("verbunden", false);
+      setAmpStatus(ampDisconnecting ? "getrennt" : "verbunden", false);
       return;
     }
     if (data.type === "connectOk") {

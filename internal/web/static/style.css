@@ -1782,6 +1782,20 @@ main {
 .amp-actions { display: flex; justify-content: flex-start; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
 .overlay-panel .amp-actions label { margin-bottom: 0; }
 
+/* "verbunden"/Fehlertext sitzt jetzt direkt neben dem Verbinden/Trennen-Button
+   (Nutzer-Wunsch, 2026-11-02: der Text sass vorher in der gemeinsamen,
+   vollbreiten Statuszeile ganz unten im Server-Einstellungen-Fenster — jedes
+   Erscheinen/Verschwinden dort liess das ganze Fenster sichtbar in der Höhe
+   springen, weil :empty diese Zeile sonst auf 0 kollabiert, siehe
+   "#connect-overlay .overlay-status:empty" weiter unten). Als Flex-Kind von
+   .amp-actions braucht es dessen eigene min-height/margin-bottom nicht mehr
+   (die waren für die vollbreite Zeile gedacht), sonst würde ein leerer Status
+   die Button-Zeile unnötig aufblähen. */
+.amp-actions .overlay-status {
+  min-height: 0;
+  margin-bottom: 0;
+}
+
 .field-pair { display: flex; gap: 0.5rem; }
 .field-pair label { flex: 1; min-width: 0; }
 .field-pair input { width: 100%; min-width: 0; box-sizing: border-box; padding: 0.4rem 0.35rem; font-size: 0.8rem; }
@@ -1921,6 +1935,19 @@ main {
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
+}
+/* Same size as "speichern" in the Users tab (.users-add-actions button,
+   Nutzer-Wunsch 2026-11-02) — was noticeably bigger (79.9x29.8px vs its
+   46.5x24px) despite sitting in a similarly compact row. Same padding/
+   font-size alone already matches the height, but width was still ~20px
+   off from the shared bevel rule's bold font-weight (.amp-actions button
+   is in that selector list for its key-bevel look, "speichern" isn't) —
+   dropped here too so "verbinden"/"trennen" render at the same width as
+   "speichern"'s own equally-long text. */
+#amp-connect {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 400;
 }
 .amp-actions button:hover { filter: brightness(1.15); }
 #pa-row button:disabled { opacity: 0.4; }
@@ -2564,6 +2591,16 @@ main [inert] {
     /* five keys now (NCH joined right of TX EQ, 2026-11-01): a little tighter so they stay on one line */
     column-gap: 0.45rem;
   }
+  /* Same gap as #extras-row directly below it (Nutzer-Wunsch, 2026-11-02:
+     "abstände der buttons gleich machen wie darunter in der reihe") — this
+     row's own .ctrl-row-buttons gap (0.6rem) only looked right while BC
+     still carried "OFF"; now that BC's min-width shrank to match NB1 (see
+     #bc-button's own comment), matching extras-row's tighter 0.45rem reads
+     as one consistent spacing across both rows instead of two different
+     ones stacked on top of each other. */
+  .ctrl-row-2 {
+    column-gap: 0.45rem;
+  }
   /* RIT/XIT knobs (desktop only): app.js moves both into #eq-row, which
      already has grid-area: eqmid (same column as the Band/Mode/Filter
      dropdowns, directly under Filter) and is otherwise empty on desktop now
@@ -3134,10 +3171,17 @@ main [inert] {
   color: var(--accent);
 }
 
-/* These buttons keep the width of their widest label while cycling. */
-#nr-button,
-#bc-button {
+/* Keeps the width of its widest label ("NR OFF") while cycling. */
+#nr-button {
   min-width: 3.85rem;
+}
+/* BC lost its "OFF" suffix (Nutzer-Wunsch, 2026-11-02) — min-width now
+   just matches NB1 right next to it (Nutzer-Wunsch, 2026-11-02: "BC
+   gleich gross wie NB1"), measured live in the actual rendered row
+   (49.59px = 3.1rem; BC1/BC2 are already at least that wide on their
+   own, only the "BC" OFF label needed the floor). */
+#bc-button {
+  min-width: 3.1rem;
 }
 /* NB1/NB2/BC hidden on phone (Nutzer-Wunsch, 2026-10-14: "in mobilansicht
    entfernen und dafür RX EQ, TX EQ hinzufügen") — still in the DOM (not
@@ -3152,6 +3196,22 @@ main [inert] {
   #nb-buttons,
   .ctrl-row-2 .btn-group:has(#bc-button) {
     display: flex;
+  }
+}
+/* NB1/NB2 live inside the one #nb-buttons .btn-group (makeButtonGroup), so
+   they inherit .btn-group's own 4px gap — visibly tighter than the gap
+   between every OTHER button pair in this row (NR/NB1, NB2/BC, BC/NOTCH,
+   each its own .btn-group), since .ctrl-row-buttons' gap only applies
+   between direct children of the row, not inside a nested group. Matches
+   the row's own column-gap (0.45rem, desktop — see .ctrl-row-2's own
+   comment) so all four gaps in "NR / NB1 / NB2 / BC / NOTCH" look equal
+   (Nutzer-Report, 2026-11-02: "tastenabstände nicht gleich?"). */
+#nb-buttons {
+  gap: 0.6rem;
+}
+@media (min-width: 800px) {
+  #nb-buttons {
+    gap: 0.45rem;
   }
 }
 #at-button {
@@ -4915,5 +4975,164 @@ main { position: relative; }
   }
   main.pa-row-hidden .waterfall-overlay {
     height: calc(198px + var(--pa-row-room, 36px));
+  }
+}
+
+/* Rubber-cap backlit keys (Nutzer-Wunsch 2026-11-02, design A) for every top-bar/overlay .audio-btn (POWER, setup, REC,
+   TON, audio settings, VoIP reset) plus SPEC: matte dark cap, only the lettering/symbol glows through when lit, with a
+   soft light bleed into the cap edge. Power also has a red "radio off" state that keeps its pulsing; REC glows red
+   while recording. */
+button.audio-btn,
+#scope-toggle-button,
+main.controls-off #scope-toggle-button.active {
+  background: linear-gradient(#383a40, #232529);
+  color: #8b8e95;
+  border-color: #0b0b0d;
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), 0 2px 2px rgba(0, 0, 0, 0.6);
+}
+button.audio-btn.power-on,
+button.audio-btn.active,
+#audio-button.active,
+#scope-toggle-button.active {
+  background: linear-gradient(#383a40, #232529);
+  color: #d2ffdc;
+  text-shadow: 0 0 5px #4ade80, 0 0 12px #22c55e;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), inset 0 0 14px rgba(74, 222, 128, 0.22),
+    0 2px 2px rgba(0, 0, 0, 0.6), 0 0 14px rgba(74, 222, 128, 0.28);
+}
+button.audio-btn.power-on svg,
+button.audio-btn.active svg,
+#audio-button.active svg {
+  filter: drop-shadow(0 0 3px #4ade80) drop-shadow(0 0 6px #22c55e);
+}
+button.audio-btn.power-off,
+button.audio-btn.recording,
+#power-button.power-off {
+  background: linear-gradient(#383a40, #232529);
+  color: #ffb4aa;
+  text-shadow: 0 0 5px #f04637;
+}
+button.audio-btn.recording {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), inset 0 0 14px rgba(240, 70, 55, 0.2),
+    0 2px 2px rgba(0, 0, 0, 0.6), 0 0 14px rgba(240, 70, 55, 0.3);
+}
+button.audio-btn.power-off svg {
+  filter: drop-shadow(0 0 3px #f04637);
+}
+main.controls-off #scope-toggle-button.active {
+  color: #5b5e65;
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), 0 2px 2px rgba(0, 0, 0, 0.6);
+}
+
+/* Power symbol is a thin stroke, so it needs a stronger glow than the filled TON icon (Nutzer-Frage 2026-11-02). */
+#power-button.power-on svg {
+  stroke-width: 1;
+  filter: drop-shadow(0 0 2px #b9ffc9) drop-shadow(0 0 5px #4ade80) drop-shadow(0 0 10px #22c55e);
+}
+#power-button.power-on svg path {
+  stroke-width: 2.6;
+  stroke: #e8fff0;
+}
+#power-button.power-on {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), inset 0 0 18px rgba(74, 222, 128, 0.35),
+    0 2px 2px rgba(0, 0, 0, 0.6), 0 0 16px rgba(74, 222, 128, 0.4);
+}
+
+/* SPEC glows less than the other lit keys (Nutzer-Wunsch 2026-11-02). */
+#scope-toggle-button.active {
+  color: #9fd9ae;
+  text-shadow: 0 0 4px rgba(74, 222, 128, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), inset 0 0 8px rgba(74, 222, 128, 0.1),
+    0 2px 2px rgba(0, 0, 0, 0.6), 0 0 6px rgba(74, 222, 128, 0.12);
+}
+
+/* Phone: EASY MODE and ANALOG keys in the rubber-cap look; ANALOG glows softly while the meter is shown
+   (Nutzer-Wunsch 2026-11-02). The analog meter replaces the keypad in the spectrum area. */
+#simple-mode-button,
+#analog-mode-button {
+  background: linear-gradient(#383a40, #232529);
+  color: #8b8e95;
+  border-color: #0b0b0d;
+  text-shadow: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), 0 2px 2px rgba(0, 0, 0, 0.6);
+}
+#analog-mode-button.active {
+  color: #9fd9ae;
+  text-shadow: 0 0 4px rgba(74, 222, 128, 0.55);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), inset 0 0 8px rgba(74, 222, 128, 0.1),
+    0 2px 2px rgba(0, 0, 0, 0.6), 0 0 6px rgba(74, 222, 128, 0.12);
+}
+.analog-area {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: #141414;
+  padding: 0.3rem 0.15rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.analog-area[hidden] { display: none; }
+.analog-area .meter-analog {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  max-height: 190px;
+}
+.analog-area .meter-mode-row {
+  display: flex;
+  justify-content: center;
+  gap: 1.2rem;
+  margin-top: 0.3rem;
+}
+
+/* Easy Mode tuning wheel (knurled thumbwheel, drawn in app.js initTuneWheel) above the big TX key */
+.tune-wheel {
+  display: block;
+  width: 100%;
+  height: 32px;
+  margin-top: 2rem;
+  border-radius: 5px;
+  cursor: ew-resize;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.tune-wheel + .simple-mode-tx {
+  margin-top: 2.5rem;
+}
+.tune-wheel[inert] { opacity: 0.4; }
+
+/* Desktop tuning wheel under the Band/Mode/Filter dropdowns (Nutzer-Wunsch 2026-11-02), 50% wider than the first
+   9.5rem version; the BW/shift/RIT text line moved into #eq-row, right above the RIT/XIT knobs. Hidden on the phone. */
+.tune-wheel-desktop { display: none; }
+@media (min-width: 800px) {
+  .tune-wheel-desktop {
+    display: block;
+    grid-area: filterinfo;
+    justify-self: center;
+    width: 14.25rem;
+    height: 42px;
+    margin-top: 0.75rem;
+  }
+  .eq-row {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 14.25rem;
+    row-gap: 0.3rem;
+  }
+  .eq-row > .filter-info-row {
+    display: block;
+    flex: 0 0 100%;
+    margin: 0;
+    padding: 0;
+    text-align: center;
+    transform: none;
+  }
+  .eq-row > .filter-info-row > #audio-filter-info {
+    grid-column: auto;
   }
 }
