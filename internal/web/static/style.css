@@ -5093,8 +5093,8 @@ main.controls-off #scope-toggle-button.active {
 .tune-wheel {
   display: block;
   width: 100%;
-  height: 32px;
-  margin-top: 2rem;
+  height: 48px;
+  margin-top: 1rem; /* was 2rem at 32px height: the extra 16px come out of the gap, so the TX key stays where it was */
   border-radius: 5px;
   cursor: ew-resize;
   touch-action: none;
@@ -5117,6 +5117,9 @@ main.controls-off #scope-toggle-button.active {
     width: 14.25rem;
     height: 42px;
     margin-top: 0.75rem;
+    /* centred between the dropdowns above and the BW/RIT line below (measured: 11px lower than the grid puts it);
+       a transform, so no layout row moves */
+    transform: translateY(0.7rem);
   }
   .eq-row {
     flex-wrap: wrap;
@@ -5135,4 +5138,10 @@ main.controls-off #scope-toggle-button.active {
   .eq-row > .filter-info-row > #audio-filter-info {
     grid-column: auto;
   }
+}
+
+/* Easy Mode: the meter with its PWR/SWR/ALC/IC keys sits a little higher (Nutzer-Wunsch 2026-11-02); a transform, so
+   nothing below it (wheel, TX) moves */
+.simple-mode-gauge {
+  transform: translateY(-0.75rem);
 }
