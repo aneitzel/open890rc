@@ -5207,7 +5207,7 @@ function saveTuneWheelCfg() {
     // setting just won't persist
   }
 }
-function initTuneWheel(cv, preview = false) {
+function initTuneWheel(cv, preview = false, onDoubleTap = null) {
   const ctx = cv.getContext("2d");
   const STEP = (2 * Math.PI) / TUNE_WHEEL_RIDGES;
   let rot = 0; // radians; rot/STEP = ridges turned
@@ -5217,6 +5217,11 @@ function initTuneWheel(cv, preview = false) {
   let lastX = 0;
   let lastT = 0;
   let raf = 0;
+  // double tap/click detection of our own: on touch screens a wheel with touch-action:none never gets a dblclick
+  let downX = 0;
+  let downT = 0;
+  let moved = false;
+  let lastTap = 0;
   const shade = (c, k) => `rgb(${c.map((x) => Math.round(x * k)).join(",")})`;
   function draw() {
     const W = cv.width;
@@ -5321,10 +5326,14 @@ function initTuneWheel(cv, preview = false) {
     vel = 0;
     lastX = e.clientX;
     lastT = performance.now();
+    downX = e.clientX;
+    downT = lastT;
+    moved = false;
   });
   cv.addEventListener("pointermove", (e) => {
     if (!dragging) return;
     const now = performance.now();
+    if (Math.abs(e.clientX - downX) > 6) moved = true;
     const dt = Math.max(0.001, (now - lastT) / 1000);
     const dr = (e.clientX - lastX) / (cv.clientWidth / 2);
     // smoothed finger velocity, so one jittery sample doesn't decide how long it coasts
@@ -5341,7 +5350,18 @@ function initTuneWheel(cv, preview = false) {
     if (performance.now() - lastT > 80) vel = 0;
     startCoast();
   };
-  cv.addEventListener("pointerup", release);
+  cv.addEventListener("pointerup", () => {
+    if (dragging && onDoubleTap && !moved && performance.now() - downT < 300) {
+      const now = performance.now();
+      if (now - lastTap < 450) {
+        lastTap = 0;
+        onDoubleTap();
+      } else {
+        lastTap = now;
+      }
+    }
+    release();
+  });
   cv.addEventListener("pointercancel", release);
   cv.addEventListener(
     "wheel",
@@ -5363,7 +5383,11 @@ function initTuneWheel(cv, preview = false) {
 }
 // one wheel in the Easy Mode overlay, one on desktop under RIT/XIT (each keeps its own angle; the frequency moves by
 // whole ridges either way)
-for (const id of ["tune-wheel", "tune-wheel-desktop"]) initTuneWheel(document.getElementById(id));
+function openTuneWheelOverlay() {
+  if (controlsDisabled) return;
+  tuneWheelOverlay.hidden = false;
+}
+for (const id of ["tune-wheel", "tune-wheel-desktop"]) initTuneWheel(document.getElementById(id), false, openTuneWheelOverlay);
 
 // Tuning wheel settings overlay (double click on a wheel, Nutzer-Wunsch 2026-11-03): live preview wheel (turns like the
 // real one but never tunes the radio) plus the three adjustable values. Browser-local only.
@@ -5391,12 +5415,6 @@ function syncTuneWheelSliders() {
   for (const k of Object.keys(tuneWheelSliders)) tuneWheelSliders[k].applyValue(tuneWheelCfg[k]);
 }
 syncTuneWheelSliders();
-for (const id of ["tune-wheel", "tune-wheel-desktop"]) {
-  document.getElementById(id).addEventListener("dblclick", () => {
-    if (controlsDisabled) return;
-    tuneWheelOverlay.hidden = false;
-  });
-}
 function closeTuneWheelOverlay() {
   tuneWheelOverlay.hidden = true;
 }

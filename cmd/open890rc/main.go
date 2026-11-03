@@ -150,6 +150,8 @@ Command line options:
 -no-tls       - serve plain HTTP instead of HTTPS (RX audio needs a secure context, so only useful when every client is literally "localhost")
 -tls-cert     - path to cache the generated self-signed certificate (default "open890rc-cert.pem")
 -tls-key      - path to cache the generated self-signed certificate's key (default "open890rc-key.pem")
+
+-adduser      - create a web login on the console, e.g. -adduser HB9INA: asks for name, admin and password, then exits
 `
 
 func printNoConfigBanner(webURL string) {
@@ -291,6 +293,7 @@ func main() {
 	speAmpPort := flag.String("speport", os.Getenv("OPEN890RC_SPEPORT"), "serial port of an SPE Expert PA, e.g. /dev/cu.usbserial-1430 (or set OPEN890RC_SPEPORT) — optional, can also be set from the web UI's setup dialog")
 	speAmpBaud := flag.Int("spebaud", envIntOr("OPEN890RC_SPEBAUD", spe.DefaultBaud), "baud rate for the SPE Expert serial port (or set OPEN890RC_SPEBAUD)")
 	configFile := flag.String("config", "open890rc-config.json", "file remembering the settings made in the web UI (KNS connection incl. password, PA, PROC, equalizers)")
+	addUser := flag.String("adduser", "", "create a web login on the console (asks for name, admin and password), then exit")
 	usersFile := flag.String("usersfile", "open890rc-users.json", "file with the web login users (password hashes); browsers outside the local network must log in, local ones manage the users in the UI")
 	webAddr := flag.String("web", ":8080", "address for the web interface")
 	noTLS := flag.Bool("no-tls", false, "serve plain HTTP instead of HTTPS (RX audio needs a secure context, so only useful when every client is literally \"localhost\")")
@@ -312,6 +315,13 @@ func main() {
 	flag.Parse()
 	cfgStore := config.Open(*configFile)
 	web.SetUsersFile(*usersFile)
+	if *addUser != "" {
+		if err := web.AddUserInteractive(*addUser, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "adduser:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	log.SetOutput(io.MultiWriter(os.Stderr, web.DebugLog)) // console + the Debug tab of the user window
 
 	// Go's flag package stops parsing at the first non-flag argument — a
