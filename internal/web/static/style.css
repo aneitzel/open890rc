@@ -5072,7 +5072,9 @@ main.controls-off #scope-toggle-button.active {
   padding: 0.3rem 0.15rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  /* meter + keys sit in the upper part, not centred: the keys were too close to the bottom edge (Nutzer-Wunsch 2026-11-03) */
+  justify-content: flex-start;
+  padding-top: 0;
 }
 .analog-area[hidden] { display: none; }
 .analog-area .meter-analog {
@@ -5080,7 +5082,9 @@ main.controls-off #scope-toggle-button.active {
   width: 100%;
   height: auto;
   min-height: 0;
-  max-height: 190px;
+  max-height: 152px;
+  /* a bit smaller than before so the keys below it sit higher; the area is absolutely positioned, page height unchanged */
+  margin: 0 auto;
 }
 .analog-area .meter-mode-row {
   display: flex;
@@ -5145,3 +5149,14 @@ main.controls-off #scope-toggle-button.active {
 .simple-mode-gauge {
   transform: translateY(-0.75rem);
 }
+
+/* Phone: POWER key as wide as the TON key next to it (Nutzer-Wunsch 2026-11-03); desktop has its own width above */
+@media (max-width: 799px) {
+  #power-button {
+    min-width: 3.65rem;
+    justify-content: center;
+  }
+}
+
+/* the filter letter in the audio scope header is clickable (steps A/B/C) */
+.ascope .fg-a-box, .ascope .fg-a-text, .filter-graph .fg-a-box, .filter-graph .fg-a-text { cursor: pointer; }

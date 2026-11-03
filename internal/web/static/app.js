@@ -2269,7 +2269,19 @@ function cycleAscopeStyle() {
 }
 for (const el of [ascopeSvg, filterGraphSvg]) {
   el.style.cursor = "pointer";
-  el.addEventListener("click", cycleAscopeStyle);
+  el.addEventListener("click", (e) => {
+    // a click on the header strip (A/B/C box, LC/BW/HC) steps through the filters instead (Nutzer-Wunsch 2026-11-03)
+    // (the whole grey header strip counts: its 20 units of the SVG's viewBox height)
+    const vb = el.viewBox && el.viewBox.baseVal;
+    const rect = el.getBoundingClientRect();
+    const inHeader = vb && vb.height && rect.height && ((e.clientY - rect.top) * vb.height) / rect.height <= 20;
+    if (inHeader && lastState && lastState.ifFilter) {
+      const order = ["A", "B", "C"];
+      send({ type: "setIFFilter", filter: order[(order.indexOf(lastState.ifFilter) + 1) % order.length] });
+      return;
+    }
+    cycleAscopeStyle();
+  });
   // no context menu on the picture (it kept the whole page stuck while it was open, Nutzer-Report 2026-10-30)
   el.addEventListener("contextmenu", (e) => e.preventDefault());
 }
