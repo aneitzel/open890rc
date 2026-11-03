@@ -312,7 +312,19 @@ func main() {
 		os.Getenv("OPEN890RC_ADMIN") == "" &&
 		os.Getenv("OPEN890RC_SPEPORT") == "" &&
 		os.Getenv("OPEN890RC_SPEBAUD") == ""
+	// "-adduser" as the last argument has no value: the flag package would only print "flag needs an argument" plus the
+	// whole usage list, so give a short hint instead
+	if n := len(os.Args); n > 1 && (os.Args[n-1] == "-adduser" || os.Args[n-1] == "--adduser") {
+		fmt.Fprintln(os.Stderr, "adduser: login name missing, example: open890rc -adduser HB9INA")
+		os.Exit(2)
+	}
 	flag.Parse()
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "adduser" && f.Value.String() == "" {
+			fmt.Fprintln(os.Stderr, "adduser: login name missing, example: open890rc -adduser HB9INA")
+			os.Exit(2)
+		}
+	})
 	cfgStore := config.Open(*configFile)
 	web.SetUsersFile(*usersFile)
 	if *addUser != "" {
