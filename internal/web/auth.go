@@ -54,6 +54,7 @@ type authState struct {
 	// every user already in it keeps transmitting exactly as before.
 	noTX     map[string]bool
 	loginMsg string // text above the login fields ("" = default)
+	chatOff  bool   // chat switched off by an admin (default on: a users file without the field keeps the chat)
 	sessions map[string]session
 	fails    map[string]*failState // by client address
 }
@@ -88,12 +89,13 @@ func SetUsersFile(path string) {
 		return
 	}
 	var f struct {
-		Users  map[string]string `json:"users"`
-		Names  map[string]string `json:"names"`
-		Admins map[string]bool   `json:"admins"`
-		PA     map[string]bool   `json:"pa"`
-		NoTX   map[string]bool   `json:"noTx"`
-		Login  string            `json:"loginMessage"`
+		Users   map[string]string `json:"users"`
+		Names   map[string]string `json:"names"`
+		Admins  map[string]bool   `json:"admins"`
+		PA      map[string]bool   `json:"pa"`
+		NoTX    map[string]bool   `json:"noTx"`
+		Login   string            `json:"loginMessage"`
+		ChatOff bool              `json:"chatOff"`
 	}
 	if err := json.Unmarshal(data, &f); err != nil {
 		log.Printf("auth: parsing %s: %v", path, err)
@@ -115,6 +117,7 @@ func SetUsersFile(path string) {
 		auth.noTX = f.NoTX
 	}
 	auth.loginMsg = f.Login
+	auth.chatOff = f.ChatOff
 }
 
 // displayName is the free-text name of a user ("" if none was entered).
@@ -128,7 +131,7 @@ func (a *authState) saveLocked() error {
 	if a.path == "" {
 		return errors.New("no users file configured")
 	}
-	data, err := json.MarshalIndent(map[string]any{"users": a.users, "names": a.names, "admins": a.admins, "pa": a.pas, "noTx": a.noTX, "loginMessage": a.loginMsg}, "", "  ")
+	data, err := json.MarshalIndent(map[string]any{"users": a.users, "names": a.names, "admins": a.admins, "pa": a.pas, "noTx": a.noTX, "loginMessage": a.loginMsg, "chatOff": a.chatOff}, "", "  ")
 	if err != nil {
 		return err
 	}

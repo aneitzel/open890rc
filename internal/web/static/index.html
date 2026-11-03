@@ -425,6 +425,7 @@
     <div class="btn-group scope-keep"><button type="button" id="scope-toggle-button" title="Spektrum/Wasserfall ein- und ausschalten">SPEC</button></div>
     <div class="btn-group scope-keep simple-mode-group"><button type="button" id="analog-mode-button" title="Analoges Meter statt Wasserfall anzeigen">ANALOG</button></div>
     <div class="btn-group scope-keep simple-mode-group"><button type="button" id="simple-mode-button" title="Einfachmodus: grosses Meter + grosser TX-Taster in einem eigenen Fenster">EASY MODE</button></div>
+    <div class="btn-group scope-keep simple-mode-group" id="chat-mode-group"><button type="button" id="chat-mode-button" title="Chat anstelle des Wasserfalls anzeigen">CHAT</button></div>
     <div class="btn-group"><button type="button" id="scope-rate-button" class="small-btn" title="Spektrum-Geschwindigkeit (Hi/Mid/Lo)">Hi</button></div>
     <select id="scope-span-select" class="scope-span-select" data-i18n-title title="Breite des Spectrum"></select>
     <label class="scope-auto-label max-hold-group" title="Spitzenwerte im Hintergrund halten">
@@ -455,6 +456,25 @@
     <canvas id="waterfall-overlay" class="waterfall-overlay" width="640" height="246" data-i18n-title title="Signal anklicken oder rechts/links wischen"></canvas>
     <div id="analog-area" class="analog-area" hidden></div>
     <div id="waterfall-off-hint" class="waterfall-off-hint" hidden></div>
+    <!-- Desktop only: chat between the browsers connected to this server (chat.go, initChat in app.js). Small pill
+         bottom left in the waterfall, click opens the panel; both can be dragged around over the waterfall. -->
+    <div id="chat" class="chat" hidden>
+      <button type="button" id="chat-pill" class="chat-pill" title="Chat">Chat <span id="chat-count"></span></button>
+      <div id="chat-panel" class="chat-panel" hidden>
+        <div id="chat-head" class="chat-head">
+          <span class="chat-title">Benutzer online:</span>
+          <span id="chat-online" class="chat-online"></span>
+          <button type="button" id="chat-clear" class="chat-min chat-clear" title="Gesamten Chat löschen" aria-label="Gesamten Chat löschen" hidden>
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.6 9.2c0 .5.4.8.9.8h5c.5 0 .9-.3.9-.8L12 4M6.6 6.5v5M9.4 6.5v5"/></svg>
+          </button>
+          <button type="button" id="chat-min" class="chat-min" title="Verkleinern">&minus;</button>
+        </div>
+        <div id="chat-log" class="chat-log"></div>
+        <form id="chat-form" class="chat-form" autocomplete="off">
+          <input type="text" id="chat-input" maxlength="200" placeholder="Nachricht schreiben" autocomplete="off" enterkeyhint="send">
+        </form>
+      </div>
+    </div>
     <div id="freq-keypad" class="freq-keypad" hidden>
       <div class="kp-grid">
         <button type="button" class="kp-key" data-key="1" style="grid-area: k1">1</button>
@@ -582,9 +602,15 @@
     </div>
     <div class="overlay-tabpanel" data-tab="users" hidden>
       <div class="overlay-caption">Benutzeranmeldung für Anwender ausserhalb des lokalen LAN</div>
-      <label class="login-msg-label">Login Nachricht:
-        <textarea id="login-msg-input" rows="4" maxlength="300" spellcheck="false"></textarea>
-      </label>
+      <div class="login-msg-row">
+        <label class="login-msg-label">Login Nachricht:
+          <textarea id="login-msg-input" rows="4" maxlength="300" spellcheck="false"></textarea>
+        </label>
+        <label class="overlay-checkbox chat-enable-label" title="Chat zwischen den verbundenen Browsern ein-/ausschalten (gilt für alle)">
+          <input type="checkbox" id="chat-enabled" checked>
+          Chatfunktion aktivieren
+        </label>
+      </div>
       <div class="users-add-actions">
         <button type="button" id="login-msg-save">speichern</button>
         <span class="login-msg-status" id="login-msg-status"></span>

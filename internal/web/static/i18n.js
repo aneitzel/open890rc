@@ -12,6 +12,12 @@
   const KEY = "open890rc.lang";
   const DICT = {
     en: {
+    "Gesamten Chat löschen": "Delete the whole chat",
+    "Gesamten Chat für alle löschen?": "Delete the whole chat for everybody?",
+    "Benutzer online:": "Users online:",
+    "Nachricht löschen": "Delete message",
+    "Nachricht schreiben": "Write a message",
+    "Verkleinern": "Minimise",
     "Signal anklicken oder rechts/links wischen": "Click the signal or swipe right/left",
     "Farbschema für Wasserfall": "Colour scheme for the waterfall",
     "Einstellungen": "Settings",
@@ -193,6 +199,12 @@
     "Mikrofonzugriff fehlgeschlagen": "Microphone access failed"
     },
     it: {
+    "Gesamten Chat löschen": "Elimina tutta la chat",
+    "Gesamten Chat für alle löschen?": "Eliminare tutta la chat per tutti?",
+    "Benutzer online:": "Utenti online:",
+    "Nachricht löschen": "Elimina messaggio",
+    "Nachricht schreiben": "Scrivi un messaggio",
+    "Verkleinern": "Riduci",
     "Signal anklicken oder rechts/links wischen": "Tocca il segnale o scorri a destra/sinistra",
     "Farbschema für Wasserfall": "Schema colori della cascata",
     "Einstellungen": "Impostazioni",
@@ -390,6 +402,12 @@
     "MAC (Wake-on-LAN)": "MAC (Wake-on-LAN)"
     },
     es: {
+    "Gesamten Chat löschen": "Eliminar todo el chat",
+    "Gesamten Chat für alle löschen?": "¿Eliminar todo el chat para todos?",
+    "Benutzer online:": "Usuarios en línea:",
+    "Nachricht löschen": "Eliminar mensaje",
+    "Nachricht schreiben": "Escribe un mensaje",
+    "Verkleinern": "Minimizar",
     "Signal anklicken oder rechts/links wischen": "Toca la señal o desliza a la derecha/izquierda",
     "Farbschema für Wasserfall": "Esquema de colores de la cascada",
     "Einstellungen": "Ajustes",
@@ -589,6 +607,7 @@
   // Texts with values in them: [regex on the German text, builder of the translation].
   const PATTERNS = {
     en: [
+      [/^(.+) hat sich verbunden$/, (m, a) => `${a} joined`],
       [/^Klick oben\/unten oder Mausrad: ±(.+) Hz$/, (m, a) => `Click top/bottom or mouse wheel: ±${a} Hz`],
       [/^Klick oben\/unten: ±(.+) Hz$/, (m, a) => `Click top/bottom: ±${a} Hz`],
       [/^PA Leistungsstufe = (.+)$/, (m, a) => `PA power level = ${a}`],
@@ -606,6 +625,7 @@
       [/^Aufnahme auf (CH\d+) wirklich löschen\?$/, (m, a) => `Really delete the recording on ${a}?`],
     ],
     it: [
+      [/^(.+) hat sich verbunden$/, (m, a) => `${a} si è connesso`],
       [/^Klick oben\/unten oder Mausrad: ±(.+) Hz$/, (m, a) => `Clic sopra/sotto o rotella del mouse: ±${a} Hz`],
       [/^Klick oben\/unten: ±(.+) Hz$/, (m, a) => `Clic sopra/sotto: ±${a} Hz`],
       [/^PA Leistungsstufe = (.+)$/, (m, a) => `Livello di potenza PA = ${a}`],
@@ -623,6 +643,7 @@
       [/^Aufnahme auf (CH\d+) wirklich löschen\?$/, (m, a) => `Eliminare davvero la registrazione su ${a}?`],
     ],
     es: [
+      [/^(.+) hat sich verbunden$/, (m, a) => `${a} se ha conectado`],
       [/^Klick oben\/unten oder Mausrad: ±(.+) Hz$/, (m, a) => `Clic arriba/abajo o rueda del ratón: ±${a} Hz`],
       [/^Klick oben\/unten: ±(.+) Hz$/, (m, a) => `Clic arriba/abajo: ±${a} Hz`],
       [/^PA Leistungsstufe = (.+)$/, (m, a) => `Nivel de potencia PA = ${a}`],

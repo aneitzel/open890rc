@@ -222,6 +222,15 @@ type Server struct {
 	clientsMu sync.Mutex
 	clients   map[uint64]*clientInfo // connected /ws clients, by connection id
 
+	chatMu       sync.Mutex // chat.go
+	chatLog      []chatEntry
+	chatSeq      uint64
+	chatLastPost map[uint64]time.Time // by client id
+	chatLastJoin map[string]time.Time // by chat name
+	chatStore    *chatStore           // nil = history only in memory
+	chatDirty    bool                 // changed since the last write
+	chatTimer    *time.Timer          // pending write
+
 	idleMu    sync.Mutex
 	idleTimer *time.Timer // pending OnAllClientsGone call, nil if none scheduled
 
@@ -376,6 +385,8 @@ type clientMessage struct {
 	After      float64 `json:"after"`   // rxTrim: backlog after the cut, seconds
 	N          int     `json:"n"`       // rxTrim: how many cuts this page has made so far
 	Values     []int   `json:"values"`  // setTxEqBands/setRxEqBands: 18 raw band values
+	Text       string  `json:"text"`    // chat: the message
+	Seq        uint64  `json:"seq"`     // chatDelete: the line to remove
 	Codec      string  `json:"codec"`   // audioCodec: "pcm"/"opus" while RX audio plays, "" once stopped
 	Channel    int     `json:"channel"` // voiceMsgControl/setVoiceMsgRepeat/setVoiceMsgName: 1-6
 	Name       string  `json:"name"`    // setVoiceMsgName: the new channel name, up to 30 characters
@@ -398,7 +409,7 @@ type serverError struct {
 // a failed "connect") back to handleWS's single writer goroutine — a second
 // writer here would race the broadcast writes already happening on the same
 // connection.
-func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte, remote string, paOK, txOK bool) {
+func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte, remote string, paOK, txOK, adminOK bool) {
 	var msg clientMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		log.Printf("web: invalid client message: %v", err)
@@ -466,6 +477,24 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 		}
 	case "audioCodec":
 		s.setClientCodec(id, msg.Codec)
+		return
+	case "chat":
+		s.chatPost(id, msg.Text)
+		return
+	case "chatClear":
+		if !adminOK {
+			log.Printf("web: %s ignored: client %s is no admin", msg.Type, remote)
+			return
+		}
+		s.chatClear()
+		return
+	case "chatDelete":
+		// only admins (LAN clients and users with the admin flag) may delete chat lines
+		if !adminOK {
+			log.Printf("web: %s ignored: client %s is no admin", msg.Type, remote)
+			return
+		}
+		s.chatDelete(msg.Seq)
 		return
 	case "setAudioScope":
 		s.setClientAudioScope(id, msg.Enabled)
@@ -728,6 +757,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/auth/logout", handleLogout)
 	mux.HandleFunc("/api/users", requireAdmin(handleUsers))
 	mux.HandleFunc("/api/login-message", requireAdmin(handleLoginMessage))
+	mux.HandleFunc("/api/chat-enabled", requireAdmin(s.handleChatEnabled))
 	mux.HandleFunc("/debug-ws", handleDebugWS)
 	return mux
 }
@@ -986,6 +1016,7 @@ func (s *Server) addClient(id uint64, ip, user, name string) {
 
 func (s *Server) removeClient(id uint64) {
 	s.setClientAudioScope(id, false)
+	s.chatForget(id)
 	s.clientsMu.Lock()
 	delete(s.clients, id)
 	empty := len(s.clients) == 0
@@ -1082,6 +1113,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	// proxy/tunnel that is the proxy's, unless it forwards the real one.
 	paOK := hasPA(r)
 	txOK := hasTX(r)
+	adminOK := isAdmin(r)
 	ip := clientIP(r)
 	id := clientNoticeSeq.Add(1)
 	user := auth.sessionUser(r)
@@ -1106,6 +1138,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			msg["host"] = name
 			s.setClientHost(id, name)
 		}
+		s.chatJoin(id)
 		if payload, marshalErr := json.Marshal(msg); marshalErr == nil {
 			selfNotice.Store(&payload)
 			s.hub.Broadcast(payload)
@@ -1128,6 +1161,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		_ = conn.WriteMessage(websocket.TextMessage, idMsg)
 	}
 	_ = conn.WriteMessage(websocket.TextMessage, s.clientsPayload())
+	_ = conn.WriteMessage(websocket.TextMessage, chatConfigPayload())
+	_ = conn.WriteMessage(websocket.TextMessage, s.chatHistoryPayload())
 
 	// errCh carries one-off messages meant for just this client (a failed
 	// "connect", right now) into the same writer loop below as the broadcast
@@ -1155,7 +1190,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			_ = conn.SetReadDeadline(time.Now().Add(wsReadTimeout))
-			s.handleClientMessage(data, id, errCh, conn.RemoteAddr().String(), paOK, txOK)
+			s.handleClientMessage(data, id, errCh, conn.RemoteAddr().String(), paOK, txOK, adminOK)
 		}
 	}()
 	pingTicker := time.NewTicker(wsPingInterval)

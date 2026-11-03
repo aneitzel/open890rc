@@ -5478,11 +5478,22 @@ function setScopeControlsAvailable(available) {
 // frequency keypad in the free area; the radio itself is not touched.
 const scopeToggleButton = document.getElementById("scope-toggle-button");
 scopeToggleButton.classList.add("active");
+function setScopeOn(on) {
+  scopeRateOff = !on;
+  scopeToggleButton.classList.toggle("active", on);
+  setScopeControlsAvailable(on);
+  if (window.hamrcSetWaterfallEnabled) window.hamrcSetWaterfallEnabled(on);
+}
 scopeToggleButton.addEventListener("click", () => {
-  scopeRateOff = !scopeRateOff;
-  scopeToggleButton.classList.toggle("active", !scopeRateOff);
-  setScopeControlsAvailable(!scopeRateOff);
-  if (window.hamrcSetWaterfallEnabled) window.hamrcSetWaterfallEnabled(!scopeRateOff);
+  // Phone: the chat covers the waterfall area and has switched the spectrum off; SPEC takes the chat away again and
+  // switches the spectrum on (see chatLeave). Should the spectrum nevertheless be on, SPEC only closes the chat.
+  if (chatPhoneMQ.matches && chatOpen) {
+    chatOpen = false;
+    chatSpecRestore = false;
+    chatApplyOpen();
+    if (!scopeRateOff) return;
+  }
+  setScopeOn(scopeRateOff);
 });
 
 // Speed key next to SPEC: cycles the radio's scope update rate (DD01/02/03).
@@ -6335,6 +6346,27 @@ function connect() {
     if (data.type === "clients") {
       clientList = data.list || [];
       renderClientList();
+      chatUpdateOnline();
+      return;
+    }
+    if (data.type === "chatCleared") {
+      chatLogEl.textContent = ""; // chatLastSeq stays: numbering goes on
+      return;
+    }
+    if (data.type === "chatDeleted") {
+      chatRemove(data.seq);
+      return;
+    }
+    if (data.type === "chatConfig") {
+      chatApplyEnabled(!!data.enabled);
+      return;
+    }
+    if (data.type === "chatHistory") {
+      chatHistory(data.list || []);
+      return;
+    }
+    if (data.type === "chat") {
+      chatAdd(data);
       return;
     }
     if (data.type === "clientConnected") {
@@ -6346,9 +6378,309 @@ function connect() {
       );
       return;
     }
+    // The radio state snapshot has no "type"; any other typed message this script does not know (a newer server than
+    // this page, e.g. before a reload) must not be applied as state: that blanked the UI ("OFF", black) for a moment.
+    if (data.type) return;
     applyState(data);
   };
 }
+
+// ---- Chat (desktop only; chat.go) ---------------------------------------
+// Messages and "NAME hat sich verbunden" lines come from the server (name always set there). The history is sent on
+// every (re)connect, entries carry a sequence number so a line that arrives both ways is shown once.
+const chatEl = document.getElementById("chat");
+const chatPill = document.getElementById("chat-pill");
+const chatPanel = document.getElementById("chat-panel");
+const chatLogEl = document.getElementById("chat-log");
+const chatInput = document.getElementById("chat-input");
+const chatCountEl = document.getElementById("chat-count");
+const chatOnlineEl = document.getElementById("chat-online");
+const CHAT_POS_KEY = "open890rc.chatPos";
+let chatAdmin = false; // set by applyAdminUi: admins can delete lines
+let chatLastSeq = 0;
+let chatEnabledByServer = true; // an admin can switch the chat off for everybody ("chatConfig" from the server)
+// Desktop: open whenever the chat is on. Phone: closed until a message from somebody else comes in or the CHAT key is
+// pressed (the chat then replaces the whole waterfall area). Minimising lasts only until the next message.
+const chatPhoneMQ = window.matchMedia("(max-width: 799px)");
+let chatOpen = !chatPhoneMQ.matches;
+
+function chatRender(e) {
+  const line = document.createElement("div");
+  line.className = `chat-line ${e.kind}`;
+  line.dataset.seq = e.seq;
+  // admins get a small x on hover to delete the line (hidden for everybody else, see .chat-log.admin)
+  const del = document.createElement("button");
+  del.type = "button";
+  del.className = "chat-del";
+  del.title = "Nachricht löschen";
+  del.textContent = "\u00d7";
+  del.addEventListener("click", () => send({ type: "chatDelete", seq: e.seq }));
+  line.appendChild(del);
+  const t = document.createElement("span");
+  t.className = "chat-time";
+  // date and time always at the very front, in the browser's own short formats ("03.11.26 20:22" in German,
+  // "11/3/26 8:22 PM" in US English), joined by a blank instead of the comma the combined format would put in
+  const d = new Date(e.t);
+  t.textContent = `${d.toLocaleDateString(undefined, { dateStyle: "short" })} ${d.toLocaleTimeString(undefined, { timeStyle: "short" })}`;
+  line.appendChild(t);
+  if (e.kind === "join") {
+    line.appendChild(document.createTextNode(`${e.name} hat sich verbunden`));
+  } else {
+    const n = document.createElement("span");
+    n.className = "chat-name";
+    n.textContent = e.name;
+    line.appendChild(n);
+    line.appendChild(document.createTextNode(e.text)); // text node: no HTML from other users
+  }
+  chatLogEl.appendChild(line);
+  while (chatLogEl.childElementCount > 100) chatLogEl.firstElementChild.remove();
+}
+function chatApplyAdmin(isAdmin) {
+  chatAdmin = !!isAdmin;
+  chatLogEl.classList.toggle("admin", chatAdmin);
+  document.getElementById("chat-clear").hidden = !chatAdmin; // admins only
+}
+function chatRemove(seq) {
+  const line = chatLogEl.querySelector(`.chat-line[data-seq="${seq}"]`);
+  if (line) line.remove();
+}
+// Phone: the Easy Mode window covers the whole page, so a message would stay unseen behind it. Leave it for the chat,
+// but never while this phone is transmitting (the big TX key would vanish under the finger and the release would be
+// lost): wait until TX is over.
+let chatLeaveEasyTimer = 0;
+function chatLeaveEasyMode() {
+  if (!chatPhoneMQ.matches || !simpleModeOn || chatLeaveEasyTimer) return;
+  const tryLeave = () => {
+    chatLeaveEasyTimer = 0;
+    if (!simpleModeOn) return;
+    if (myTX || currentTX) {
+      chatLeaveEasyTimer = setTimeout(tryLeave, 400);
+      return;
+    }
+    setSimpleMode(false);
+  };
+  tryLeave();
+}
+function chatScrollEnd() {
+  chatLogEl.scrollTop = chatLogEl.scrollHeight;
+}
+function chatHistory(list) {
+  chatLogEl.textContent = "";
+  chatLastSeq = 0;
+  for (const e of list) {
+    chatRender(e);
+    chatLastSeq = Math.max(chatLastSeq, e.seq);
+  }
+  chatScrollEnd();
+}
+function chatAdd(e) {
+  if (e.seq <= chatLastSeq) return;
+  chatLastSeq = e.seq;
+  chatRender(e);
+  chatScrollEnd();
+  // a minimised chat opens again for a message (not for join lines, those are only informative), so none is overlooked
+  if (!chatOpen && e.kind === "msg") {
+    // phone: the chat takes the waterfall's place, so SPEC goes off (and comes back when the chat is closed)
+    if (chatPhoneMQ.matches && !scopeRateOff) {
+      chatSpecRestore = true;
+      setScopeOn(false);
+    }
+    chatOpen = true;
+    chatApplyOpen();
+  }
+  if (e.kind === "msg") chatLeaveEasyMode();
+}
+// who is online: from the client list the server already sends (see renderClientList)
+function chatUpdateOnline() {
+  const names = clientList.map((c) => {
+    if (c.user) return c.name ? `${c.name} (${c.user})` : c.user;
+    if (c.host) return c.host.split(".")[0];
+    return c.ip;
+  });
+  chatCountEl.textContent = names.length ? `· ${names.length}` : "";
+  chatOnlineEl.textContent = names.join(", ");
+  chatOnlineEl.title = names.join(", ");
+}
+function chatApplyEnabled(enabled) {
+  chatEnabledByServer = enabled;
+  chatEl.hidden = !enabled; // beats the CSS display of .chat
+  document.getElementById("chat-mode-group").hidden = !enabled;
+  const box = document.getElementById("chat-enabled");
+  if (box) box.checked = enabled;
+}
+function chatApplyOpen() {
+  chatPanel.hidden = !chatOpen;
+  if (!chatOpen && document.activeElement === chatInput) chatInput.blur();
+  chatPill.hidden = chatOpen;
+  chatEl.classList.toggle("chat-closed", chatPhoneMQ.matches && !chatOpen); // phone: nothing left over the waterfall
+  document.getElementById("chat-mode-button").classList.toggle("active", chatOpen);
+  if (chatOpen) {
+    chatScrollEnd();
+    chatClamp();
+  }
+}
+// keep the chat inside the waterfall area (window resized, panel opened near the edge)
+function chatClamp() {
+  if (chatPhoneMQ.matches) return; // phone: the chat fills the area
+  const wrap = chatEl.parentElement;
+  if (!chatEl.style.left) return;
+  const maxX = Math.max(0, wrap.clientWidth - chatEl.offsetWidth);
+  const maxY = Math.max(0, wrap.clientHeight - chatEl.offsetHeight);
+  chatEl.style.left = `${Math.min(maxX, Math.max(0, parseFloat(chatEl.style.left)))}px`;
+  chatEl.style.top = `${Math.min(maxY, Math.max(0, parseFloat(chatEl.style.top)))}px`;
+}
+function chatPlace(x, y) {
+  chatEl.style.left = `${x}px`;
+  chatEl.style.top = `${y}px`;
+  chatEl.style.bottom = "auto";
+  chatClamp();
+}
+try {
+  const p = JSON.parse(localStorage.getItem(CHAT_POS_KEY) || "null");
+  if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) chatPlace(p.x, p.y);
+} catch (e) {}
+// drag by the pill or the panel header (not by its buttons/input); a click without moving opens/closes
+function chatDragHandle(el, onClick) {
+  let sx = 0;
+  let sy = 0;
+  let ox = 0;
+  let oy = 0;
+  let moved = false;
+  let down = false;
+  el.addEventListener("pointerdown", (e) => {
+    if (chatPhoneMQ.matches || e.target.closest(".chat-min, .chat-clear")) return;
+    down = true;
+    moved = false;
+    sx = e.clientX;
+    sy = e.clientY;
+    const r = chatEl.getBoundingClientRect();
+    const w = chatEl.parentElement.getBoundingClientRect();
+    ox = r.left - w.left;
+    oy = r.top - w.top;
+    el.setPointerCapture(e.pointerId);
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!down) return;
+    if (!moved && Math.hypot(e.clientX - sx, e.clientY - sy) < 4) return;
+    moved = true;
+    chatPlace(ox + e.clientX - sx, oy + e.clientY - sy);
+  });
+  el.addEventListener("pointerup", () => {
+    if (!down) return;
+    down = false;
+    if (moved) {
+      try {
+        localStorage.setItem(CHAT_POS_KEY, JSON.stringify({ x: parseFloat(chatEl.style.left), y: parseFloat(chatEl.style.top) }));
+      } catch (e) {}
+    } else if (onClick) {
+      onClick();
+    }
+  });
+}
+chatDragHandle(chatPill, () => {
+  chatOpen = true;
+  chatApplyOpen();
+  chatInput.focus({ preventScroll: true });
+});
+chatDragHandle(document.getElementById("chat-head"), null);
+chatPill.addEventListener("click", (e) => {
+  if (e.detail !== 0) return; // a real mouse click is handled by the drag handle; this is Enter/Space on the focused pill
+  chatOpen = true;
+  chatApplyOpen();
+  chatInput.focus({ preventScroll: true });
+});
+document.getElementById("chat-clear").addEventListener("click", async () => {
+  if (await showConfirmDialog("Gesamten Chat für alle löschen?", "Löschen")) send({ type: "chatClear" });
+});
+// Closing the chat. On the phone, SPEC comes back if the chat itself had switched it off.
+let chatSpecRestore = false;
+function chatLeave() {
+  chatOpen = false;
+  chatApplyOpen();
+  if (chatPhoneMQ.matches && chatSpecRestore) {
+    chatSpecRestore = false;
+    if (scopeRateOff) setScopeOn(true);
+  }
+}
+document.getElementById("chat-min").addEventListener("click", chatLeave);
+document.getElementById("chat-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text) return;
+  send({ type: "chat", text });
+  chatInput.value = "";
+});
+// Phone (iOS Safari): a focused input gets the browser's own bar above the keyboard with up/down arrows (jump to the
+// previous/next form field of the page) and a check mark. The arrows only have somewhere to go if the page has other
+// form fields, so while the chat input has focus the rest of the page is made inert (only what we marked ourselves is
+// released again, anything that was inert before stays so). The bar itself cannot be hidden.
+let chatInertMarked = [];
+function chatFocusMode(on) {
+  for (const el of chatInertMarked) el.inert = false;
+  chatInertMarked = [];
+  if (!on || !chatPhoneMQ.matches) return;
+  for (let el = chatEl; el && el !== document.body; el = el.parentElement) {
+    for (const sib of el.parentElement.children) {
+      if (sib === el || sib.inert || sib.tagName === "SCRIPT") continue;
+      sib.inert = true;
+      chatInertMarked.push(sib);
+    }
+  }
+}
+chatInput.addEventListener("focus", () => chatFocusMode(true));
+chatInput.addEventListener("blur", () => chatFocusMode(false));
+chatInput.addEventListener("keydown", (e) => {
+  e.stopPropagation(); // typing must not trigger shortcuts
+  if (e.key === "Escape") chatInput.blur();
+});
+const CHAT_SIZE_KEY = "open890rc.chatSize";
+try {
+  const sz = JSON.parse(localStorage.getItem(CHAT_SIZE_KEY) || "null");
+  if (sz && Number.isFinite(sz.w) && Number.isFinite(sz.h)) {
+    chatPanel.style.width = `${sz.w}px`;
+    chatPanel.style.height = `${sz.h}px`;
+  }
+} catch (e) {}
+// the browser's resize handle (bottom right corner of the panel) sets inline width/height; remember them, keep the
+// panel inside the waterfall and the newest line in view
+let chatSizeTimer = 0;
+new ResizeObserver(() => {
+  if (chatPanel.hidden || chatPhoneMQ.matches) return;
+  chatClamp();
+  clearTimeout(chatSizeTimer);
+  chatSizeTimer = setTimeout(() => {
+    if (!chatPanel.style.width && !chatPanel.style.height) return; // never resized by the user
+    try {
+      localStorage.setItem(CHAT_SIZE_KEY, JSON.stringify({ w: chatPanel.offsetWidth, h: chatPanel.offsetHeight }));
+    } catch (e) {}
+    chatScrollEnd();
+  }, 300);
+}).observe(chatPanel);
+window.addEventListener("resize", chatClamp);
+// CHAT key (phone, next to EASY MODE): shows/hides the chat in place of the waterfall
+document.getElementById("chat-mode-button").addEventListener("click", () => {
+  if (chatOpen) {
+    chatLeave();
+    return;
+  }
+  chatOpen = true;
+  chatApplyOpen();
+});
+// rotating/resizing across the phone/desktop breakpoint: back to that layout's starting state
+chatPhoneMQ.addEventListener("change", (e) => {
+  chatSpecRestore = false;
+  chatOpen = !e.matches;
+  chatApplyOpen();
+});
+// focusing the input must not scroll the (overflow:hidden) waterfall area underneath, which would shift the canvases
+chatEl.parentElement.addEventListener("scroll", () => {
+  const w = chatEl.parentElement;
+  if (w.scrollTop || w.scrollLeft) {
+    w.scrollTop = 0;
+    w.scrollLeft = 0;
+  }
+});
+chatApplyOpen();
 
 // ---- Access control ------------------------------------------------------
 // Browsers on the local network need no login and are admins (USER button for the
@@ -6494,6 +6826,16 @@ document.getElementById("login-msg-save").addEventListener("click", async () => 
   }
 });
 loginMsgInput.addEventListener("input", () => setLoginMsgStatus("", false));
+// "Chatfunktion aktivieren": saved at once, the server tells every browser (chatConfig)
+document.getElementById("chat-enabled").addEventListener("change", async (e) => {
+  try {
+    await usersCall("POST", "/api/chat-enabled", { enabled: e.target.checked });
+    setLoginMsgStatus("gespeichert", false);
+  } catch (err) {
+    e.target.checked = !e.target.checked;
+    setLoginMsgStatus(err.message, true);
+  }
+});
 
 const userEditOverlay = document.getElementById("useredit-overlay");
 const userEditLogin = document.getElementById("useredit-login");
@@ -6630,6 +6972,7 @@ function applyAdminUi(isAdmin, hasPa, hasTx) {
   for (const b of txButtons) b.disabled = !txAllowed;
   if (lastState) applyState(lastState);
   setupButton.hidden = !isAdmin;
+  chatApplyAdmin(isAdmin);
 }
 async function initAuth() {
   let status = { loginRequired: false, admin: false };

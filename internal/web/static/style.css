@@ -4485,7 +4485,7 @@ main.controls-off .slider::-moz-range-thumb {
   outline: none;
   border-color: var(--accent);
 }
-.login-msg-label + .users-add-actions {
+.login-msg-row + .users-add-actions {
   padding-bottom: 0.9rem;
   margin-bottom: 0.9rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
@@ -5051,14 +5051,16 @@ main.controls-off #scope-toggle-button.active {
 /* Phone: EASY MODE and ANALOG keys in the rubber-cap look; ANALOG glows softly while the meter is shown
    (Nutzer-Wunsch 2026-11-02). The analog meter replaces the keypad in the spectrum area. */
 #simple-mode-button,
-#analog-mode-button {
+#analog-mode-button,
+#chat-mode-button {
   background: linear-gradient(#383a40, #232529);
   color: #8b8e95;
   border-color: #0b0b0d;
   text-shadow: none;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), 0 2px 2px rgba(0, 0, 0, 0.6);
 }
-#analog-mode-button.active {
+#analog-mode-button.active,
+#chat-mode-button.active {
   color: #9fd9ae;
   text-shadow: 0 0 4px rgba(74, 222, 128, 0.55);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), inset 0 -2px 4px rgba(0, 0, 0, 0.55), inset 0 0 8px rgba(74, 222, 128, 0.1),
@@ -5165,3 +5167,159 @@ main.controls-off #scope-toggle-button.active {
 #tunewheel-overlay .overlay-panel { width: min(90vw, 360px); }
 #tunewheel-overlay .tune-wheel { margin: 0.3rem 0 1.2rem; }
 #tunewheel-overlay .overlay-actions { justify-content: space-between; padding-top: 0.75rem; }
+
+/* Chat between the connected browsers. Desktop: a small pill, bottom left in the waterfall, opens a panel; both are
+   dragged by their header/pill and keep their place (localStorage). Above the waterfall overlay canvas, which would
+   otherwise take the clicks for tuning. Phone (see the max-width block below): no pill, the chat replaces the whole
+   waterfall area while it is open. */
+  .chat {
+    display: block;
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    z-index: 6;
+    font-size: 0.72rem;
+    line-height: 1.3;
+    text-align: left; /* the waterfall area around it is centred */
+    cursor: default;
+    touch-action: none;
+  }
+  .chat-pill {
+    cursor: grab;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(0, 0, 0, 0.45);
+    color: rgba(255, 255, 255, 0.6);
+    font: inherit;
+  }
+  .chat-pill:hover { background: rgba(0, 0, 0, 0.65); color: rgba(255, 255, 255, 0.9); }
+  .chat-panel[hidden] { display: none; }
+  .chat-panel {
+    /* the user drags the bottom right corner to size it (native resize handle, size remembered by initChat) */
+    resize: both;
+    box-sizing: border-box; /* the remembered size is offsetWidth/offsetHeight */
+    display: flex;
+    flex-direction: column;
+    min-width: 240px;
+    min-height: 130px;
+    max-width: 100%;
+    width: min(400px, calc(100vw - 80px));
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(8, 10, 14, 0.82);
+    color: rgba(255, 255, 255, 0.85);
+    overflow: hidden;
+  }
+  .chat-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0.4rem 0.2rem 0.6rem;
+    background: rgba(255, 255, 255, 0.07);
+    cursor: grab;
+  }
+  .chat-title { font-weight: 600; white-space: nowrap; }
+  .chat-online {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: rgba(255, 255, 255, 0.5);
+  }
+  .chat-min {
+    padding: 0 0.4rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .chat-clear { display: inline-flex; align-items: center; color: rgba(255, 255, 255, 0.5); }
+  .chat-clear:hover { color: #ff6b6b; }
+  .chat-clear[hidden] { display: none; }
+  .chat-log {
+    flex: 1 1 110px; /* 110px by default, takes the extra height when the panel is made taller */
+    min-height: 40px;
+    overflow-y: auto;
+    padding: 0.3rem 0.6rem;
+    user-select: text;
+    -webkit-user-select: text;
+    cursor: text;
+  }
+  .chat-line { overflow-wrap: anywhere; }
+  .chat-del {
+    display: none;
+    float: right;
+    margin-left: 0.4rem;
+    padding: 0 0.3rem;
+    border: 0;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.45);
+    font: inherit;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+  .chat-log.admin .chat-line:hover .chat-del { display: block; }
+  .chat-del:hover { color: #ff6b6b; }
+  .chat-time { color: rgba(255, 255, 255, 0.4); margin-right: 0.35rem; white-space: nowrap; }
+  .chat-name { color: #2b9fcc; margin-right: 0.35rem; }
+  .chat-line.join { color: rgba(255, 255, 255, 0.5); font-style: italic; }
+  .chat-form { display: block; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+  .chat-form input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0.3rem 0.6rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    outline: none;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+/* Phone: the chat covers the whole waterfall area (like the analog meter does), opened by a message from somebody else
+   or by the CHAT key next to EASY MODE, closed with the minus in its header. No dragging, no sizing. */
+@media (max-width: 799px) {
+  .chat {
+    left: 0 !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    font-size: 0.85rem;
+    touch-action: auto;
+  }
+  .chat.chat-closed { display: none; }
+  .chat-pill { display: none; }
+  .chat-panel {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none;
+    min-width: 0;
+    min-height: 0;
+    resize: none;
+    border: 0;
+    border-radius: 0;
+    background: #141414;
+  }
+  .chat-head { cursor: default; padding: 0.35rem 0.5rem 0.35rem 0.7rem; }
+  .chat-min { padding: 0 0.6rem; font-size: 1.1rem; }
+  .chat-log { flex-basis: 0; touch-action: pan-y; }
+  .chat-form input { font-size: 16px; padding: 0.55rem 0.7rem; } /* 16px: iOS zooms the page into smaller inputs */
+}
+
+/* Benutzer tab: "Chatfunktion aktivieren" sits right of the login message field */
+.login-msg-row {
+  display: flex;
+  flex-wrap: wrap; /* narrow panel (phone): the checkbox drops below the field */
+  align-items: flex-start;
+  gap: 1rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.login-msg-row .login-msg-label { margin: 0; }
+.chat-enable-label { margin: 1.4rem 0 0; }
+.chat[hidden] { display: none !important; }

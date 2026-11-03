@@ -3590,6 +3590,11 @@ func main() {
 	}
 	srv = web.New(h, st, controls, web.AudioHubs{PCM: pcmHub, Opus: opusHub}, txAudio, waterfallHub)
 	srv.SetAudioScopeHub(audioScopeHub)
+	// the chat history survives restarts: loaded now, written 30 s after a change and at shutdown (web.ChatFlush)
+	srv.SetChatStore(
+		func() ([]byte, bool) { return cfgStore.Read("chat") },
+		func(data []byte) error { return cfgStore.Write("chat", data) },
+	)
 
 	// Graceful shutdown on Ctrl-C/SIGTERM. Without this, killing the process
 	// (there was no signal handling at all before) leaves the OS to just
@@ -3608,6 +3613,7 @@ func main() {
 	go func() {
 		<-sigCh
 		log.Println("shutting down...")
+		srv.ChatFlush()
 		if conn := rm.current(); conn != nil {
 			restoreRadioSettings(conn)
 			if err := conn.Send("##VP0"); err != nil {
