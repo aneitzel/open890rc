@@ -5182,10 +5182,32 @@ window.matchMedia("(max-width: 799px)").addEventListener("change", (e) => {
 // (finger speed = surface speed at the centre), letting go while moving lets it coast and slow down by friction.
 // One ridge = TUNE_WHEEL_HZ_PER_RIDGE; the frequency moves in whole ridges through adjustFreq (same throttled,
 // optimistic send path as the digit wheel).
-const TUNE_WHEEL_HZ_PER_RIDGE = 100;
+// Feel of the wheel (Nutzer-Wunsch 2026-11-03). Hz per click, coasting time and heaviness are adjustable (double click
+// on a wheel -> #tunewheel-overlay, per browser in localStorage); detent pull/lag are fixed at the values settled on.
 const TUNE_WHEEL_RIDGES = 40;
-const TUNE_WHEEL_FRICTION_TAU_S = 0.2; // velocity decays e^(-t/tau) while coasting
-function initTuneWheel(cv) {
+const TUNE_WHEEL_HZ_STEPS = [10, 50, 100, 250, 500, 1000];
+const TUNE_WHEEL_DEFAULTS = {
+  hzIdx: 2, // index into TUNE_WHEEL_HZ_STEPS: Hz per ridge (one click)
+  tauCs: 5, // coasting friction time constant in 1/100 s: velocity decays e^(-t/tau) (smaller = stiffer bearing), max 30
+  dry: 30, // dry friction in ridges/s^2: constant braking, stops the wheel decisively (0 = only the smooth viscous decay)
+};
+const tuneWheelCfg = { ...TUNE_WHEEL_DEFAULTS, pull: 50, drag: 20 }; // pull: detent pull in ridges/s^2; drag: % lag while dragging
+try {
+  const saved = JSON.parse(localStorage.getItem("open890rc.tuneWheel") || "{}");
+  for (const k of Object.keys(TUNE_WHEEL_DEFAULTS)) if (Number.isFinite(saved[k])) tuneWheelCfg[k] = saved[k];
+  tuneWheelCfg.tauCs = Math.min(30, tuneWheelCfg.tauCs);
+} catch (e) {
+  // unreadable/unavailable: defaults
+}
+function saveTuneWheelCfg() {
+  try {
+    const { hzIdx, tauCs, dry } = tuneWheelCfg;
+    localStorage.setItem("open890rc.tuneWheel", JSON.stringify({ hzIdx, tauCs, dry }));
+  } catch (e) {
+    // setting just won't persist
+  }
+}
+function initTuneWheel(cv, preview = false) {
   const ctx = cv.getContext("2d");
   const STEP = (2 * Math.PI) / TUNE_WHEEL_RIDGES;
   let rot = 0; // radians; rot/STEP = ridges turned
@@ -5240,33 +5262,60 @@ function initTuneWheel(cv) {
   }
   function turn(dr) {
     rot += dr;
-    const whole = Math.trunc(rot / STEP);
+    // the frequency steps when the wheel tips over the crest between two clicks
+    const whole = Math.round(rot / STEP);
     if (whole !== applied) {
-      if (!controlsDisabled) adjustFreq((whole - applied) * TUNE_WHEEL_HZ_PER_RIDGE);
+      if (!preview && !controlsDisabled) adjustFreq((whole - applied) * TUNE_WHEEL_HZ_STEPS[tuneWheelCfg.hzIdx]);
       applied = whole;
     }
     draw();
+  }
+  // sitting in a detent and (almost) not moving: snap exactly into place
+  function settled() {
+    if (tuneWheelCfg.pull <= 0) return Math.abs(vel) < 0.08;
+    return Math.abs(vel / STEP) < 0.4 && Math.abs(Math.sin((2 * Math.PI * rot) / STEP)) < 0.03;
   }
   function coast(now) {
     raf = 0;
     if (dragging || cv.offsetParent === null) return;
     const dt = Math.min(0.05, (now - lastT) / 1000);
     lastT = now;
-    vel *= Math.exp(-dt / TUNE_WHEEL_FRICTION_TAU_S);
-    if (Math.abs(vel) < 0.08) {
+    // integrate in small steps (ridges, ridges/s): pawl pull + bearing friction
+    const tau = tuneWheelCfg.tauCs / 100;
+    let x = rot / STEP;
+    let v = vel / STEP;
+    const n = Math.max(1, Math.ceil(dt / 0.008));
+    const h = dt / n;
+    for (let i = 0; i < n; i++) {
+      v -= tuneWheelCfg.pull * Math.sin(2 * Math.PI * x) * h;
+      v *= Math.exp(-h / tau);
+      // dry friction: constant deceleration against the direction of motion, never reversing it
+      const brake = tuneWheelCfg.dry * h;
+      v = Math.abs(v) <= brake ? 0 : v - Math.sign(v) * brake;
+      x += v * h;
+    }
+    vel = v * STEP;
+    const dr = x * STEP - rot;
+    if (settled()) {
       vel = 0;
+      if (tuneWheelCfg.pull > 0) turn(Math.round(x) * STEP - rot);
+      else turn(dr);
       return;
     }
-    turn(vel * dt);
+    turn(dr);
     raf = requestAnimationFrame(coast);
   }
   function startCoast() {
-    if (raf || Math.abs(vel) < 0.08) return;
+    if (raf) return;
+    if (settled()) {
+      vel = 0;
+      return;
+    }
     lastT = performance.now();
     raf = requestAnimationFrame(coast);
   }
   cv.addEventListener("pointerdown", (e) => {
-    if (controlsDisabled) return;
+    if (controlsDisabled && !preview) return;
     cv.setPointerCapture(e.pointerId);
     dragging = true;
     vel = 0;
@@ -5282,7 +5331,8 @@ function initTuneWheel(cv) {
     vel = vel * 0.6 + (dr / dt) * 0.4;
     lastX = e.clientX;
     lastT = now;
-    turn(dr);
+    // sticky over the detent: slow at the click position, faster on the way to the next one (net 1:1 per ridge)
+    turn(dr * (1 - (tuneWheelCfg.drag / 100) * Math.cos((2 * Math.PI * rot) / STEP)));
   });
   const release = () => {
     if (!dragging) return;
@@ -5297,7 +5347,7 @@ function initTuneWheel(cv) {
     "wheel",
     (e) => {
       e.preventDefault();
-      if (controlsDisabled) return;
+      if (controlsDisabled && !preview) return;
       vel += -(e.deltaY || e.deltaX) * 0.02;
       startCoast();
     },
@@ -5314,6 +5364,52 @@ function initTuneWheel(cv) {
 // one wheel in the Easy Mode overlay, one on desktop under RIT/XIT (each keeps its own angle; the frequency moves by
 // whole ridges either way)
 for (const id of ["tune-wheel", "tune-wheel-desktop"]) initTuneWheel(document.getElementById(id));
+
+// Tuning wheel settings overlay (double click on a wheel, Nutzer-Wunsch 2026-11-03): live preview wheel (turns like the
+// real one but never tunes the radio) plus the three adjustable values. Browser-local only.
+const tuneWheelOverlay = document.getElementById("tunewheel-overlay");
+initTuneWheel(document.getElementById("tunewheel-preview"), true);
+function tuneWheelSlider(id, key, max, valueId, fillId, fmt) {
+  return makeSlider(
+    id,
+    (value) => {
+      tuneWheelCfg[key] = value;
+      saveTuneWheelCfg();
+    },
+    max,
+    valueId,
+    fmt,
+    fillId
+  );
+}
+const tuneWheelSliders = {
+  hzIdx: tuneWheelSlider("tunewheel-hz-slider", "hzIdx", TUNE_WHEEL_HZ_STEPS.length - 1, "tunewheel-hz-value", "tunewheel-hz-fill", (v) => `${TUNE_WHEEL_HZ_STEPS[v]} Hz`),
+  tauCs: tuneWheelSlider("tunewheel-tau-slider", "tauCs", 30, "tunewheel-tau-value", "tunewheel-tau-fill", (v) => `${(v / 100).toFixed(2)} s`),
+  dry: tuneWheelSlider("tunewheel-dry-slider", "dry", 100, "tunewheel-dry-value", "tunewheel-dry-fill", (v) => (v ? `${v}` : "aus")),
+};
+function syncTuneWheelSliders() {
+  for (const k of Object.keys(tuneWheelSliders)) tuneWheelSliders[k].applyValue(tuneWheelCfg[k]);
+}
+syncTuneWheelSliders();
+for (const id of ["tune-wheel", "tune-wheel-desktop"]) {
+  document.getElementById(id).addEventListener("dblclick", () => {
+    if (controlsDisabled) return;
+    tuneWheelOverlay.hidden = false;
+  });
+}
+function closeTuneWheelOverlay() {
+  tuneWheelOverlay.hidden = true;
+}
+document.getElementById("tunewheel-overlay-close").addEventListener("click", closeTuneWheelOverlay);
+tuneWheelOverlay.addEventListener("click", (e) => {
+  if (e.target === tuneWheelOverlay) closeTuneWheelOverlay();
+});
+document.getElementById("tunewheel-overlay-reset").addEventListener("click", () => {
+  Object.assign(tuneWheelCfg, TUNE_WHEEL_DEFAULTS);
+  saveTuneWheelCfg();
+  syncTuneWheelSliders();
+});
+
 
 // ANALOG key (phone, spectrum off): the analog meter (+ its PWR/SWR/ALC/IC keys) takes the place of the frequency
 // keypad in the spectrum area. Same relocate-don't-clone trick as the Simple Mode overlay (Nutzer-Wunsch 2026-11-02).

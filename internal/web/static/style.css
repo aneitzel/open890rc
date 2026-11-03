@@ -5160,3 +5160,8 @@ main.controls-off #scope-toggle-button.active {
 
 /* the filter letter in the audio scope header is clickable (steps A/B/C) */
 .ascope .fg-a-box, .ascope .fg-a-text, .filter-graph .fg-a-box, .filter-graph .fg-a-text { cursor: pointer; }
+
+/* Drehrad-Einstellungen: Vorschau-Rad wie das Easy-Mode-Rad, Abstand zu den Reglern; Standard links, Schliessen rechts */
+#tunewheel-overlay .overlay-panel { width: min(90vw, 360px); }
+#tunewheel-overlay .tune-wheel { margin: 0.3rem 0 1.2rem; }
+#tunewheel-overlay .overlay-actions { justify-content: space-between; padding-top: 0.75rem; }

@@ -1115,6 +1115,42 @@
   </div>
 </div>
 
+<!-- Drehrad-Einstellungen: Doppelklick auf das Rad (Nutzer-Wunsch 2026-11-03), browser-lokal, siehe initTuneWheel in app.js. -->
+<div id="tunewheel-overlay" class="overlay" hidden>
+  <div class="overlay-panel">
+    <h2>Drehrad</h2>
+    <canvas id="tunewheel-preview" class="tune-wheel"></canvas>
+    <label title="Frequenzschritt pro Rippe des Rades">
+      <span>Schrittweite pro Rastung <span class="ctrl-max" id="tunewheel-hz-value"></span></span>
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="tunewheel-hz-fill"></div>
+        <input type="range" id="tunewheel-hz-slider" min="0" max="5" step="1" value="2">
+      </div>
+    </label>
+    <label title="Wie lange das Rad nach dem Loslassen nachläuft (Lagerreibung) - klein = straff">
+      <span>Auslauf <span class="ctrl-max" id="tunewheel-tau-value"></span></span>
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="tunewheel-tau-fill"></div>
+        <input type="range" id="tunewheel-tau-slider" min="5" max="30" step="5" value="5">
+      </div>
+    </label>
+    <label title="Trockene Reibung: bremst das Rad gleichmässig bis zum Stillstand - je höher, desto schwergängiger">
+      <span>Schwergängigkeit <span class="ctrl-max" id="tunewheel-dry-value"></span></span>
+      <div class="level-slider">
+        <div class="level-slider-track"></div>
+        <div class="level-slider-fill" id="tunewheel-dry-fill"></div>
+        <input type="range" id="tunewheel-dry-slider" min="0" max="100" step="5" value="30">
+      </div>
+    </label>
+    <div class="overlay-actions">
+      <button type="button" id="tunewheel-overlay-reset">Standard</button>
+      <button type="button" id="tunewheel-overlay-close">Schliessen</button>
+    </div>
+  </div>
+</div>
+
 <div id="proc-settings-overlay" class="overlay" hidden>
   <div class="overlay-panel">
     <h2>TX-Processor</h2>
