@@ -1027,8 +1027,23 @@
     // same face as the desktop clock
     overlayCtx.font = `500 ${cssPx}px "Helvetica Neue", Arial, system-ui, sans-serif`;
     overlayCtx.textBaseline = "top";
+    // dark rounded plate behind each label (55 % black) for readability
+    const plate = (text, x, align) => {
+      const tw = overlayCtx.measureText(text).width;
+      const px = cssPx * 0.35, py = cssPx * 0.15;
+      const left = (align === "left" ? x : x - tw) - px;
+      const w = tw + px * 2, h = cssPx + py * 2;
+      overlayCtx.fillStyle = "rgba(0, 0, 0, 0.55)";
+      overlayCtx.beginPath();
+      if (overlayCtx.roundRect) overlayCtx.roundRect(left, padY - py, w, h, h / 2.5);
+      else overlayCtx.rect(left, padY - py, w, h);
+      overlayCtx.fill();
+      overlayCtx.fillStyle = "#2b9fcc";
+    };
+    plate(loMHz, padX, "left");
     overlayCtx.textAlign = "left";
     overlayCtx.fillText(loMHz, padX, padY);
+    plate(hiMHz, displayWidthPx - padX, "right");
     overlayCtx.textAlign = "right";
     overlayCtx.fillText(hiMHz, displayWidthPx - padX, padY);
     overlayCtx.restore();
