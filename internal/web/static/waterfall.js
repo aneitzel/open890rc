@@ -201,7 +201,7 @@
   // The stop values are from memory of QCustomPlot's source (the library is not part of the wfview tree in
   // CLAUDE/wfview-2.25), so they may differ slightly from wfview's own rendering.
   const SCHEMES = [
-    { id: "standard", label: "o890rc" },
+    { id: "standard", label: "890rc" },
     { id: "jet", label: "Jet", mode: "rgb", stops: [[0, [0, 0, 100]], [0.15, [0, 50, 255]], [0.35, [0, 255, 255]], [0.65, [255, 255, 0]], [0.85, [255, 30, 0]], [1, [100, 0, 0]]] },
     { id: "cold", label: "Cold", mode: "rgb", stops: [[0, [0, 0, 50]], [0.2, [0, 10, 180]], [0.4, [0, 50, 245]], [0.6, [10, 150, 255]], [0.8, [50, 255, 255]], [1, [255, 255, 255]]] },
     { id: "hot", label: "Hot", mode: "rgb", stops: [[0, [50, 0, 0]], [0.2, [180, 10, 0]], [0.4, [245, 50, 0]], [0.6, [255, 150, 10]], [0.8, [255, 255, 50]], [1, [255, 255, 255]]] },
