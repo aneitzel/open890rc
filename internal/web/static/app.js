@@ -6732,6 +6732,7 @@ loginForm.addEventListener("submit", async (e) => {
         const st = await (await fetch("/auth/status", { cache: "no-store" })).json();
         applyAdminUi(st.admin, st.pa, st.tx);
       } catch (err) {}
+      startWaterfallAfterAuth();
       connect();
     } else {
       loginStatus.classList.add("error");
@@ -6986,7 +6987,15 @@ async function initAuth() {
   applyAdminUi(status.admin, status.pa, status.tx);
   if (status.loginMessage) setLoginIntro(status.loginMessage);
   if (status.loginRequired) showLogin();
-  else connect();
+  else {
+    startWaterfallAfterAuth();
+    connect();
+  }
+}
+// The spectrum stream (waterfall.js) only starts once the page may talk to the server: it needs the login, too.
+function startWaterfallAfterAuth() {
+  window.hamrcAuthOk = true;
+  if (window.hamrcWaterfallStart) window.hamrcWaterfallStart();
 }
 initAuth();
 

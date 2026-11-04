@@ -5205,7 +5205,8 @@ main.controls-off #scope-toggle-button.active {
     min-width: 240px;
     min-height: 130px;
     max-width: 100%;
-    width: min(400px, calc(100vw - 80px));
+    width: min(464px, calc(100vw - 80px)); /* default size (Nutzer-Wunsch 2026-11-04); a size the user dragged is remembered and wins */
+    height: 141px;
     border-radius: 10px;
     border: 1px solid rgba(255, 255, 255, 0.18);
     background: rgba(8, 10, 14, 0.82);

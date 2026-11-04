@@ -536,8 +536,14 @@
     spectrumCtx.stroke();
   }
 
+  // The stream needs a login from outside: until app.js says the page is allowed in (no login needed, or the login
+  // succeeded) there is nothing to connect to, so no retry loop runs behind the login form.
+  window.hamrcWaterfallStart = function () {
+    window.hamrcAuthOk = true;
+    if (scopeEnabled && !ws && !reconnectTimer) connect();
+  };
   function connect() {
-    if (!scopeEnabled) return;
+    if (!scopeEnabled || window.hamrcAuthOk !== true) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
     // Handlers use their own socket, not the shared `ws`: that one may already
     // be null (spectrum switched off while connecting) or a newer connection.
