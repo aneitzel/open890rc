@@ -19,13 +19,14 @@ const (
 	chatKeep      = 50
 	chatMaxRunes  = 200
 	chatMinGap    = 500 * time.Millisecond // per client, against flooding
+	chatLeaveDelay = 20 * time.Second       // a leave is announced only if the name has not come back by then (reload, phone screen off/on)
 	chatJoinQuiet = 2 * time.Minute        // a name that reconnects (phone screen off/on) does not announce itself again
 )
 
 type chatEntry struct {
 	Seq  uint64 `json:"seq"`
 	T    int64  `json:"t"`    // unix milliseconds
-	Kind string `json:"kind"` // "msg" or "join"
+	Kind string `json:"kind"` // "msg", "join" or "leave"
 	Name string `json:"name"`
 	Text string `json:"text,omitempty"`
 }
@@ -249,6 +250,29 @@ func (s *Server) chatJoin(id uint64) {
 	s.chatLastJoin[name] = now
 	s.chatMu.Unlock()
 	s.chatAdd("join", name, "")
+}
+
+// chatLeave announces that a client went away, but only when no other connection of the same name exists after
+// chatLeaveDelay (a reload or a phone waking up again is not a leave). Call it while the client is still registered.
+func (s *Server) chatLeave(id uint64) {
+	name, ok := s.chatClientName(id)
+	if !ok || !chatEnabled() {
+		return
+	}
+	time.AfterFunc(chatLeaveDelay, func() {
+		s.clientsMu.Lock()
+		for cid, c := range s.clients {
+			if cid != id && chatNameOf(*c) == name {
+				s.clientsMu.Unlock()
+				return
+			}
+		}
+		s.clientsMu.Unlock()
+		s.chatMu.Lock()
+		delete(s.chatLastJoin, name) // coming back after a leave announces itself again
+		s.chatMu.Unlock()
+		s.chatAdd("leave", name, "")
+	})
 }
 
 // chatDelete removes one line (by sequence number) from the log and tells all browsers to drop it.

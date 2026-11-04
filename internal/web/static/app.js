@@ -4719,13 +4719,15 @@ document.addEventListener("keydown", (e) => {
 const powerButton = document.getElementById("power-button");
 const powerOverlay = document.getElementById("power-overlay");
 document.getElementById("power-cancel").addEventListener("click", () => (powerOverlay.hidden = true));
-document.getElementById("power-confirm").addEventListener("click", () => {
+document.getElementById("power-confirm").addEventListener("click", async () => {
   powerOverlay.hidden = true;
   if (!(lastState && lastState.connected)) {
     setPowerOnPending(true);
     send({ type: "radioPower", enabled: true });
     return;
   }
+  // Other browsers still connected: ask first (Nutzer-Wunsch 2026-11-04), no question when we are alone.
+  if (clientList.some((c) => c.id !== myClientId) && !(await showConfirmDialog("Es sind noch andere Benutzer aktiv, Station wirklich ausschalten?", "Ausschalten"))) return;
   // Server switches a running PA off first (2s), then the radio.
   const paFirst = !!(lastState && lastState.ampOn);
   showPowerOffMessage(paFirst ? "PA wird ausgeschalten" : "TS890 wird ausgeschalten", paFirst ? 2000 : 3000, paFirst);
@@ -6423,8 +6425,8 @@ function chatRender(e) {
   const d = new Date(e.t);
   t.textContent = `${d.toLocaleDateString(undefined, { dateStyle: "short" })} ${d.toLocaleTimeString(undefined, { timeStyle: "short" })}`;
   line.appendChild(t);
-  if (e.kind === "join") {
-    line.appendChild(document.createTextNode(`${e.name} hat sich verbunden`));
+  if (e.kind === "join" || e.kind === "leave") {
+    line.appendChild(document.createTextNode(`${e.name} ${e.kind === "join" ? "hat sich verbunden" : "hat die Station verlassen"}`));
   } else {
     const n = document.createElement("span");
     n.className = "chat-name";

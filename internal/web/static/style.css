@@ -4843,6 +4843,7 @@ main.controls-off .slider::-moz-range-thumb {
     background: transparent;
     transition: background 0.15s;
   }
+  .waterfall-wrap:has(.freq-keypad:not([hidden])) .scope-divider { display: none; } /* keypad instead of the spectrum: nothing to resize */
   .scope-divider:hover::after,
   .scope-divider.dragging::after {
     background: rgba(255, 255, 255, 0.4);
@@ -5248,14 +5249,15 @@ main.controls-off #scope-toggle-button.active {
     -webkit-user-select: text;
     cursor: text;
   }
-  .chat-line { overflow-wrap: anywhere; }
+  .chat-line { overflow-wrap: anywhere; position: relative; }
   .chat-del {
     display: none;
-    float: right;
-    margin-left: 0.4rem;
+    position: absolute;
+    top: 0;
+    right: 0;
     padding: 0 0.3rem;
+    background: rgba(20, 20, 20, 0.85);
     border: 0;
-    background: transparent;
     color: rgba(255, 255, 255, 0.45);
     font: inherit;
     line-height: 1.2;
@@ -5265,7 +5267,7 @@ main.controls-off #scope-toggle-button.active {
   .chat-del:hover { color: #ff6b6b; }
   .chat-time { color: rgba(255, 255, 255, 0.4); margin-right: 0.35rem; white-space: nowrap; }
   .chat-name { color: #2b9fcc; margin-right: 0.35rem; }
-  .chat-line.join { color: rgba(255, 255, 255, 0.5); font-style: italic; }
+  .chat-line.join, .chat-line.leave { color: rgba(255, 255, 255, 0.5); font-style: italic; }
   .chat-form { display: block; border-top: 1px solid rgba(255, 255, 255, 0.1); }
   .chat-form input {
     display: block;

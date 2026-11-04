@@ -1017,6 +1017,7 @@ func (s *Server) addClient(id uint64, ip, user, name string) {
 func (s *Server) removeClient(id uint64) {
 	s.setClientAudioScope(id, false)
 	s.chatForget(id)
+	s.chatLeave(id)
 	s.clientsMu.Lock()
 	delete(s.clients, id)
 	empty := len(s.clients) == 0
