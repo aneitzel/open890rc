@@ -7093,7 +7093,7 @@ document.getElementById("connect-form").addEventListener(
   const box = document.getElementById("scope-maxhold-checkbox");
   if (!box) return;
   try {
-    box.checked = localStorage.getItem("open890rc.scopeMaxHold") === "1";
+    box.checked = localStorage.getItem("open890rc.scopeMaxHold") !== "0";
   } catch (e) {}
   box.addEventListener("change", () => {
     try {
