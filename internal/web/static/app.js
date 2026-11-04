@@ -374,8 +374,12 @@ function buildDigits(hz) {
 // True while a frequency is being typed on the keypad: the display shows the
 // typed text, so renderFreq must not overwrite it (see kpRender).
 let freqEntering = false;
+// With RIT on (RX) or XIT on (TX) the radio shows VFO + the shared offset. currentHz stays the plain VFO (digit steps, tuning), only
+// the display adds the offset.
+let freqTxOffsetHz = 0;
 function renderFreq(hz) {
   if (freqEntering) return;
+  hz = Math.max(0, hz + freqTxOffsetHz);
   freqEl.innerHTML = "";
   for (const d of buildDigits(hz)) {
     const span = document.createElement("span");
@@ -454,8 +458,10 @@ function sendSetFreq(hz) {
 // elsewhere in this project). Goes through the same optimistic-update path
 // as the frequency digits themselves so a click doesn't visually flicker
 // while waiting for the radio to confirm.
-window.hamrcTuneToFreq = function (hz) {
-  currentHz = Math.max(0, hz);
+// fromScope: hz is a frequency on the scope axis, which is centred on the displayed
+// frequency (VFO + RIT/XIT offset), so the VFO is hz minus that offset.
+window.hamrcTuneToFreq = function (hz, fromScope) {
+  currentHz = Math.max(0, hz - (fromScope ? freqTxOffsetHz : 0));
   renderFreq(currentHz);
   sendSetFreq(currentHz);
 };
@@ -5994,7 +6000,11 @@ function applyState(state) {
         pendingHz = null;
       }
     }
-    if (pendingHz === null && newHz !== currentHz) {
+    // RX: VFO + RIT offset; TX: VFO + XIT offset (one shared offset value).
+    const txOffset = (state.tx ? state.xitOn : state.ritOn) ? state.ritOffsetHz || 0 : 0;
+    const offsetChanged = txOffset !== freqTxOffsetHz;
+    freqTxOffsetHz = txOffset;
+    if (pendingHz === null && (newHz !== currentHz || offsetChanged)) {
       currentHz = newHz;
       renderFreq(currentHz);
     }
@@ -6034,10 +6044,18 @@ function applyState(state) {
     }
   }
 
-  if (window.hamrcSetWaterfallRIT) window.hamrcSetWaterfallRIT(state.ritOn && !radioOff ? state.ritOffsetHz || 0 : null);
-  if (window.hamrcSetWaterfallXIT) window.hamrcSetWaterfallXIT(state.xitOn && !radioOff ? state.ritOffsetHz || 0 : null);
+  // The scope is centred on the RX line (VFO + RIT) while receiving and on the TX line
+  // (VFO + XIT) while transmitting, like the radio's own display. R/T markers are
+  // placed relative to that centre.
+  const scopeOff = !radioOff ? freqTxOffsetHz : 0;
+  const markOff = state.ritOffsetHz || 0;
+  // As soon as RIT or XIT is on, show BOTH markers: R at VFO (+ RIT offset if RIT on),
+  // T at VFO (+ XIT offset if XIT on), so e.g. RIT alone still shows where we transmit.
+  const showRT = (state.ritOn || state.xitOn) && !radioOff;
+  if (window.hamrcSetWaterfallRIT) window.hamrcSetWaterfallRIT(showRT ? (state.ritOn ? markOff : 0) - scopeOff : null);
+  if (window.hamrcSetWaterfallXIT) window.hamrcSetWaterfallXIT(showRT ? (state.xitOn ? markOff : 0) - scopeOff : null);
   if (window.hamrcSetWaterfallVFO && state.scopeSpanHz) {
-    window.hamrcSetWaterfallVFO(currentHz, state.scopeSpanHz, state.activeReceiver === "B" ? state.vfoBHz : state.vfoAHz);
+    window.hamrcSetWaterfallVFO(currentHz + scopeOff, state.scopeSpanHz, (state.activeReceiver === "B" ? state.vfoBHz : state.vfoAHz) + scopeOff);
   }
 
   modeDropdown.setCurrent(state.mode);

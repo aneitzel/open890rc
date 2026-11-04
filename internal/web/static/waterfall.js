@@ -877,7 +877,7 @@
     drawOverlay();
     // Actual tuning: unchanged, still quantized to 0.5 kHz steps.
     const hz = Math.round(rawHz / 500) * 500;
-    if (window.hamrcTuneToFreq) window.hamrcTuneToFreq(hz);
+    if (window.hamrcTuneToFreq) window.hamrcTuneToFreq(hz, true);
   });
   function endDrag() {
     if (!drag) return;
@@ -950,34 +950,56 @@
     const x = overlayWidth / 2;
     overlayCtx.strokeStyle = "#ffe600";
     overlayCtx.lineWidth = 2;
+    // with RIT/XIT on, the R/T markers take over: the VFO line stays only faintly visible
+    const rtOn = ritOffsetHz !== null || xitOffsetHz !== null;
+    overlayCtx.globalAlpha = rtOn ? 0.3 : 1;
     overlayCtx.setLineDash([4, 3]);
     overlayCtx.beginPath();
     overlayCtx.moveTo(x, 0);
     overlayCtx.lineTo(x, overlayHeight);
     overlayCtx.stroke();
     overlayCtx.setLineDash([]);
+    overlayCtx.globalAlpha = 1;
 
-    // RIT / XIT on: a thin dashed line at VFO + offset, green for RIT (receive
-    // frequency) and red for XIT (transmit frequency). The radio has ONE offset
-    // for both, so with both on the lines coincide: their dashes are shifted by
-    // half a period so both colours stay visible. Not drawn outside the span.
-    const markers = [];
-    if (ritOffsetHz !== null) markers.push({ hz: ritOffsetHz, color: "#34c759", phase: 0 });
-    if (xitOffsetHz !== null) markers.push({ hz: xitOffsetHz, color: "#ff3b30", phase: markers.length ? 3.5 : 0 });
-    for (const m of markers) {
-      const mx = Math.floor((0.5 + m.hz / spanHz) * overlayWidth) + 0.5; // pixel centre: crisp 1px line
-      if (mx < 0 || mx > overlayWidth) continue;
-      overlayCtx.strokeStyle = m.color;
-      overlayCtx.lineWidth = 1; // one backing pixel: slim, stays solid however the canvas is stretched
-      overlayCtx.setLineDash([4, 3]);
-      overlayCtx.lineDashOffset = m.phase;
-      overlayCtx.beginPath();
-      overlayCtx.moveTo(mx, 0);
-      overlayCtx.lineTo(mx, overlayHeight);
-      overlayCtx.stroke();
+    // RIT / XIT on: R (receive, white) and T (transmit, red) markers like the TS-890
+    // bandscope: a downward triangle with the letter at the top and a thin solid line
+    // down through the spectrum and waterfall. The radio has ONE offset; R sits at
+    // VFO + RIT offset, T at VFO + XIT offset. When both coincide the two triangles
+    // sit side by side on the shared line. Not drawn outside the span.
+    const rtMarks = [];
+    if (ritOffsetHz !== null) rtMarks.push({ hz: ritOffsetHz, color: "#ffffff", letter: "R" });
+    if (xitOffsetHz !== null) rtMarks.push({ hz: xitOffsetHz, color: "#ff3b30", letter: "T" });
+    if (rtMarks.length) {
+      const rr = overlay.getBoundingClientRect();
+      const msx = (rr.width || overlayWidth) / overlayWidth;
+      const msy = (rr.height || overlayHeight) / overlayHeight;
+      overlayCtx.save();
+      overlayCtx.scale(1 / msx, 1 / msy); // draw in CSS pixels
+      const TW = 20, TH = 17;
+      const dispW = rr.width || overlayWidth;
+      const cxOf = (m) => Math.floor((0.5 + m.hz / spanHz) * overlayWidth * msx) + 0.5;
+      // markers that would overlap are stacked: T on top, R below it
+      const stacked = rtMarks.length === 2 && Math.abs(cxOf(rtMarks[0]) - cxOf(rtMarks[1])) < TW;
+      rtMarks.forEach((m) => {
+        const cx = cxOf(m);
+        if (cx < 0 || cx > dispW) return;
+        const top = stacked && m.letter === "R" ? TH : 0;
+        overlayCtx.fillStyle = m.color;
+        overlayCtx.fillRect(cx - 1, 0, 2, overlayHeight * msy); // line (2 CSS px)
+        overlayCtx.beginPath(); // downward triangle
+        overlayCtx.moveTo(cx - TW / 2, top);
+        overlayCtx.lineTo(cx + TW / 2, top);
+        overlayCtx.lineTo(cx, top + TH);
+        overlayCtx.closePath();
+        overlayCtx.fill();
+        overlayCtx.fillStyle = "#101010";
+        overlayCtx.font = '700 12px "Helvetica Neue", Arial, system-ui, sans-serif';
+        overlayCtx.textAlign = "center";
+        overlayCtx.textBaseline = "top";
+        overlayCtx.fillText(m.letter, cx, top + 1);
+      });
+      overlayCtx.restore();
     }
-    overlayCtx.setLineDash([]);
-    overlayCtx.lineDashOffset = 0;
 
     // Edge frequencies of the displayed span, tiny labels in the spectrum
     // area's top corners, same yellow as the VFO line above.
@@ -1087,7 +1109,7 @@
     // essentially arbitrary Hz values, which doesn't match how a VFO is
     // normally tuned by hand.
     const targetHz = Math.round((leftEdgeHz + fraction * spanHz) / 500) * 500;
-    window.hamrcTuneToFreq(targetHz);
+    window.hamrcTuneToFreq(targetHz, true);
   });
 
   // Live breakpoint crossing (not just a fresh page load): the CSS display
