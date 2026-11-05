@@ -5637,7 +5637,7 @@ function watchRxLostExpiry(state) {
   rxLostWatchValue = lost;
 }
 
-const RADIO_OFF_MESSAGE = "OFF - Station Einschalten mit PowerON"; // Nutzer-Wunsch, 2026-10-14
+const RADIO_OFF_MESSAGE = "OFF - Station einschalten mit PowerON"; // Nutzer-Wunsch, 2026-11-05
 
 // Clients currently connected to the server (Traffic window, "Verbundene Clients").
 let clientList = [];
@@ -5815,6 +5815,17 @@ function applyControlsDisabled(disabled) {
       // instead of .meter-block, leaving #status-info untouched.
       if (el.matches(".meter-block")) {
         document.getElementById("meter-tx-toggle")?.classList.toggle("off-blur", disabled);
+      } else if (el.matches(".waterfall-wrap")) {
+        // Chat stays usable/legible even with the radio off (Nutzer-Wunsch,
+        // 2026-11-05: "könnte der chat immer aktiv sein, auch wenn die
+        // station aus ist") — same "can't exempt a descendant from its
+        // ancestor's blur filter" problem as .meter-block/#status-info
+        // above, so the scope/waterfall children get blurred directly
+        // instead of the whole wrap, leaving #chat (a sibling, not a
+        // descendant of any of them) untouched.
+        for (const child of el.children) {
+          if (child.id !== "chat") child.classList.toggle("off-blur", disabled);
+        }
       } else {
         el.classList.toggle("off-blur", disabled && !el.matches(".status-row, .status-message-desktop"));
       }
