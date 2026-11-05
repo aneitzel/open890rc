@@ -5179,7 +5179,7 @@ main.controls-off #scope-toggle-button.active {
     left: 8px;
     bottom: 8px;
     z-index: 6;
-    font-size: 0.72rem;
+    font-size: 0.82rem; /* etwas grösser (Nutzer-Wunsch 2026-11-05), vorher 0.72rem */
     line-height: 1.3;
     text-align: left; /* the waterfall area around it is centred */
     cursor: default;
@@ -5292,7 +5292,7 @@ main.controls-off #scope-toggle-button.active {
     top: 0 !important;
     right: 0 !important;
     bottom: 0 !important;
-    font-size: 0.85rem;
+    font-size: 0.82rem; /* gleiche Grösse wie Desktop (Nutzer-Wunsch 2026-11-05) */
     touch-action: auto;
   }
   .chat.chat-closed { display: none; }

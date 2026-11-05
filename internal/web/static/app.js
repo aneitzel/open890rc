@@ -4326,6 +4326,22 @@ function showPaCmdError(text, ms = 10000) {
     if (lastState) applyState(lastState);
   }, ms);
 }
+// TX SWR protection (Nutzer-Wunsch 2026-11-05): the server aborts TX by
+// itself the instant SWR exceeds 3:1 (except during a TUNE cycle, where
+// that's expected) and broadcasts {type:"txSwrAbort"} to every client —
+// shown verbatim, no "⚠ PA: ... ⚠" wrapper, since it's a radio-wide safety
+// trip, not a PA-specific warning.
+let txSwrError = "";
+let txSwrErrorTimer = null;
+function showTXSWRError(text, ms = 8000) {
+  clearTimeout(txSwrErrorTimer);
+  txSwrError = text;
+  if (lastState) applyState(lastState);
+  txSwrErrorTimer = setTimeout(() => {
+    txSwrError = "";
+    if (lastState) applyState(lastState);
+  }, ms);
+}
 const PA_OFF_WATCH_MS = 8000; // PA still on this long after PA OFF = no effect
 // "PA wird ausgeschaltet..." — set immediately when PA OFF is clicked, and
 // again (restarting the timer) when the PA is seen going off. Disappears
@@ -5664,6 +5680,10 @@ function statusMessageFor(state) {
   if (powerOnPending) return POWER_ON_MESSAGE;
   if (powerOffMessage) return powerOffMessage;
   if (!state.connected || state.radioStandby) return RADIO_OFF_MESSAGE;
+  // SWR protection trip: ranked above everything else below (radio pop-ups,
+  // PA alarms) — it just stopped an active transmission, the single most
+  // urgent thing that can happen here.
+  if (txSwrError) return txSwrError;
   // Radio pop-up messages (ME0/ME1: temperature, DSP, hardware errors ...).
   if (state.radioMessage) return `⚠ TS890: ${state.radioMessage} ⚠`;
   // PA problems first (alarm before warning), flanked by warning symbols.
@@ -6340,6 +6360,10 @@ function connect() {
     }
     if (data.type === "ampError") {
       setAmpStatus(data.message, true);
+      return;
+    }
+    if (data.type === "txSwrAbort") {
+      showTXSWRError("ERROR : SWR > 1:3 !!!");
       return;
     }
     if (data.type === "ampOk") {

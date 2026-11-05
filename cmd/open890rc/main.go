@@ -81,6 +81,36 @@ func meterCode(mode string) string {
 	return ""
 }
 
+// swrPoints maps SWR ratio to the raw 0-70 meter reading the radio's own SWR
+// meter (RM2) and the PA's reported SWR are both scaled against — the exact
+// same table the browser's SWR bar is built from (app.js, SWR_POINTS/
+// swrToRaw), just inverted here (raw -> ratio instead of ratio -> raw) so
+// "SWR > 3" below means exactly what the SWR bar on screen would show.
+var swrPoints = []struct{ swr, raw float64 }{
+	{1, 0}, {1.5, 5.6}, {2, 18}, {3, 34}, {5, 52}, {10, 67},
+}
+
+// swrFromRaw converts a raw 0-70 SWR-meter reading into an actual SWR ratio
+// by inverting swrPoints (piecewise-linear interpolation). Values past the
+// table's last point extrapolate along its final segment — plenty accurate
+// for a "clearly over the limit" safety check, not meant for display.
+func swrFromRaw(raw int) float64 {
+	r := float64(raw)
+	if r <= 0 {
+		return 1
+	}
+	for i := 1; i < len(swrPoints); i++ {
+		if r <= swrPoints[i].raw || i == len(swrPoints)-1 {
+			p0, p1 := swrPoints[i-1], swrPoints[i]
+			if p1.raw == p0.raw {
+				return p1.swr
+			}
+			return p0.swr + (r-p0.raw)/(p1.raw-p0.raw)*(p1.swr-p0.swr)
+		}
+	}
+	return swrPoints[len(swrPoints)-1].swr
+}
+
 // initialQueries are sent right after every successful login, whether that
 // happens at startup (via flags) or later from the browser's setup dialog.
 var initialQueries = []string{
@@ -468,6 +498,81 @@ func main() {
 		log.Printf("main: PA on, radio power %dW is above %dW, set to %dW", power, maxPower, target)
 	}
 
+	// TS-890's own "Linear Amplifier" menu item (LA1, Nutzer-Wunsch
+	// 2026-11-05): mirrors the PA's on/off state exactly — OFF whenever the
+	// PA isn't on, ON the moment it is. No independent baseline to restore
+	// on PA-off/disconnect (unlike AT/power above): "off" IS the desired
+	// value whenever there's no PA, so there's nothing to go back to.
+	// Edge-triggered via lastLinearAmpOn (tri-state: 0 unknown/never sent,
+	// 1 sent OFF, 2 sent ON) so a steady state doesn't resend on every
+	// status line — same looseness as lastPowerCorrection above (check-
+	// then-act across goroutines, not mutex-guarded; worst case is one
+	// redundant resend, never a wrong value, since enforceLinearAmp is
+	// idempotent per call).
+	var lastLinearAmpOn atomic.Int32
+	enforceLinearAmp := func() {
+		_, ampOn := st.PowerAndAmp()
+		conn := rm.current()
+		if conn == nil {
+			return
+		}
+		want := int32(1)
+		if ampOn {
+			want = 2
+		}
+		if lastLinearAmpOn.Load() == want {
+			return
+		}
+		if err := conn.Send(cat.EncodeLinearAmp(ampOn)); err != nil {
+			log.Printf("main: setting TS-890 Linear Amplifier menu (LA1) failed: %v", err)
+			return
+		}
+		lastLinearAmpOn.Store(want)
+		log.Printf("main: PA %s, TS-890 Linear Amplifier menu (LA1) set to %s", map[bool]string{true: "on", false: "off"}[ampOn], map[bool]string{true: "ON", false: "OFF"}[ampOn])
+	}
+
+	// TX SWR protection (Nutzer-Wunsch 2026-11-05): aborts TX the instant SWR
+	// exceeds 3:1, EXCEPT during a TUNE cycle (TS-890's own AT or the PA's —
+	// SWR is naturally bad there, by design, not a fault). Uses the PA's own
+	// reported SWR (reflects the antenna side, past the amp) while it's on,
+	// the radio's own SWR meter (RM2, via swrFromRaw) otherwise — same
+	// precedence the SWR bar itself already uses (app.js meterValues), so
+	// what trips this is exactly what the bar on screen would show.
+	// swrTripped is re-armed the moment TX ends, so one trip doesn't
+	// permanently latch the radio into refusing to transmit.
+	var swrTripped atomic.Bool
+	const swrProtectLimit = 3.0
+	enforceSWRProtection := func() {
+		snap := st.Snapshot()
+		if !(snap.TX || snap.AmpTX) {
+			swrTripped.Store(false)
+			return
+		}
+		if snap.Tuning || snap.AmpTuning {
+			return // TUNE cycles are exempt: a bad SWR there is expected, not a fault
+		}
+		if swrTripped.Load() {
+			return // already aborted this TX, wait for it to end before re-arming
+		}
+		swr := swrFromRaw(snap.SWRMeter)
+		if snap.AmpOn {
+			swr = snap.AmpSWR
+		}
+		if swr <= swrProtectLimit {
+			return
+		}
+		swrTripped.Store(true)
+		if conn := rm.current(); conn != nil {
+			if err := conn.Send("RX"); err != nil {
+				log.Printf("main: SWR protection: aborting TX failed: %v", err)
+			}
+		}
+		log.Printf("main: SWR protection tripped (SWR %.1f > %.1f:1), TX aborted", swr, swrProtectLimit)
+		if payload, err := json.Marshal(map[string]string{"type": "txSwrAbort"}); err == nil {
+			h.Broadcast(payload)
+		}
+	}
+
 	// Power status replies ("PS0"/"PS1") for radioPower, see there.
 	psReplies := make(chan string, 8)
 	// "MS0<P2><P3>" replies (TX audio source for SEND/PTT), see applyTXSource.
@@ -522,6 +627,8 @@ func main() {
 				}
 			}
 			enforceAmpPower()
+			enforceLinearAmp()
+			enforceSWRProtection()
 
 			// The radio's "MG" query returns a stale, frozen mic-gain value
 			// the whole time PROC is on — a SET still applies underneath,
@@ -1808,6 +1915,15 @@ func main() {
 				log.Printf("main: sending initial query %q failed: %v", cmd, err)
 			}
 		}
+		// A fresh connection doesn't know what the LAST connection left LA1
+		// at (reset, power cycle, a different radio entirely) — force a
+		// resend regardless of whether the PA's on/off state itself changed
+		// since the last time enforceLinearAmp ran. Not gated on
+		// remoteActive: this mirrors the PA's actual state, independent of
+		// whether a browser happens to be watching (same reasoning as
+		// enforceAmpPower, which isn't gated either).
+		lastLinearAmpOn.Store(0)
+		enforceLinearAmp()
 		// The VoIP/RX audio stream runs only while a browser client is
 		// connected (Nutzer-Wunsch, 2026-10-16): with nobody here it would
 		// only be thrown away, and a long-running stream is what tended to
@@ -2428,6 +2544,8 @@ func main() {
 			}
 			st.SetAmpStatus(s.On, s.Operate, s.TX, s.Level, s.Warning, s.Alarm, s.Model, s.PowerW, s.SWR)
 			enforceAmpPower()
+			enforceLinearAmp()
+			enforceSWRProtection()
 			broadcastState()
 		})
 		if err != nil {
