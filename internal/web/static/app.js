@@ -1145,9 +1145,9 @@ const nrCycle = makeCycleButton(
 const bcCycle = makeCycleButton(
   "bc-button",
   [
-    { value: 0, label: "BC" },
-    { value: 1, label: "BC1" },
-    { value: 2, label: "BC2" },
+    { value: 0, label: "BC", title: "Ein/Aus - Autonotch Filter" },
+    { value: 1, label: "BC1", title: "Ein/Aus - Autonotch Filter" },
+    { value: 2, label: "BC2", title: "Ein/Aus - Autonotch Filter" },
   ],
   (value) => send({ type: "setBC", value })
 );
