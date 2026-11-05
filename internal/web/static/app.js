@@ -1808,7 +1808,28 @@ function tweenOpacityTo(el, toOpacity, durationMs) {
 
 function playShutdownAnimation() {
   const wrap = document.querySelector(".waterfall-wrap");
-  if (wrap) tweenOpacityTo(wrap, 0, SHUTDOWN_ANIM_MS);
+  if (wrap) {
+    // Fades DIRECTLY to the blurred "off" look (filter only — .waterfall-
+    // wrap's own opacity never changes, it stays fully visible even once
+    // off, same as the meter/frequency digits further down) instead of
+    // fading to fully invisible and snapping back at the end: that left a
+    // window (finishShutdownFade's instant opacity-1 snap, followed by
+    // .off-blur's own separate 0.3s transition) where the page was briefly
+    // visible but not yet blurred — and with chat sharing this same blur
+    // treatment (applyControlsDisabled), chat/the waterfall were never
+    // actually obscured by the time e.g. "Sitzung beendet" appeared
+    // (Nutzer-Report, 2026-11-05: "auf den selben Wert hin faden wie er
+    // dann am Ende auch zu sehen ist" — fade straight to the end value
+    // instead of overshooting to invisible first). .off-blur's filter is
+    // blur(3px); overriding just the transition DURATION here (inline
+    // style wins over the class's own 0.3s) stretches that same ramp over
+    // the full shutdown duration instead, ending exactly in sync with
+    // everything else — cleared again once it settles (below) so a LATER,
+    // unannounced disconnect still gets the class's normal quick fade
+    // instead of an accidentally-stretched one.
+    wrap.style.transition = `filter ${SHUTDOWN_ANIM_MS}ms ease`;
+    wrap.classList.add("off-blur");
+  }
   // Everything else on the page (buttons, dropdowns, control rows, AND the
   // frequency display — Nutzer-Report, 2026-10-14: "die Frequenzanzeige
   // dimmt nicht mit") dims to 0.4 over the same duration, started at the
@@ -1856,7 +1877,25 @@ function playShutdownAnimation() {
   // the case where the real disconnect lands FASTER than this.
   setTimeout(() => {
     forceRadioOffDisplay = true;
+    // .waterfall-wrap's own blur already finished its stretched-out ramp
+    // (set up above, at the top of this function) exactly as this timeout
+    // fires — its inline transition override is cleared again below so a
+    // LATER, unannounced disconnect gets the class's normal quick fade.
+    //
+    // Every OTHER element only gets .off-blur added for the first time
+    // right here though (via setControlsDisabled, called from applyState
+    // below), using the class's own 0.3s transition — fine on its own for
+    // an unannounced disconnect, but by this point their own 900ms opacity
+    // dim (above) has already finished, so without help the blur would lag
+    // 300ms behind an opacity that's already settled. Suppressing the
+    // transition for one frame makes it snap in together instead, then
+    // the class comes off so that unannounced-disconnect case keeps its
+    // soft fade.
+    const main = document.querySelector("main");
+    main.classList.add("shutdown-snap");
     if (lastState) applyState(lastState);
+    requestAnimationFrame(() => requestAnimationFrame(() => main.classList.remove("shutdown-snap")));
+    if (wrap) wrap.style.transition = "";
   }, SHUTDOWN_ANIM_MS);
 }
 
@@ -1873,10 +1912,11 @@ function playShutdownAnimation() {
 // else in shutdownDimElements is deliberately left at 0.4, since that's the
 // resting "off" look for ordinary controls and nothing else would put it
 // back (see playShutdownAnimation's own comment on why main > [inert]
-// alone can't reach these elements).
+// alone can't reach these elements). .waterfall-wrap itself isn't touched
+// here any more (Nutzer-Wunsch, 2026-11-05) — its opacity never moves in
+// the first place, playShutdownAnimation fades its BLUR directly to the
+// final look instead of via an invisible/snap-back round trip.
 function finishShutdownFade() {
-  const wrap = document.querySelector(".waterfall-wrap");
-  if (wrap) tweenOpacityTo(wrap, 1, 0);
   const meterBlock = document.querySelector(".meter-block");
   if (meterBlock) tweenOpacityTo(meterBlock, 1, 0);
   const freq = document.getElementById("freq");
@@ -4787,11 +4827,19 @@ document.getElementById("power-session").addEventListener("click", async () => {
   // Same slider-to-zero/waterfall-fade animation as powering off the TS890
   // or just disconnecting the session (Nutzer-Wunsch, 2026-10-14) — ending
   // the browser session is its own kind of "going away", reads the same way.
-  // The "Sitzung beendet" cover below is delayed to match, so there's
-  // actually time to see it play before it's covered (most browsers refuse
-  // to let a script close a tab it didn't itself open, so that cover is
-  // what the user is left looking at in practice, not a closed tab).
   playShutdownAnimation();
+  // The "Sitzung beendet" cover fades in ALONGSIDE that animation (same
+  // duration) instead of popping in once it's done (Nutzer-Report,
+  // 2026-11-05: "die Seite blendet aus auf den Wert der dann auch da ist
+  // wenn das Overlay zu sehen ist" — the overlay's own dark backdrop used
+  // to snap in on top of an already-finished fade, a visible jump between
+  // "just dimmed/blurred" and "that plus the overlay's extra darkening").
+  // Unhide now (at opacity 0, see CSS) so there's something to transition
+  // FROM; the class added a frame later is what actually starts the fade,
+  // ending at the same moment playShutdownAnimation's own fade does.
+  sessionEndedOverlay.style.transition = `opacity ${SHUTDOWN_ANIM_MS}ms ease`;
+  sessionEndedOverlay.hidden = false;
+  requestAnimationFrame(() => sessionEndedOverlay.classList.add("overlay-visible"));
   if (window.hamrcSetMicStreaming) window.hamrcSetMicStreaming(false);
   if (window.hamrcStopAudioForRadioOff) window.hamrcStopAudioForRadioOff();
   if (ws) ws.close();
@@ -4801,10 +4849,18 @@ document.getElementById("power-session").addEventListener("click", async () => {
   window.close();
   // playShutdownAnimation's own setTimeout (same SHUTDOWN_ANIM_MS) already
   // forces the real "off" look — waterfall cleared/hint shown, page dim
-  // settled, frequency/dropdowns on their placeholders — by the time this
-  // fires; the cover just needs to wait long enough to not clip that.
+  // settled, frequency/dropdowns on their placeholders, cover's own fade-in
+  // (above) finished — by the time this fires.
   setTimeout(() => {
-    sessionEndedOverlay.hidden = false;
+    // Chat already gets blurred along with the rest of .waterfall-wrap by
+    // now (applyControlsDisabled, triggered reactively via
+    // forceRadioOffDisplay — see playShutdownAnimation's own setTimeout,
+    // scheduled first, same duration). It isn't marked inert by that
+    // general path though (chat stays clickable while just the radio is
+    // off elsewhere) — here the whole SESSION is gone, this browser's
+    // WebSocket is closed for good, so chat can't do anything either way.
+    const chat = document.getElementById("chat");
+    if (chat) chat.inert = true;
   }, SHUTDOWN_ANIM_MS);
 });
 
@@ -5815,18 +5871,17 @@ function applyControlsDisabled(disabled) {
       // instead of .meter-block, leaving #status-info untouched.
       if (el.matches(".meter-block")) {
         document.getElementById("meter-tx-toggle")?.classList.toggle("off-blur", disabled);
-      } else if (el.matches(".waterfall-wrap")) {
-        // Chat stays usable/legible even with the radio off (Nutzer-Wunsch,
-        // 2026-11-05: "könnte der chat immer aktiv sein, auch wenn die
-        // station aus ist") — same "can't exempt a descendant from its
-        // ancestor's blur filter" problem as .meter-block/#status-info
-        // above, so the scope/waterfall children get blurred directly
-        // instead of the whole wrap, leaving #chat (a sibling, not a
-        // descendant of any of them) untouched.
-        for (const child of el.children) {
-          if (child.id !== "chat") child.classList.toggle("off-blur", disabled);
-        }
       } else {
+        // Chat used to be exempted here so it stayed sharp while just the
+        // radio was off (Nutzer-Wunsch, 2026-11-05) — reverted on the same
+        // day: the disconnect animation fades the whole .waterfall-wrap
+        // (chat included, it's a child) to invisible, then snaps it back to
+        // full opacity once the "off" state is shown; with chat exempted
+        // from the blur that follows, it popped back in sharp while
+        // everything around it stayed dim — a jarring "disappears, then
+        // suddenly reappears already different" glitch (Nutzer-Report:
+        // "sieht nicht gut aus"). Blurring it along with the rest of the
+        // wrap, uniformly, like before, reads as one smooth fade instead.
         el.classList.toggle("off-blur", disabled && !el.matches(".status-row, .status-message-desktop"));
       }
       continue;

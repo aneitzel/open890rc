@@ -2472,6 +2472,16 @@ main [inert] {
     font-size: 2rem;
     letter-spacing: 0.03em;
     opacity: 0.7;
+    /* Keeps this grid row's own height (which is auto, sized from its own
+       content — see the grid-template-rows comment above) from collapsing
+       when the text clears to "" at radio-off (applyVfoOtherFreq, app.js):
+       without it, everything below this row (mode/band/filter dropdowns
+       and on down) visibly shifted upward by the row's own ~23px the
+       instant that happened — the "page content wanders up" jump the
+       operator noticed right as the shutdown fade finished (Nutzer-Report,
+       2026-11-05). 1em reserves roughly a line's worth regardless of
+       whether there's currently text to fill it. */
+    min-height: 1em;
   }
   .selectors-row {
     grid-area: selectors;
@@ -4229,6 +4239,20 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
   display: none;
 }
 
+/* Fades in together with the rest of the shutdown animation (opacity set
+   via JS, duration kept in sync with SHUTDOWN_ANIM_MS there) instead of
+   popping in abruptly once that animation is done — so the backdrop's own
+   darkening reaches its final look at the same moment the page behind it
+   does, no jump between "just faded/blurred" and "overlay's extra dark
+   backdrop" (Nutzer-Report, 2026-11-05). Starts at 0 so unhiding it early
+   (at click time, see app.js) doesn't flash it in at full strength first. */
+#session-ended-overlay {
+  opacity: 0;
+}
+#session-ended-overlay.overlay-visible {
+  opacity: 1;
+}
+
 /* "Sitzung beendet" window: wider, so the first sentence fits on one line; the
    closing request centred. */
 #session-ended-overlay .overlay-panel {
@@ -4388,6 +4412,15 @@ main > :not(.status-row):not(.waterfall-row) .btn-group button::before {
 .off-blur {
   filter: blur(3px);
   transition: filter 0.3s ease;
+}
+/* Suppresses the transition above for one frame right as the shutdown
+   animation's opacity fade finishes (playShutdownAnimation's own setTimeout),
+   so the blur snaps in together with finishShutdownFade's instant opacity
+   snap instead of visibly ramping up afterwards (Nutzer-Report, 2026-11-05:
+   brief flash of the full, undimmed page behind the "Sitzung beendet"
+   cover). See that setTimeout's own comment for the full story. */
+main.shutdown-snap .off-blur {
+  transition: none;
 }
 
 /* Radio off / not connected (Nutzer-Wunsch 2026-10-11, extended to phone
