@@ -299,7 +299,7 @@
       <div class="left-stack" id="left-stack">
         <div class="left-sliders" id="left-sliders"></div>
       <div class="ctrl-row ctrl-row-buttons ctrl-row-1">
-        <div class="btn-group"><button type="button" id="at-button">AT OFF</button></div>
+        <div class="btn-group"><button type="button" id="at-button">AT</button></div>
         <div class="btn-group"><button type="button" id="tune-button">TUNE</button></div>
         <div class="btn-group"><button type="button" id="agc-button">AGC OFF</button></div>
         <div class="btn-group"><button type="button" id="ant-button">ANT 1</button></div>
@@ -335,10 +335,11 @@
          relocateEqButtonsForLayout (app.js); empty and hidden on the phone. -->
     <div class="ctrl-row ctrl-row-buttons" id="extras-row"></div>
     <div class="ctrl-row ctrl-row-buttons" id="pa-row" hidden>
-      <div class="btn-group"><button type="button" id="pa-power-button">PA ON</button></div>
+      <div class="btn-group"><button type="button" id="pa-power-button">PA</button></div>
       <div class="btn-group"><button type="button" id="pa-tune-button" title="PA TUNE">TUNE</button></div>
       <div class="btn-group"><button type="button" id="pa-level-button">500W</button></div>
       <div class="btn-group"><button type="button" id="pa-oper-button" title="PA OPERATE">OPER</button></div>
+      <div class="btn-group"><button type="button" id="pa-ant-button" title="SPE Antenne umschalten (sofern an der PA eingerichtet)">ANT --</button></div>
     </div>
     <!-- RIT/XIT: identical knob (same .rit-knob* classes, reused — only the
          SVG gradient ids differ per instance, since id="..." must be unique
@@ -462,7 +463,7 @@
       <button type="button" id="chat-pill" class="chat-pill" title="Chat">Chat <span id="chat-count"></span></button>
       <div id="chat-panel" class="chat-panel" hidden>
         <div id="chat-head" class="chat-head">
-          <span class="chat-title">Benutzer online:</span>
+          <span class="chat-title">Online:</span>
           <span id="chat-online" class="chat-online"></span>
           <button type="button" id="chat-clear" class="chat-min chat-clear" title="Gesamten Chat löschen" aria-label="Gesamten Chat löschen" hidden>
             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.6 9.2c0 .5.4.8.9.8h5c.5 0 .9-.3.9-.8L12 4M6.6 6.5v5M9.4 6.5v5"/></svg>
@@ -568,6 +569,10 @@
         <input type="range" id="jitter-slider" min="0" max="3" step="1" value="1">
       </div>
     </label>
+    <label class="amp-timeout-row overlay-section-divider" data-i18n-title title="Station automatisch ausschalten bei Nichtnutzung in Minuten">
+      <input type="number" id="autooff-minutes" min="0" max="999" placeholder="0">
+      AUTO Power OFF
+    </label>
     </div>
     <div class="overlay-tabpanel" data-tab="debug" hidden>
       <div class="debug-controls">
@@ -606,15 +611,15 @@
         <label class="login-msg-label">Login Nachricht:
           <textarea id="login-msg-input" rows="4" maxlength="300" spellcheck="false"></textarea>
         </label>
-        <label class="overlay-checkbox chat-enable-label" title="Chat zwischen den verbundenen Browsern ein-/ausschalten (gilt für alle)">
-          <input type="checkbox" id="chat-enabled" checked>
-          Chatfunktion aktivieren
-        </label>
       </div>
       <div class="users-add-actions">
         <button type="button" id="login-msg-save">speichern</button>
         <span class="login-msg-status" id="login-msg-status"></span>
       </div>
+      <label class="overlay-checkbox chat-enable-label" title="Aktiviert die Chatfunktion für Benutzer">
+        <input type="checkbox" id="chat-enabled" checked>
+        Chatfunktion aktivieren
+      </label>
       <div class="users-list" id="users-list"></div>
       <div class="users-add-actions">
         <button type="button" id="users-new-button">Neuer Benutzer</button>
@@ -642,7 +647,12 @@
     </div>
     <div class="overlay-tabpanels">
       <div class="overlay-tabpanel" data-tab="rx">
-        <div class="audio-reset-row">
+        <div class="audio-codec-row">
+          <span data-i18n>Codec:</span>
+          <select id="audio-codec" data-i18n-title title="Codec für Audio-Übertragung">
+            <option value="pcm" data-i18n-title title="LAN, geringste Latenz">PCM</option>
+            <option value="opus" data-i18n-title title="reduzierte Bitrate, für Mobilverbindungen">OPUS</option>
+          </select>
           <div class="audio-reset-btn">
             <button type="button" id="reset-rx-audio-button" class="audio-btn" data-i18n-title title="Reset VoIP Verbindung zum TS890 (wirkt auf alle verbundenen Clients)">
               <svg class="reset-icon" viewBox="0 0 24 24">
@@ -650,21 +660,14 @@
                 <polyline points="21 3 21 9 15 9" />
               </svg>
             </button>
-            <span>TS890 VoIP reset</span>
+            <span>VoIP reset</span>
           </div>
         </div>
-        <div class="audio-codec-row">
-          <span data-i18n>Codec:</span>
-          <select id="audio-codec" data-i18n-title title="Codec für Audio-Übertragung">
-            <option value="pcm" data-i18n-title title="LAN, geringste Latenz">PCM</option>
-            <option value="opus" data-i18n-title title="reduzierte Bitrate, für Mobilverbindungen">OPUS</option>
-          </select>
-          <label class="overlay-checkbox" data-i18n-title title="Gleicht Taktabweichungen zwischen Radio und Browser automatisch aus">
-            <input type="checkbox" id="rx-servo-slip">
-            <span data-i18n>RX Taktkompensation</span>
-          </label>
-        </div>
-        <div class="overlay-caption overlay-section-divider" data-i18n data-i18n-title title="Wird der Rückstand im Browser-Puffer zu groß, werden die ältesten Audio-Daten verworfen">Bei Browser RX  Pufferüberlauf:</div>
+        <label id="rx-servo-slip-row" class="overlay-checkbox" data-i18n-title title="Gleicht Taktabweichungen zwischen Radio und Browser automatisch aus">
+          <input type="checkbox" id="rx-servo-slip">
+          <span data-i18n>RX Taktkompensation</span>
+        </label>
+        <div class="overlay-caption overlay-section-divider" data-i18n data-i18n-title title="Wird der Rückstand im Browser-Puffer zu groß, werden die ältesten Audio-Daten verworfen">Bei Browser Pufferüberlauf:</div>
         <div class="slider-pair">
           <label>
             <span><span data-i18n>Kürzen ab</span> <span class="ctrl-max" id="trim-trigger-value"></span></span>
@@ -695,6 +698,19 @@
           <span data-i18n>Tonausgabe auf:</span>
           <select id="audio-output"></select>
         </label>
+        <div class="vfo-key-step-row overlay-section-divider" data-i18n-title title="Schrittweite für die Frequenzänderung mit den Pfeiltasten links/rechts (nur dieser Browser)">
+          <span data-i18n>VFO STEP mit Tastatur:</span>
+          <select id="vfo-key-step" aria-label="VFO Step">
+            <option value="10">10 Hz</option>
+            <option value="50">50 Hz</option>
+            <option value="100">100 Hz</option>
+            <option value="500">500 Hz</option>
+            <option value="1000" selected>1 kHz</option>
+            <option value="5000">5 kHz</option>
+            <option value="10000">10 kHz</option>
+            <option value="100000">100 kHz</option>
+          </select>
+        </div>
       </div>
       <div class="overlay-tabpanel" data-tab="tx" hidden>
         <label data-i18n-title title="Eingabegerät für das Senden (nur dieses Gerät). Das eingebaute Mikrofon vermeidet bei Bluetooth die Umschaltung ins Headset-Profil">
@@ -727,9 +743,18 @@
           <input type="checkbox" id="mic-keep-warm">
           <span data-i18n>Halte Bluetooth-/CarPlay Hands-Free Profile aktiv</span>
         </label>
+        <div class="tx-ptt-key-row">
+          <span data-i18n>TX-Taste Tastatur:</span>
+          <select id="tx-ptt-key" aria-label="TX-Taste Tastatur" data-i18n-title title="Taste zum Senden (PTT) auf der Tastatur (nur dieser Browser)">
+            <option value="t">T</option>
+            <option value="space" data-i18n>Leertaste</option>
+            <option value="numpad0" data-i18n>Zehnertastatur 0</option>
+            <option value="numpadenter" data-i18n>Zehnertastatur Enter</option>
+          </select>
+        </div>
         <div class="tx-mode-row">
-          <span data-i18n>TX-Button Funktionsweise:</span>
-          <select id="tx-button-mode" aria-label="TX-Button" data-i18n-title title="TX wenn gedrückt: TX läuft nur, solange die Taste gehalten wird. TX/RX umschalten: ein Druck schaltet ein, der nächste aus. Die Taste T funktioniert immer als TX wenn gedrückt.">
+          <span data-i18n>TX-Taste Funktionsweise:</span>
+          <select id="tx-button-mode" aria-label="TX-Button" data-i18n-title title="TX wenn gedrückt: TX läuft nur, solange die Taste gehalten wird. TX/RX umschalten: ein Druck schaltet ein, der nächste aus.">
             <option value="hold" data-i18n>TX wenn gedrückt</option>
             <option value="toggle" data-i18n>TX/RX umschalten</option>
           </select>

@@ -91,30 +91,35 @@ type State struct {
 	knsAuto      bool
 	knsMac       string
 	ampTxTimeout int
-	ampMaxPowerW int    // transceiver PWR cap while the PA is on (0 before the first SetAmpMaxPower call)
-	ampPort      string // serial port currently open, "" if none
-	ampOn        bool
-	ampOperate   bool
-	ampTX        bool
-	ampLevel     string
-	ampWarning   string
-	ampAlarm     string
-	jitterMs     int
-	voipInLevel  int
-	voipOutLevel int
-	pitchHz      int
-	apfOn        bool
-	apfBwKnown   bool
-	apfBw        int
-	apfGainKnown bool
-	apfGain      int
-	apfKnown     bool
-	apfShiftHz   int
-	msgID        [2]int // last pop-up message ID per source (ME0, ME1)
-	ampTuning    bool
-	ampModel     string
-	ampPowerW    float64
-	ampSWR       float64
+	// Auto Power OFF idle timeout in minutes, 0 = off (cmd/open890rc/main.go
+	// owns the actual idle-detection/shutoff logic; this is just the
+	// configured value, for display and persistence).
+	autoOffMinutes int
+	ampMaxPowerW   int    // transceiver PWR cap while the PA is on (0 before the first SetAmpMaxPower call)
+	ampPort        string // serial port currently open, "" if none
+	ampOn          bool
+	ampOperate     bool
+	ampTX          bool
+	ampLevel       string
+	ampWarning     string
+	ampAlarm       string
+	jitterMs       int
+	voipInLevel    int
+	voipOutLevel   int
+	pitchHz        int
+	apfOn          bool
+	apfBwKnown     bool
+	apfBw          int
+	apfGainKnown   bool
+	apfGain        int
+	apfKnown       bool
+	apfShiftHz     int
+	msgID          [2]int // last pop-up message ID per source (ME0, ME1)
+	ampTuning      bool
+	ampModel       string
+	ampPowerW      float64
+	ampSWR         float64
+	ampAntenna     string // PA's currently selected TX antenna, "1".."4", "" if unknown
 
 	// Voice message memory ("TX Messages" in the UI, desktop only — see
 	// cat/voicemsg.go). voiceMsgChannel/Op/Elapsed is PB1's own "what's
@@ -218,6 +223,7 @@ func (s *State) SetAmpPort(port string) {
 	s.ampOn, s.ampOperate, s.ampTX, s.ampLevel = false, false, false, ""
 	s.ampWarning, s.ampAlarm = "", ""
 	s.ampModel, s.ampPowerW, s.ampSWR = "", 0, 0
+	s.ampAntenna = ""
 }
 
 // PowerAndAmp returns the radio's reported TX power setting (0 = not yet
@@ -313,6 +319,13 @@ func (s *State) SetAmpConfig(savedPort string, auto bool, txTimeout int) {
 	s.ampSavedPort, s.ampAuto, s.ampTxTimeout = savedPort, auto, txTimeout
 }
 
+// SetAutoOffMinutes records the configured Auto Power OFF idle timeout (0 = off).
+func (s *State) SetAutoOffMinutes(minutes int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.autoOffMinutes = minutes
+}
+
 // SetAmpMaxPower records the configured transceiver PWR cap while the PA is on.
 func (s *State) SetAmpMaxPower(watts int) {
 	s.mu.Lock()
@@ -321,12 +334,13 @@ func (s *State) SetAmpMaxPower(watts int) {
 }
 
 // SetAmpStatus records the PA's latest reported status.
-func (s *State) SetAmpStatus(on, operate, tx bool, level, warning, alarm, model string, powerW float64, swr float64) {
+func (s *State) SetAmpStatus(on, operate, tx bool, level, warning, alarm, model string, powerW float64, swr float64, antenna string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ampOn, s.ampOperate, s.ampTX, s.ampLevel = on, operate, tx, level
 	s.ampWarning, s.ampAlarm = warning, alarm
 	s.ampModel, s.ampPowerW, s.ampSWR = model, powerW, swr
+	s.ampAntenna = antenna
 }
 
 // Snapshot is the JSON shape sent to browser clients.
@@ -432,6 +446,7 @@ type Snapshot struct {
 	AmpAuto              bool                  `json:"ampAuto"`
 	KnsAuto              bool                  `json:"knsAuto"`
 	KnsMac               string                `json:"knsMac"`
+	AutoOffMinutes       int                   `json:"autoOffMinutes"`
 	AmpTxTimeout         int                   `json:"ampTxTimeout"`
 	AmpMaxPowerW         int                   `json:"ampMaxPowerW"`
 	AmpOn                bool                  `json:"ampOn"`
@@ -444,6 +459,7 @@ type Snapshot struct {
 	AmpModel             string                `json:"ampModel"`
 	AmpPowerW            float64               `json:"ampPowerW"`
 	AmpSWR               float64               `json:"ampSWR"`
+	AmpAntenna           string                `json:"ampAntenna"`
 	VoiceMsgListOn       bool                  `json:"voiceMsgListOn"`
 	VoiceMsgChannel      int                   `json:"voiceMsgChannel"`
 	VoiceMsgOp           int                   `json:"voiceMsgOp"`
@@ -1305,6 +1321,7 @@ func (s *State) Snapshot() Snapshot {
 		AmpAuto:              s.ampAuto,
 		KnsAuto:              s.knsAuto,
 		KnsMac:               s.knsMac,
+		AutoOffMinutes:       s.autoOffMinutes,
 		AmpTxTimeout:         s.ampTxTimeout,
 		AmpMaxPowerW:         s.ampMaxPowerW,
 		AmpOn:                s.ampOn,
@@ -1329,6 +1346,7 @@ func (s *State) Snapshot() Snapshot {
 		AmpModel:             s.ampModel,
 		AmpPowerW:            s.ampPowerW,
 		AmpSWR:               s.ampSWR,
+		AmpAntenna:           s.ampAntenna,
 		VoiceMsgListOn:       s.voiceMsgListOn,
 		VoiceMsgChannel:      s.voiceMsgChannel,
 		VoiceMsgOp:           s.voiceMsgOp,

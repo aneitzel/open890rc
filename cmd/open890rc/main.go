@@ -111,6 +111,23 @@ func swrFromRaw(raw int) float64 {
 	return swrPoints[len(swrPoints)-1].swr
 }
 
+// autoOffNoisePrefixes are incoming message prefixes that change constantly
+// on their own (ambient RF, not an intentional action) and must NOT count as
+// "front panel activity" for the Auto Power OFF idle timer below — S/SWR/
+// ALC/IC meter readings, the busy/squelch-break flag, and the 5s keepalive
+// reply. Everything else that actually changes something (frequency, mode,
+// AGC, TX, ...) counts.
+var autoOffNoisePrefixes = []string{"SM", "RM1", "RM2", "RM4", "BY", "PS"}
+
+func isAutoOffNoise(msg string) bool {
+	for _, p := range autoOffNoisePrefixes {
+		if strings.HasPrefix(msg, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // initialQueries are sent right after every successful login, whether that
 // happens at startup (via flags) or later from the browser's setup dialog.
 var initialQueries = []string{
@@ -412,6 +429,44 @@ func main() {
 		h.Broadcast(snap)
 	}
 
+	// Auto Power OFF (Nutzer-Wunsch, 2026-11-07): "the radio just sits there
+	// unused" when nobody's connected — an optional idle timeout that
+	// switches it off itself (also switching the PA off first, same as the
+	// manual "TS890 ausschalten" button — see radioPower further down,
+	// which this reuses outright) once BOTH nobody is connected AND there's
+	// been no front-panel activity for that many minutes (0 = off, never
+	// triggers). See isAutoOffNoise's own comment for what counts as
+	// "activity", and the idle-timeout ticker further down (near
+	// radioPower, where remoteActive is in scope) for the actual check.
+	var autoOffMinutes atomic.Int64
+	if data, ok := cfgStore.Read("autooff"); ok {
+		var c struct {
+			Minutes int `json:"minutes"`
+		}
+		if json.Unmarshal(data, &c) == nil && c.Minutes >= 0 && c.Minutes <= 999 {
+			autoOffMinutes.Store(int64(c.Minutes))
+		}
+	}
+	st.SetAutoOffMinutes(int(autoOffMinutes.Load()))
+	setAutoOffMinutes := func(minutes int) error {
+		if minutes < 0 {
+			minutes = 0
+		}
+		if minutes > 999 {
+			minutes = 999
+		}
+		autoOffMinutes.Store(int64(minutes))
+		st.SetAutoOffMinutes(minutes)
+		data, _ := json.Marshal(struct {
+			Minutes int `json:"minutes"`
+		}{minutes})
+		if err := cfgStore.Write("autooff", data); err != nil {
+			log.Printf("main: saving Auto Power OFF setting to %s failed: %v", *configFile, err)
+		}
+		broadcastState()
+		return nil
+	}
+
 	pcmHub := hub.New()
 	opusHub := hub.New()
 	waterfallHub := hub.New()
@@ -616,15 +671,32 @@ func main() {
 	beepReplies := make(chan string, 8)
 	// Whether any browser shows the audio scope (DD11), re-sent after every (re)connect.
 	var audioScopeWanted atomic.Bool
+	// Auto Power OFF (Nutzer-Wunsch, 2026-11-07): "unix ms of the last
+	// meaningful change" — updated below on every genuine, non-noise state
+	// change (isAutoOffNoise's own comment), regardless of what caused it.
+	// While a browser client is connected, something here keeps resetting
+	// almost constantly anyway (any command sent echoes back as a change),
+	// so the radio never looks idle while attended; declared this early so
+	// it's in scope for this goroutine, which starts before remoteActive
+	// further down exists — the idle-timeout ticker (also further down,
+	// where remoteActive and the configured minutes ARE in scope) is what
+	// actually decides whether being idle this long, with nobody connected,
+	// should power the radio off.
+	var lastActivity atomic.Int64
+	lastActivity.Store(time.Now().UnixMilli())
 	stateMsgs := make(chan string, 128)
 	go func() {
 		for msg := range stateMsgs {
-			if st.Update(msg) {
+			changed := st.Update(msg)
+			if changed {
 				broadcastState()
 				if onRadioTXConfirmed != nil {
 					radioTX, _, _ := st.TXFlags()
 					onRadioTXConfirmed(radioTX)
 				}
+			}
+			if changed && !isAutoOffNoise(msg) {
+				lastActivity.Store(time.Now().UnixMilli())
 			}
 			enforceAmpPower()
 			enforceLinearAmp()
@@ -2452,6 +2524,31 @@ func main() {
 		return nil
 	}
 
+	// Auto Power OFF idle-timeout ticker (see its own comment further up,
+	// near autoOffMinutes/lastActivity, for what counts as "activity").
+	// Checked every 10s rather than computing a deadline, same reasoning as
+	// the PA TX timeout watcher elsewhere in this file: simple, and the
+	// setting can change (or a client can reconnect) at any moment anyway.
+	go func() {
+		for range time.Tick(10 * time.Second) {
+			minutes := autoOffMinutes.Load()
+			if minutes <= 0 || remoteActive.Load() || !st.Connected() {
+				continue
+			}
+			idleFor := time.Since(time.UnixMilli(lastActivity.Load()))
+			if idleFor < time.Duration(minutes)*time.Minute {
+				continue
+			}
+			log.Printf("main: Auto Power OFF — idle %v with no browser client connected, switching the TS-890 off", idleFor.Round(time.Second))
+			if err := radioPower(false); err != nil {
+				log.Printf("main: Auto Power OFF failed: %v", err)
+			}
+			// Whether it worked or not, don't immediately retry every 10s —
+			// the next real trigger is a fresh idle period starting now.
+			lastActivity.Store(time.Now().UnixMilli())
+		}
+	}()
+
 	setFrequency := func(hz int) error {
 		return sendEncoded(func() (string, error) { return cat.EncodeFrequency(st.ActiveVFO(), hz) })
 	}
@@ -2542,7 +2639,7 @@ func main() {
 					log.Printf("main: PA off, restored AT=%v power=%dW", at, pw)
 				}
 			}
-			st.SetAmpStatus(s.On, s.Operate, s.TX, s.Level, s.Warning, s.Alarm, s.Model, s.PowerW, s.SWR)
+			st.SetAmpStatus(s.On, s.Operate, s.TX, s.Level, s.Warning, s.Alarm, s.Model, s.PowerW, s.SWR, s.Antenna)
 			enforceAmpPower()
 			enforceLinearAmp()
 			enforceSWRProtection()
@@ -2823,22 +2920,24 @@ func main() {
 	}
 
 	controls := web.Controls{
-		ConnectAmp:      userConnectAmp,
-		SetAmpAuto:      setAmpAuto,
-		SetAmpTxTimeout: setAmpTxTimeout,
-		SetAmpMaxPower:  setAmpMaxPower,
-		AmpPowerOn:      ampDo((*spe.Amp).PowerOn),
-		AmpPowerOff:     ampDo((*spe.Amp).PowerOff),
-		AmpToggleOper:   ampDo((*spe.Amp).ToggleOperate),
-		AmpCycleLevel:   ampDo((*spe.Amp).CyclePowerLevel),
-		AmpTune:         paTune,
-		Connect:         connectFromUI,
-		SetKnsAuto:      setKnsAuto,
-		RadioPower:      radioPower,
-		SetKnsMac:       setKnsMac,
-		SetFrequency:    setFrequency,
-		SetMode:         setMode,
-		SetBand:         setBand,
+		ConnectAmp:        userConnectAmp,
+		SetAmpAuto:        setAmpAuto,
+		SetAmpTxTimeout:   setAmpTxTimeout,
+		SetAmpMaxPower:    setAmpMaxPower,
+		AmpPowerOn:        ampDo((*spe.Amp).PowerOn),
+		AmpPowerOff:       ampDo((*spe.Amp).PowerOff),
+		AmpToggleOper:     ampDo((*spe.Amp).ToggleOperate),
+		AmpCycleLevel:     ampDo((*spe.Amp).CyclePowerLevel),
+		AmpCycleAntenna:   ampDo((*spe.Amp).CycleAntenna),
+		AmpTune:           paTune,
+		Connect:           connectFromUI,
+		SetKnsAuto:        setKnsAuto,
+		SetAutoOffMinutes: setAutoOffMinutes,
+		RadioPower:        radioPower,
+		SetKnsMac:         setKnsMac,
+		SetFrequency:      setFrequency,
+		SetMode:           setMode,
+		SetBand:           setBand,
 		SetAGC: func(value string) error {
 			return sendEncoded(func() (string, error) { return cat.EncodeAGC(value) })
 		},
@@ -3423,6 +3522,11 @@ func main() {
 		// means "not remote active" regardless.
 		OnAllClientsGone: func() {
 			remoteActive.Store(false)
+			// Auto Power OFF's idle clock starts fresh exactly when the radio
+			// genuinely becomes unattended (see its own comment further up) —
+			// not from whatever idle time had already quietly built up
+			// beforehand.
+			lastActivity.Store(time.Now().UnixMilli())
 			conn := rm.current()
 			if conn == nil {
 				return

@@ -47,6 +47,7 @@ var upgrader = websocket.Upgrader{
 type Controls struct {
 	Connect           func(req ConnectRequest) error
 	SetKnsAuto        func(enabled bool) error
+	SetAutoOffMinutes func(minutes int) error
 	RadioPower        func(on bool) error
 	SetKnsMac         func(mac string) error
 	SetFrequency      func(hz int) error
@@ -135,6 +136,7 @@ type Controls struct {
 	AmpPowerOff     func() error
 	AmpToggleOper   func() error
 	AmpCycleLevel   func() error
+	AmpCycleAntenna func() error
 	AmpTune         func() error
 	// Voice message memory ("TX Messages", desktop only). SetVoiceMsgOverlay
 	// turns the radio's Voice Message List display on/off (PB0) — everything
@@ -539,6 +541,8 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 		err = s.controls.SetKnsMac(msg.Mac)
 	case "setKnsAuto":
 		err = s.controls.SetKnsAuto(msg.Enabled)
+	case "setAutoOffMinutes":
+		err = s.controls.SetAutoOffMinutes(msg.Value)
 	case "setFreq":
 		err = s.controls.SetFrequency(msg.Hz)
 	case "setMode":
@@ -698,6 +702,8 @@ func (s *Server) handleClientMessage(data []byte, id uint64, errCh chan<- []byte
 		err = s.controls.AmpTune()
 	case "ampCycleLevel":
 		err = s.controls.AmpCycleLevel()
+	case "ampCycleAntenna":
+		err = s.controls.AmpCycleAntenna()
 	case "voiceMsgOverlay":
 		err = s.controls.SetVoiceMsgOverlay(msg.Enabled)
 	case "voiceMsgControl":

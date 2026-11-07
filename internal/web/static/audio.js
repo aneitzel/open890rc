@@ -1339,6 +1339,45 @@
     }
     return navigator.mediaDevices.getUserMedia(constraints);
   }
+  // Primes mic permission WITHOUT starting the live meter/AudioContext dance
+  // (hamrcStartMicMeter does that, and on iOS that open-then-close of a mic
+  // session is known to risk leaving RX playback degraded afterwards — see
+  // hamrcStopMicMeter's own comment — so this must stay a plain, short-lived
+  // getUserMedia-then-stop, never promoted into a real mic session). Needed
+  // because on iOS/Safari enumerateDevices() itself returns an INCOMPLETE
+  // device list (not just blank labels) until some getUserMedia call on this
+  // origin has been granted at least once — not just the usual "labels are
+  // empty" restriction. That's what caused the RX tab (shown first when the
+  // Audio overlay opens, see openAudioOverlay) to list only "System Default"
+  // until the user had separately opened the TX tab at least once, since only
+  // THAT tab's mic meter used to ever request permission (Nutzer-Report,
+  // 2026-11-07, reproduced on iOS with a Bluetooth audio device connected;
+  // not seen on macOS, where enumerateDevices() doesn't have this
+  // permission-gated restriction in the first place). Checks for an
+  // already-labelled device first so a browser that already granted
+  // permission earlier (this session or a previous one) never gets asked
+  // again just for opening the overlay.
+  let micPermissionPrimed = false;
+  window.hamrcEnsureMicPermission = async function () {
+    if (micPermissionPrimed) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      if (all.some((d) => d.kind === "audioinput" && d.label)) {
+        micPermissionPrimed = true;
+        return;
+      }
+    } catch {
+      // fall through and just try requesting below
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      for (const t of stream.getTracks()) t.stop();
+      micPermissionPrimed = true;
+    } catch {
+      // denied, or no mic at all — RX tab just keeps the limited list, same as before this fix
+    }
+  };
   // [{id, label}] of the input devices plus the stored choice. Labels only
   // exist once mic permission was granted (the Mic Gain tab's meter asks).
   window.hamrcListMics = async function () {

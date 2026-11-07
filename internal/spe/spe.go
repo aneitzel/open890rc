@@ -29,6 +29,7 @@ const (
 	cmdPowerOff = 0x0A
 	cmdPowerLvl = 0x0B // cycles LOW -> MID -> HIGH
 	cmdTune     = 0x09 // ATU tune
+	cmdAntenna  = 0x04 // cycles the TX antenna output through whatever is configured for the current band
 	cmdRCUOn    = 0x80 // remote-control-unit mode: amp streams its LCD frames
 	cmdRCUOff   = 0x81
 	cmdOperate  = 0x0D // toggles STANDBY <-> OPERATE
@@ -51,6 +52,7 @@ type Status struct {
 	Model   string  // CSV model id, e.g. "13K", "15K", "20K"
 	PowerW  float64 // output power in watts
 	SWR     float64 // SWR at the ATU (the amp's own tuner input)
+	Antenna string  // currently selected TX antenna, "1".."4", "" if unknown
 	Warning string  // decoded warning text, "" if none
 	Alarm   string  // decoded alarm text, "" if none
 }
@@ -139,6 +141,14 @@ func (a *Amp) send(cmd byte) error {
 
 // Tune starts an ATU tuning cycle on the amp.
 func (a *Amp) Tune() error { return a.send(cmdTune) }
+
+// CycleAntenna switches the TX antenna output to the next one configured for
+// the current band. Sourced from macexpert-spe's SPEProtocol.swift, which
+// cites "SPE Application Programmer's Guide Rev 1.1" for this command byte —
+// not verified by us on hardware. If only one antenna is configured for the
+// band, this is expected to be a no-op (same as pressing the amp's own ANT
+// button in that case).
+func (a *Amp) CycleAntenna() error { return a.send(cmdAntenna) }
 
 // StartRCU switches the amp into RCU mode, in which it streams its LCD frames
 // (the only place the TUNE LED state is visible). Status polling pauses until
@@ -405,6 +415,12 @@ func parseStatus(payload []byte) (Status, bool) {
 			Level:   level,
 		}
 		st.Model = strings.TrimSpace(fields[i])
+		// TX antenna + ATU status share one 2-char field at +6 (e.g. "1a" =
+		// antenna 1, ATU active) — only the antenna digit is kept, the ATU
+		// letter isn't used anywhere yet.
+		if ant := strings.TrimSpace(fields[i+6]); ant != "" {
+			st.Antenna = ant[:1]
+		}
 		// Output power (watts) at +9 and the SWR at the ATU (amp side of the
 		// tuner) at +10; +11 would be the SWR at the antenna itself.
 		if i+11 < len(fields) {

@@ -17,7 +17,7 @@ func TestParseAndExtract(t *testing.T) {
 		t.Fatalf("frames = %d", len(frames))
 	}
 	st, ok := parseStatus(frames[0].payload)
-	want := Status{On: true, Operate: true, TX: true, Level: "H", Model: "13K", PowerW: 1200, SWR: 1.1}
+	want := Status{On: true, Operate: true, TX: true, Level: "H", Model: "13K", PowerW: 1200, SWR: 1.1, Antenna: "1"}
 	if !ok || st != want {
 		t.Fatalf("got %+v ok=%v", st, ok)
 	}

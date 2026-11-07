@@ -474,6 +474,32 @@ window.hamrcStepFreq = function (deltaHz) {
   adjustFreq(deltaHz);
 };
 
+// Keyboard VFO stepping (Nutzer-Wunsch, 2026-11-07): ArrowLeft/ArrowRight
+// change the frequency by a browser-local step size (Settings → RX tab),
+// same optimistic-update path as the digit wheel/scope click above. Default
+// step is 1 kHz; "open890rc.vfoKeyStepHz" persists the chosen value per
+// browser, same pattern as the other per-browser RX settings in that tab.
+const vfoKeyStepSelect = document.getElementById("vfo-key-step");
+const VFO_KEY_STEP_DEFAULT_HZ = 1000;
+function loadVfoKeyStepHz() {
+  const v = Number(localStorage.getItem("open890rc.vfoKeyStepHz"));
+  return v > 0 ? v : VFO_KEY_STEP_DEFAULT_HZ;
+}
+vfoKeyStepSelect.value = String(loadVfoKeyStepHz());
+vfoKeyStepSelect.addEventListener("change", () => {
+  localStorage.setItem("open890rc.vfoKeyStepHz", vfoKeyStepSelect.value);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  if (document.querySelector(".overlay:not([hidden])")) return; // a dialog is open
+  const tag = (document.activeElement && document.activeElement.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (controlsDisabled) return;
+  e.preventDefault();
+  adjustFreq(e.key === "ArrowLeft" ? -loadVfoKeyStepHz() : loadVfoKeyStepHz());
+});
+
 // Builds the thin black divider lines that give the meter bars their
 // segmented LED look: an SVG mask hides a black overlay everywhere except
 // these 2px slices, letting the colored fill underneath show through only in
@@ -1386,8 +1412,8 @@ const procCycle = makeCycleButton(
 const atCycle = makeCycleButton(
   "at-button",
   [
-    { value: false, label: "AT OFF" },
-    { value: true, label: "AT ON" },
+    { value: false, label: "AT" },
+    { value: true, label: "AT" },
   ],
   (enabled) => send({ type: "setTuner", enabled })
 );
@@ -1570,7 +1596,34 @@ const PTT_OVERLAYS = [
   // block it while this one is open.
   "simple-mode-overlay",
 ];
-const isPttKey = (e) => typeof e.key === "string" && e.key.toLowerCase() === "t";
+// Which key triggers PTT (Client Settings, TX tab, Nutzer-Wunsch 2026-11-07):
+// configurable per browser instead of a fixed "t" — the keyboard layouts and
+// reach vary a lot (some want the far-away numpad Enter/0 to not interfere
+// with typing, others the thumb-friendly Spacebar). "t" stays the default so
+// nobody's muscle memory breaks on an upgrade. Numpad keys are matched on
+// e.code (KeyboardEvent.key for a numpad digit depends on NumLock — with it
+// on, Numpad0's key is "0", indistinguishable from the top-row digit; code
+// is "Numpad0"/"NumpadEnter" either way).
+const PTT_KEY_STORAGE_KEY = "open890rc.pttKey";
+const PTT_KEY_DEFAULT = "t";
+const PTT_KEY_LABELS = { t: "T", space: "Leertaste", numpad0: "Zehnertastatur 0", numpadenter: "Zehnertastatur Enter" };
+function loadPttKey() {
+  const v = localStorage.getItem(PTT_KEY_STORAGE_KEY);
+  return v && PTT_KEY_LABELS[v] ? v : PTT_KEY_DEFAULT;
+}
+let pttKey = loadPttKey();
+const isPttKey = (e) => {
+  switch (pttKey) {
+    case "space":
+      return e.code === "Space";
+    case "numpad0":
+      return e.code === "Numpad0";
+    case "numpadenter":
+      return e.code === "NumpadEnter";
+    default:
+      return typeof e.key === "string" && e.key.toLowerCase() === "t";
+  }
+};
 let pttHeld = false; // the key is down and started this TX
 function pttRelease() {
   if (!pttHeld) return;
@@ -1806,29 +1859,46 @@ function tweenOpacityTo(el, toOpacity, durationMs) {
   activeOpacityTweens.set(el, requestAnimationFrame(step));
 }
 
+// Which parts of .waterfall-wrap should visually blur/dim once the radio is
+// off. Normally everything EXCEPT #chat: chat stays sharp and usable while
+// just the radio is off (other browsers' sessions may still be live and
+// chatting, Nutzer-Wunsch 2026-11-05 "könnte der chat immer aktiv sein,
+// auch wenn die Station aus ist") — a filter on an ancestor can't be
+// exempted for one descendant (same reasoning as .meter-block/#status-info
+// elsewhere in this file), so chat's siblings are blurred individually
+// instead of the whole wrap. But once THIS session has actually ended
+// (sessionEnded — "Session beenden" clicked, the WebSocket is closed for
+// good), chat can't do anything here either way, so it gets the same
+// blurred/dim treatment as everything else — returning the whole wrap as
+// one element then is simpler and visually identical anyway (blurring the
+// parent blurs its whole rendered subtree regardless).
+function waterfallBlurTargets(wrap) {
+  if (!wrap) return [];
+  if (sessionEnded) return [wrap];
+  return [...wrap.children].filter((c) => c.id !== "chat");
+}
+
 function playShutdownAnimation() {
   const wrap = document.querySelector(".waterfall-wrap");
-  if (wrap) {
-    // Fades DIRECTLY to the blurred "off" look (filter only — .waterfall-
-    // wrap's own opacity never changes, it stays fully visible even once
-    // off, same as the meter/frequency digits further down) instead of
-    // fading to fully invisible and snapping back at the end: that left a
-    // window (finishShutdownFade's instant opacity-1 snap, followed by
-    // .off-blur's own separate 0.3s transition) where the page was briefly
-    // visible but not yet blurred — and with chat sharing this same blur
-    // treatment (applyControlsDisabled), chat/the waterfall were never
-    // actually obscured by the time e.g. "Sitzung beendet" appeared
-    // (Nutzer-Report, 2026-11-05: "auf den selben Wert hin faden wie er
-    // dann am Ende auch zu sehen ist" — fade straight to the end value
-    // instead of overshooting to invisible first). .off-blur's filter is
-    // blur(3px); overriding just the transition DURATION here (inline
-    // style wins over the class's own 0.3s) stretches that same ramp over
-    // the full shutdown duration instead, ending exactly in sync with
-    // everything else — cleared again once it settles (below) so a LATER,
-    // unannounced disconnect still gets the class's normal quick fade
-    // instead of an accidentally-stretched one.
-    wrap.style.transition = `filter ${SHUTDOWN_ANIM_MS}ms ease`;
-    wrap.classList.add("off-blur");
+  // Fades DIRECTLY to the blurred "off" look (filter only — these targets'
+  // own opacity never changes, they stay fully visible even once off, same
+  // as the meter/frequency digits further down) instead of fading to fully
+  // invisible and snapping back at the end: that left a window
+  // (finishShutdownFade's instant opacity-1 snap, followed by .off-blur's
+  // own separate 0.3s transition) where the page was briefly visible but
+  // not yet blurred (Nutzer-Report, 2026-11-05: "auf den selben Wert hin
+  // faden wie er dann am Ende auch zu sehen ist" — fade straight to the
+  // end value instead of overshooting to invisible first). .off-blur's
+  // filter is blur(3px); overriding just the transition DURATION here
+  // (inline style wins over the class's own 0.3s) stretches that same
+  // ramp over the full shutdown duration instead, ending exactly in sync
+  // with everything else — cleared again once it settles (below) so a
+  // LATER, unannounced disconnect still gets the class's normal quick
+  // fade instead of an accidentally-stretched one.
+  const blurTargets = waterfallBlurTargets(wrap);
+  for (const el of blurTargets) {
+    el.style.transition = `filter ${SHUTDOWN_ANIM_MS}ms ease`;
+    el.classList.add("off-blur");
   }
   // Everything else on the page (buttons, dropdowns, control rows, AND the
   // frequency display — Nutzer-Report, 2026-10-14: "die Frequenzanzeige
@@ -1877,9 +1947,9 @@ function playShutdownAnimation() {
   // the case where the real disconnect lands FASTER than this.
   setTimeout(() => {
     forceRadioOffDisplay = true;
-    // .waterfall-wrap's own blur already finished its stretched-out ramp
-    // (set up above, at the top of this function) exactly as this timeout
-    // fires — its inline transition override is cleared again below so a
+    // blurTargets' own blur already finished its stretched-out ramp (set
+    // up above, at the top of this function) exactly as this timeout
+    // fires — their inline transition override is cleared again below so a
     // LATER, unannounced disconnect gets the class's normal quick fade.
     //
     // Every OTHER element only gets .off-blur added for the first time
@@ -1895,7 +1965,7 @@ function playShutdownAnimation() {
     main.classList.add("shutdown-snap");
     if (lastState) applyState(lastState);
     requestAnimationFrame(() => requestAnimationFrame(() => main.classList.remove("shutdown-snap")));
-    if (wrap) wrap.style.transition = "";
+    for (const el of blurTargets) el.style.transition = "";
   }, SHUTDOWN_ANIM_MS);
 }
 
@@ -4245,6 +4315,7 @@ const paRow = document.getElementById("pa-row");
 const paPowerButton = document.getElementById("pa-power-button");
 const paOperButton = document.getElementById("pa-oper-button");
 const paLevelButton = document.getElementById("pa-level-button");
+const paAntButton = document.getElementById("pa-ant-button");
 const PA_LEVEL_LABELS = { L: "500W", M: "1000W", H: "1500W" };
 let paOn = false;
 // Synced from state.ampMaxPowerW on every broadcast (see applyAmpState) —
@@ -4298,6 +4369,16 @@ ampConnectButton.addEventListener("click", () => {
   send({ type: "connectAmp", serialPort: port });
 });
 
+// Auto Power OFF (Nutzer-Wunsch, 2026-11-07): switches the TS-890 off by
+// itself (PA included, same as the manual "TS890 ausschalten" — see
+// cmd/open890rc/main.go) after this many idle minutes with no browser
+// client connected AND no front-panel activity. 0 = off.
+const autoOffInput = document.getElementById("autooff-minutes");
+autoOffInput.addEventListener("change", () => {
+  const v = Math.max(0, Math.min(999, Math.round(Number(autoOffInput.value) || 0)));
+  autoOffInput.value = v;
+  send({ type: "setAutoOffMinutes", value: v });
+});
 const ampTxTimeoutInput = document.getElementById("amp-tx-timeout");
 ampTxTimeoutInput.addEventListener("change", () => {
   const v = Math.max(0, Math.min(999, Math.round(Number(ampTxTimeoutInput.value) || 0)));
@@ -4343,6 +4424,17 @@ paPowerButton.addEventListener("click", () => {
 });
 paOperButton.addEventListener("click", () => send({ type: "ampToggleOperate" }));
 paLevelButton.addEventListener("click", () => send({ type: "ampCycleLevel" }));
+// PA ANT (Nutzer-Wunsch, 2026-11-07): cycles the PA's TX antenna output
+// through whatever is configured for the current band on the amp itself —
+// same single-command-cycle pattern as PA LEVEL above, not a real dropdown
+// (there's nothing for us to list: the amp decides what's available per
+// band, we only show what it reports back as currently selected). Left
+// enabled whenever the PA itself is (same as PA LEVEL/OPER) rather than
+// trying to grey it out for a band with only one antenna configured — that
+// would need reading the amp's per-band antenna matrix, a much bigger,
+// unverified RCU-menu-navigation feature; sending the cycle command when
+// there's nothing to cycle to is expected to just be a no-op.
+paAntButton.addEventListener("click", () => send({ type: "ampCycleAntenna" }));
 const paTuneButton = document.getElementById("pa-tune-button");
 paTuneButton.addEventListener("click", () => send({ type: "ampTune" }));
 
@@ -4431,18 +4523,21 @@ function applyAmpState(state) {
   ampConnectButton.textContent = present ? "trennen" : "verbinden";
   ampAutoInput.checked = !!state.ampAuto;
   if (document.activeElement !== ampTxTimeoutInput) ampTxTimeoutInput.value = state.ampTxTimeout || 0;
+  if (document.activeElement !== autoOffInput) autoOffInput.value = state.autoOffMinutes || 0;
   PA_MAX_POWER_W = state.ampMaxPowerW || 15;
   if (document.activeElement !== ampMaxPowerInput) ampMaxPowerInput.value = PA_MAX_POWER_W;
   paOn = !!state.ampOn;
   document.body.dataset.paOn = paOn ? "1" : "0"; // read by the PWR slider's label
   document.getElementById("at-button").disabled = paOn; // PA has its own tuner
   // internal TUNE unavailable while the PA has its own tuner running (a
-  // running tune can still be stopped), and for anyone without TX access
-  // at all — but a tune genuinely in progress must stay stoppable even
-  // then (it was presumably started before TX was revoked mid-session).
-  tuneButton.disabled = (paOn && !state.tuning) || (!txAllowed && !state.tuning);
+  // running tune can still be stopped), for anyone without TX access at
+  // all, and while the radio's own AT (antenna tuner) is off — nothing for
+  // TUNE to engage in that case (Nutzer-Wunsch, 2026-11-07) — but a tune
+  // genuinely in progress must stay stoppable even then (it was presumably
+  // started before TX was revoked, or AT switched off, mid-session).
+  tuneButton.disabled = (paOn && !state.tuning) || (!txAllowed && !state.tuning) || (!state.tunerOn && !state.tuning);
   pwrSlider.setMax(paOn ? PA_MAX_POWER_W : 100); // server-configurable cap while the PA is on, see setAmpMaxPower
-  paPowerButton.textContent = "PA ON";
+  paPowerButton.textContent = "PA";
   paPowerButton.classList.toggle("active", paOn);
   paOperButton.classList.toggle("active", paOn && state.ampOperate);
   // Both conditions, not just TX: the stronger glow is meant to mean "PA is
@@ -4454,6 +4549,8 @@ function applyAmpState(state) {
   paOperButton.disabled = !paOn;
   paLevelButton.textContent = PA_LEVEL_LABELS[state.ampLevel] || "—";
   paLevelButton.disabled = !paOn;
+  paAntButton.textContent = state.ampAntenna ? `ANT ${state.ampAntenna}` : "ANT --";
+  paAntButton.disabled = !paOn;
   paTuneButton.disabled = !paOn || (!!state.ampOperate && !state.ampTuning); // PA tunes in STANDBY only (while running, a click cancels)
   paTuneButton.classList.toggle("tuning", !!state.ampTuning); // blinks while tuning; click again cancels
 }
@@ -4596,11 +4693,20 @@ rxServoSlipInput.addEventListener("change", () => {
   if (window.hamrcSetRxServoSlip) window.hamrcSetRxServoSlip(rxServoSlipInput.checked);
 });
 function updateTxButtonTitle() {
+  const keyLabel = PTT_KEY_LABELS[pttKey];
   const title = txHoldMode
-    ? 'Senden, solange gedrückt (Alternativ "t" auf Tastatur gedrückt halten)'
-    : 'Senden/Empfangen umschalten (Alternativ "t" auf Tastatur drücken)';
+    ? `Senden, solange gedrückt (Alternativ "${keyLabel}" auf Tastatur gedrückt halten)`
+    : `Senden/Empfangen umschalten (Alternativ "${keyLabel}" auf Tastatur drücken)`;
   for (const b of txButtons) b.title = title;
 }
+const pttKeySelect = document.getElementById("tx-ptt-key");
+pttKeySelect.value = pttKey;
+pttKeySelect.addEventListener("change", () => {
+  if (pttHeld) pttRelease();
+  pttKey = pttKeySelect.value;
+  localStorage.setItem(PTT_KEY_STORAGE_KEY, pttKey);
+  updateTxButtonTitle();
+});
 const txModeSelect = document.getElementById("tx-button-mode");
 txModeSelect.value = txHoldMode ? "hold" : "toggle";
 txModeSelect.addEventListener("change", () => {
@@ -4764,6 +4870,19 @@ function openAudioOverlay() {
   audioOverlay.hidden = false;
   showAudioOverlayTab("rx");
   refreshOutputDevices();
+  // On iOS/Safari, enumerateDevices() itself stays limited to "System
+  // Default" until some getUserMedia call on this origin has been granted
+  // at least once — previously that only ever happened once the TX tab's
+  // mic meter ran, so the RX tab (shown first, right above) saw the full
+  // device list only after a detour through TX (Nutzer-Report, 2026-11-07).
+  // hamrcEnsureMicPermission is a short-lived getUserMedia-then-stop (never
+  // a real mic session, see its own comment in audio.js) — refreshing both
+  // lists again afterwards is what actually reveals the now-unlocked
+  // devices; a no-op reshow if permission already existed.
+  Promise.resolve(window.hamrcEnsureMicPermission?.()).then(() => {
+    refreshOutputDevices();
+    refreshMicDevices();
+  });
 }
 function closeAudioOverlay() {
   audioOverlay.hidden = true;
@@ -5517,6 +5636,15 @@ let analogOn = false;
 let analogHome = null;
 function setAnalogMode(on) {
   if (on === analogOn || (on && simpleModeOn)) return;
+  // Phone: ANALOG and the chat both take over the same waterfall area —
+  // chatLeave() (defined further down, but a function declaration so it's
+  // already hoisted here) closes the chat first so ANALOG actually becomes
+  // visible again instead of staying hidden behind an still-open chat
+  // (Nutzer-Report, 2026-11-07: pressing CHAT while ANALOG was active left
+  // ANALOG's button lit despite the chat now covering it, and pressing
+  // ANALOG again then just toggled that stale state back off instead of
+  // ever bringing ANALOG to the front).
+  if (on && chatPhoneMQ.matches && chatOpen) chatLeave();
   analogOn = on;
   if (on) {
     analogHome = [document.getElementById("meter-analog"), document.querySelector(".meter-mode-row")].map((node) => ({
@@ -5802,6 +5930,20 @@ function onConnectedChange(connected) {
     shutdownDimElements = [];
     forceRadioOffDisplay = false;
     sliderReconnectAnimationUntil = performance.now() + 2000;
+    // Phone: the chat and the spectrum share the same area below the
+    // controls (see chatApplyOpen/setScopeOn) — on a cold page load the
+    // chat starts closed and that area just sits empty/dim while the radio
+    // is off (Nutzer-Report, 2026-11-07: "chat unten nicht aktiv bzw nicht
+    // zu sehen"). Once Power ON actually lands a connection, switch that
+    // area over to the spectrum regardless of what either was left at —
+    // the point of connecting is to look at the radio, not at the chat.
+    if (chatPhoneMQ.matches) {
+      if (chatOpen) {
+        chatOpen = false;
+        chatApplyOpen();
+      }
+      if (scopeRateOff) setScopeOn(true);
+    }
   }
 }
 
@@ -5871,17 +6013,12 @@ function applyControlsDisabled(disabled) {
       // instead of .meter-block, leaving #status-info untouched.
       if (el.matches(".meter-block")) {
         document.getElementById("meter-tx-toggle")?.classList.toggle("off-blur", disabled);
+      } else if (el.matches(".waterfall-wrap")) {
+        // See waterfallBlurTargets' own comment: chat stays sharp/usable
+        // while just the radio is off, blurred along with everything else
+        // once the session itself has ended.
+        for (const target of waterfallBlurTargets(el)) target.classList.toggle("off-blur", disabled);
       } else {
-        // Chat used to be exempted here so it stayed sharp while just the
-        // radio was off (Nutzer-Wunsch, 2026-11-05) — reverted on the same
-        // day: the disconnect animation fades the whole .waterfall-wrap
-        // (chat included, it's a child) to invisible, then snaps it back to
-        // full opacity once the "off" state is shown; with chat exempted
-        // from the blur that follows, it popped back in sharp while
-        // everything around it stayed dim — a jarring "disappears, then
-        // suddenly reappears already different" glitch (Nutzer-Report:
-        // "sieht nicht gut aus"). Blurring it along with the rest of the
-        // wrap, uniformly, like before, reads as one smooth fade instead.
         el.classList.toggle("off-blur", disabled && !el.matches(".status-row, .status-message-desktop"));
       }
       continue;
@@ -5951,6 +6088,7 @@ const AMP_STATE_OFF = {
   ampModel: "",
   ampPowerW: 0,
   ampSWR: 0,
+  ampAntenna: "",
 };
 function applyState(state) {
   revealMain();
@@ -6534,7 +6672,7 @@ function chatRender(e) {
   t.textContent = `${d.toLocaleDateString(undefined, { dateStyle: "short" })} ${d.toLocaleTimeString(undefined, { timeStyle: "short" })}`;
   line.appendChild(t);
   if (e.kind === "join" || e.kind === "leave") {
-    line.appendChild(document.createTextNode(`${e.name} ${e.kind === "join" ? "hat sich verbunden" : "hat die Station verlassen"}`));
+    line.appendChild(document.createTextNode(`${e.name} ${e.kind === "join" ? "verbunden" : "getrennt"}`));
   } else {
     const n = document.createElement("span");
     n.className = "chat-name";
@@ -6619,6 +6757,12 @@ function chatApplyEnabled(enabled) {
   if (box) box.checked = enabled;
 }
 function chatApplyOpen() {
+  // Mirrors setAnalogMode's own handling of the reverse direction: chat and
+  // ANALOG take over the same phone-only waterfall area, so opening the
+  // chat (by button, by dragging the pill, or a message auto-reopening it
+  // in chatAdd) must take ANALOG off itself rather than leaving it lit
+  // underneath (Nutzer-Report, 2026-11-07).
+  if (chatOpen && chatPhoneMQ.matches && analogOn) setAnalogMode(false);
   chatPanel.hidden = !chatOpen;
   if (!chatOpen && document.activeElement === chatInput) chatInput.blur();
   chatPill.hidden = chatOpen;
