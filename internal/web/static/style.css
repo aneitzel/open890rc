@@ -2175,7 +2175,7 @@ main [inert] {
     row-gap: 0.5rem;
     /* Nutzer-Wunsch, 2026-10-09: "der hintergrundbereich... soll eine
        maximale breite von 1200px haben" (was 1600px). */
-    max-width: 1200px;
+    max-width: none; /* no cap: the window may be as wide as the user makes it (Nutzer-Wunsch 2026-11-08; was 1200px) */
     width: 100%;
     /* 3-value shorthand, bottom omitted (defaults to 0): the base rule's
        own "no empty area under the waterfall" padding-bottom:0 (this
@@ -4834,12 +4834,13 @@ main.controls-off .slider::-moz-range-thumb {
     grid-area: ascope;
     /* level with the frequency display, centred between it and the right edge (Nutzer-Wunsch 2026-10-30) */
     align-self: start;
-    justify-self: end;
+    justify-self: center; /* centred in its area like the meter on the left, so it stays in the middle of the right half when the window is wide (Nutzer-Wunsch 2026-11-08) */
     margin-top: 2.1rem; /* the frequency digits start about 2rem below the top of their grid row (clock/LED line above) */
     /* reaches to the right edge of the area (as much room to the right as the meter has to the left, Nutzer-Wunsch
        2026-10-30) at a fixed height; the drawing widens with it (renderAscope), so it does not shrink with the window */
-    margin-right: 2.25rem; /* the bar meter's graphic starts 52px from the panel edge (92 vs 40), the area itself 16px: 36px more here */
+    margin-right: 0; /* (was 2.25rem while the scope was right-aligned) the bar meter's graphic starts 52px from the panel edge (92 vs 40), the area itself 16px: 36px more here */
     width: calc(100% - 4.2rem - 2.25rem);
+    max-width: 294px; /* about its width at the former 1200px panel cap: it must not grow with a wider window (Nutzer-Wunsch 2026-11-08) */
     height: 110px; /* half the size first, then a bit larger again (Nutzer-Wunsch 2026-10-30): about 260 x 95 px */
     margin-bottom: 0;
   }
