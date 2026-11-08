@@ -299,7 +299,7 @@
       <div class="left-stack" id="left-stack">
         <div class="left-sliders" id="left-sliders"></div>
       <div class="ctrl-row ctrl-row-buttons ctrl-row-1">
-        <div class="btn-group"><button type="button" id="at-button">AT</button></div>
+        <div class="btn-group"><button type="button" id="at-button" data-i18n-title title="TS890 Internal Antenna Tuner Ein/Aus">AT</button></div>
         <div class="btn-group"><button type="button" id="tune-button">TUNE</button></div>
         <div class="btn-group"><button type="button" id="agc-button">AGC OFF</button></div>
         <div class="btn-group"><button type="button" id="ant-button">ANT 1</button></div>
@@ -311,7 +311,7 @@
         <div class="btn-group" id="nb-buttons"></div>
         <div class="btn-group"><button type="button" id="bc-button" data-i18n-title title="Ein/Aus - Autonotch Filter">BC OFF</button></div>
         <div class="btn-group desktop-only-group"><button type="button" id="nch-button" class="longpress" title="Notch Ein/Aus - lange drücken für die Breite (N/M/W)">NOTCH</button></div>
-        <div class="btn-group"><button type="button" id="pre-button">PRE OFF</button></div>
+        <div class="btn-group"><button type="button" id="pre-button">PRE</button></div>
       </div>
     </div>
     <div class="ctrl-row ctrl-row-buttons eq-row" id="eq-row">
@@ -570,8 +570,9 @@
       </div>
     </label>
     <label class="amp-timeout-row overlay-section-divider" data-i18n-title title="Station automatisch ausschalten bei Nichtnutzung in Minuten">
+      AUTO power OFF:
       <input type="number" id="autooff-minutes" min="0" max="999" placeholder="0">
-      AUTO Power OFF
+      <span>min</span>
     </label>
     </div>
     <div class="overlay-tabpanel" data-tab="debug" hidden>
@@ -597,12 +598,14 @@
       <span class="overlay-status" id="amp-status"></span>
     </div>
     <label class="amp-timeout-row" title="PA TimeOutTimer (Sicherheitsfeature falls TX mal hängt in Sek, 0 = AUS)">
+      PA TX (TimeOutTimer):
       <input type="number" id="amp-tx-timeout" min="0" max="999" placeholder="0">
-      PA TX (TimeOutTimer)
+      <span>sek</span>
     </label>
     <label class="amp-timeout-row" title="Maximale Transceiverleistung (PWR), solange die PA aktiv ist">
+      Max PWR bei aktiver PA:
       <input type="number" id="amp-max-power" min="5" max="100" placeholder="15">
-      Max PWR bei aktiver PA
+      <span>watt</span>
     </label>
     </div>
     <div class="overlay-tabpanel" data-tab="users" hidden>
@@ -637,7 +640,7 @@
 
 <div id="audio-overlay" class="overlay" hidden>
   <div class="overlay-panel">
-    <div class="overlay-brand"><span>Open890RC v1.0.3 by <a href="https://www.qrz.com/db/HB9INA" target="_blank" rel="noopener noreferrer">HB9INA</a></span></div>
+    <div class="overlay-brand"><span>Open890RC v1.0.4 by <a href="https://www.qrz.com/db/HB9INA" target="_blank" rel="noopener noreferrer">HB9INA</a></span></div>
     <h2 data-i18n>Client Einstellungen</h2>
     <div class="overlay-tabs" role="tablist">
       <button type="button" class="overlay-tab active" data-tab="rx">RX</button>
@@ -663,9 +666,9 @@
             <span>VoIP reset</span>
           </div>
         </div>
-        <label id="rx-servo-slip-row" class="overlay-checkbox" data-i18n-title title="Gleicht Taktabweichungen zwischen Radio und Browser automatisch aus">
-          <input type="checkbox" id="rx-servo-slip">
-          <span data-i18n>RX Taktkompensation</span>
+        <label id="audio-output-row" hidden data-i18n-title title="Gerät für die Tonausgabe (nur dieser Browser). Auf iPhone/iPad wählt iOS das Gerät selbst, dort wird die Auswahl nicht angezeigt">
+          <span data-i18n>Tonausgabe auf:</span>
+          <select id="audio-output"></select>
         </label>
         <div class="overlay-caption overlay-section-divider" data-i18n data-i18n-title title="Wird der Rückstand im Browser-Puffer zu groß, werden die ältesten Audio-Daten verworfen">Bei Browser Pufferüberlauf:</div>
         <div class="slider-pair">
@@ -694,11 +697,7 @@
             <input type="range" id="tx-relay-volume-slider" min="0" max="100" step="5" value="100" data-i18n-title title="Lautstärke des Mithörens, wenn ein anderer Client sendet (0 = aus)">
           </div>
         </label>
-        <label id="audio-output-row" hidden data-i18n-title title="Gerät für die Tonausgabe (nur dieser Browser). Auf iPhone/iPad wählt iOS das Gerät selbst, dort wird die Auswahl nicht angezeigt">
-          <span data-i18n>Tonausgabe auf:</span>
-          <select id="audio-output"></select>
-        </label>
-        <div class="vfo-key-step-row overlay-section-divider" data-i18n-title title="Schrittweite für die Frequenzänderung mit den Pfeiltasten links/rechts (nur dieser Browser)">
+        <div class="vfo-key-step-row overlay-section-divider" data-i18n-title title="Schrittweite für die VFO Frequenzänderung mit Tastatur Pfeiltasten rechts / links">
           <span data-i18n>VFO STEP mit Tastatur:</span>
           <select id="vfo-key-step" aria-label="VFO Step">
             <option value="10">10 Hz</option>
@@ -746,8 +745,9 @@
         <div class="tx-ptt-key-row">
           <span data-i18n>TX-Taste Tastatur:</span>
           <select id="tx-ptt-key" aria-label="TX-Taste Tastatur" data-i18n-title title="Taste zum Senden (PTT) auf der Tastatur (nur dieser Browser)">
-            <option value="t">T</option>
             <option value="space" data-i18n>Leertaste</option>
+            <option value="shift">Shift</option>
+            <option value="t">T</option>
             <option value="numpad0" data-i18n>Zehnertastatur 0</option>
             <option value="numpadenter" data-i18n>Zehnertastatur Enter</option>
           </select>
@@ -819,9 +819,7 @@
 <div id="login-overlay" class="overlay login-overlay" hidden>
   <form class="overlay-panel" id="login-form" autocomplete="on">
     <div class="login-intro" id="login-intro">
-      <div>Remote-Station von HB9INA</div>
-      <div>TS890 + SPE 1k5 + ZS6BKW</div>
-      <div>JN37RE 500 m ü. M</div>
+      <div>Welcome to Open890RC - a full web based remote solution for Kenwood TS890! If you find it useful, please consider to support! This message can be edited in Server Settings / User section.</div>
     </div>
     <label>Benutzername
       <input type="text" id="login-user" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>

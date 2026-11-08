@@ -620,26 +620,8 @@
   };
 
   // Servo slip (see pcm-player-processor.js): drift compensation in the playback
-  // worklet, on by default, switchable in the Setup window (per browser). Off =
-  // plain playback with silence on underrun and a hard trim.
-  const RX_SLIP_KEY = "hamrc.rxServoSlip";
-  let rxServoSlip = true;
-  try {
-    if (localStorage.getItem(RX_SLIP_KEY) === "0") rxServoSlip = false;
-  } catch {
-    // default
-  }
-  const rxMode = () => (rxServoSlip ? "slip" : "plain");
-  window.hamrcGetRxServoSlip = () => rxServoSlip;
-  window.hamrcSetRxServoSlip = (enabled) => {
-    rxServoSlip = !!enabled;
-    try {
-      localStorage.setItem(RX_SLIP_KEY, rxServoSlip ? "1" : "0");
-    } catch {
-      // valid for this page only
-    }
-    if (workletNode) workletNode.port.postMessage({ mode: rxMode() });
-  };
+  // worklet, always on.
+  const rxMode = () => "slip";
 
   async function ensurePlayer() {
     if (audioCtx) return;

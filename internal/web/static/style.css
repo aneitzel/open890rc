@@ -3272,9 +3272,6 @@ main [inert] {
 #agc-button {
   min-width: 3.35rem;
 }
-#pre-button {
-  min-width: 4.35rem;
-}
 #att-button {
   min-width: 4.35rem;
 }
@@ -4580,14 +4577,6 @@ main.controls-off .slider::-moz-range-thumb {
   color: #e66;
 }
 
-/* RX Taktkompensation: own row below the VoIP reset button (Nutzer-Wunsch,
-   2026-11-07; was beside the codec select before). Tighter than the
-   .overlay-checkbox default (1.5rem) to match this section's compact
-   row spacing (codec row, reset row, this one, then the divider below). */
-#rx-servo-slip-row {
-  margin: 0 0 0.75rem;
-}
-
 /* Server settings window: empty status lines took ~90px of dead space above
    Abbrechen/OK; collapse them (they reappear when a message is set) and let the
    user list and the debug log use the room (list/log still never count at
@@ -5429,3 +5418,10 @@ main.controls-off #scope-toggle-button.active {
    textarea before, took up too much width there). */
 .chat-enable-label { margin: 0.75rem 0 0; }
 .chat[hidden] { display: none !important; }
+
+/* Mobile: PROC button a bit higher (Nutzer-Wunsch, 2026-11-08). */
+@media (max-width: 799px) {
+  #proc-button {
+    transform: translateY(calc(-50% - 0.35rem));
+  }
+}

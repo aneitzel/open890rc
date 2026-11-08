@@ -1253,7 +1253,7 @@ const attCycle = makeCycleButton(
 const preCycle = makeCycleButton(
   "pre-button",
   [
-    { value: 0, label: "PRE OFF" },
+    { value: 0, label: "PRE" },
     { value: 1, label: "PRE 1" },
     { value: 2, label: "PRE 2" },
   ],
@@ -1606,7 +1606,7 @@ const PTT_OVERLAYS = [
 // is "Numpad0"/"NumpadEnter" either way).
 const PTT_KEY_STORAGE_KEY = "open890rc.pttKey";
 const PTT_KEY_DEFAULT = "t";
-const PTT_KEY_LABELS = { t: "T", space: "Leertaste", numpad0: "Zehnertastatur 0", numpadenter: "Zehnertastatur Enter" };
+const PTT_KEY_LABELS = { t: "T", space: "Leertaste", numpad0: "Zehnertastatur 0", numpadenter: "Zehnertastatur Enter", shift: "Shift" };
 function loadPttKey() {
   const v = localStorage.getItem(PTT_KEY_STORAGE_KEY);
   return v && PTT_KEY_LABELS[v] ? v : PTT_KEY_DEFAULT;
@@ -1620,6 +1620,8 @@ const isPttKey = (e) => {
       return e.code === "Numpad0";
     case "numpadenter":
       return e.code === "NumpadEnter";
+    case "shift":
+      return e.code === "ShiftLeft" || e.code === "ShiftRight";
     default:
       return typeof e.key === "string" && e.key.toLowerCase() === "t";
   }
@@ -2711,7 +2713,7 @@ function ascopeTxView(st) {
 function drawAscope() {
   if (!lastState) return;
   const txView = ascopeTxView(lastState);
-  const show = !!(ascopeDesktop.matches && lastState.connected);
+  const show = !!ascopeDesktop.matches; // also without a radio: empty frame, dimmed + blurred like the rest
   ascopeSvg.toggleAttribute("hidden", !show); // SVG elements have no .hidden property
   if (show) renderAscope(ascopeSvg, txView || lastState);
   if (!filterSettingsOverlay.hidden && txView) {
@@ -3416,10 +3418,12 @@ function selectedTxMsgHasContent() {
   const chState = txMsgLastState && txMsgLastState.voiceMsgChannels ? txMsgLastState.voiceMsgChannels[txMsgSelectedChannel - 1] : null;
   return !!(chState && chState.registered);
 }
-// Red LED only while actually transmitting (op 5), not while just locally
-// previewing (op 1) — matches the "wenn er sendet" wording.
+// Red LED while a message is being sent (op 5) or waits between two repeats
+// (op 6, confirmed in the radio log 2026-11-08: PB1<ch>6 in the pause), for
+// any channel (another client may have started it) — not while just locally
+// previewing (op 1).
 function updateTxMsgButtonLED(state) {
-  txMsgButton.classList.toggle("active", isTxMsgActive(state) && state.voiceMsgOp === 5);
+  txMsgButton.classList.toggle("active", state.voiceMsgOp === 5 || state.voiceMsgOp === 6);
 }
 // Shared by the ESC key and a TX press (Nutzer-Wunsch 2026-10-28: "ESC
 // taste und druck auf TX stoppen ebenfalls eine aktive TX MSG") — stops
@@ -4688,10 +4692,6 @@ for (const slider of [trimTriggerSlider, trimTargetSlider]) {
     if (window.hamrcSetRxTrim) window.hamrcSetRxTrim(Number(trimTriggerSlider.value), Number(trimTargetSlider.value));
   });
 }
-const rxServoSlipInput = document.getElementById("rx-servo-slip");
-rxServoSlipInput.addEventListener("change", () => {
-  if (window.hamrcSetRxServoSlip) window.hamrcSetRxServoSlip(rxServoSlipInput.checked);
-});
 function updateTxButtonTitle() {
   const keyLabel = PTT_KEY_LABELS[pttKey];
   const title = txHoldMode
@@ -4779,7 +4779,6 @@ const txRelayVolumeSlider = makeSlider(
 );
 
 function loadTrimSliders() {
-  if (window.hamrcGetRxServoSlip) rxServoSlipInput.checked = window.hamrcGetRxServoSlip();
   if (window.hamrcGetMicKeepWarm) micKeepWarmInput.checked = window.hamrcGetMicKeepWarm();
   if (window.hamrcGetMicLimiter) micLimiterInput.checked = window.hamrcGetMicLimiter();
   syncMicLimiterTuningEnabled();
@@ -7503,3 +7502,18 @@ function revealMain(force) {
     if (firstStateSeen) revealMain();
   });
 setTimeout(() => revealMain(true), 2500);
+
+// Desktop bar meters (S / SWR / ALC): when the meter column gets narrower than
+// the bars' 350-unit viewBox, the default "meet" scaling shrank the bars in
+// height as well. On desktop the bars stretch/compress horizontally only
+// (preserveAspectRatio none), the 35px height stays (Nutzer-Wunsch 2026-11-08).
+// Phone keeps the default scaling.
+(() => {
+  const bars = document.querySelectorAll(".s-meter-svg, .swr-meter-svg, .alc-meter-svg");
+  const q = window.matchMedia("(min-width: 800px)");
+  const apply = () => {
+    for (const b of bars) b.setAttribute("preserveAspectRatio", q.matches ? "none" : "xMidYMid meet");
+  };
+  apply();
+  q.addEventListener("change", apply);
+})();

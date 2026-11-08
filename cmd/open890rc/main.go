@@ -814,6 +814,12 @@ func main() {
 		if msg == "?" || msg == "E" {
 			log.Printf("radio: reply %q", msg)
 		}
+		// TX message playback status (PB1 <ch> <op> ...): logged so the
+		// repeat pause (op 6) and the end of a message (op 0) can be checked
+		// against the TX MSG LED (2026-11-08).
+		if strings.HasPrefix(msg, "PB1") && len(msg) > 4 {
+			log.Printf("radio: < %s", msg)
+		}
 		// Pop-up message IDs (ME0/ME1) only ever surface as cat.MessageText's
 		// mapped text (often generic for a whole ID range, e.g. 10-21 all
 		// show "DSP error") — log the raw ID too so a report like "DSP error
@@ -2283,14 +2289,18 @@ func main() {
 	// hardware. Runs resetRXAudio in its own goroutine: onMsg is the hot
 	// path for every incoming CAT line and must not block on the
 	// ~150-250ms the CAT round trip takes.
-	const txResetCooldown = 10 * time.Second
+	const txResetCooldown = 5 * time.Second // test 2026-11-08 (was 60 s)
 	var prevRadioTXForReset bool
 	var lastTXReset atomic.Int64 // unix nanoseconds, 0 = never
 	onRadioTXConfirmed = func(radioTX bool) {
 		wasTX := prevRadioTXForReset
 		prevRadioTXForReset = radioTX
-		if !radioTX || wasTX {
-			return // only the false->true edge
+		// Falling edge (TX -> RX) since 2026-11-08: on the rising edge the
+		// ##VP0 gap made the radio refuse the first mic frames ("write udp ...
+		// connection refused" in the debug log, start of the transmission
+		// clipped). After TX ends nothing is being sent to the radio.
+		if radioTX || !wasTX {
+			return // only the true->false edge
 		}
 		if time.Since(time.Unix(0, lastTXReset.Load())) < txResetCooldown {
 			return
@@ -2300,7 +2310,7 @@ func main() {
 			if err := resetRXAudio(); err != nil {
 				log.Printf("audio: TX-triggered RX stream reset failed: %v", err)
 			} else {
-				log.Printf("audio: RX stream reset on TX (10s cooldown)")
+				log.Printf("audio: RX stream reset after TX (5s cooldown)")
 			}
 		}()
 	}
