@@ -480,7 +480,7 @@ window.hamrcStepFreq = function (deltaHz) {
 // step is 1 kHz; "open890rc.vfoKeyStepHz" persists the chosen value per
 // browser, same pattern as the other per-browser RX settings in that tab.
 const vfoKeyStepSelect = document.getElementById("vfo-key-step");
-const VFO_KEY_STEP_DEFAULT_HZ = 1000;
+const VFO_KEY_STEP_DEFAULT_HZ = 100;
 function loadVfoKeyStepHz() {
   const v = Number(localStorage.getItem("open890rc.vfoKeyStepHz"));
   return v > 0 ? v : VFO_KEY_STEP_DEFAULT_HZ;
@@ -1599,13 +1599,13 @@ const PTT_OVERLAYS = [
 // Which key triggers PTT (Client Settings, TX tab, Nutzer-Wunsch 2026-11-07):
 // configurable per browser instead of a fixed "t" — the keyboard layouts and
 // reach vary a lot (some want the far-away numpad Enter/0 to not interfere
-// with typing, others the thumb-friendly Spacebar). "t" stays the default so
-// nobody's muscle memory breaks on an upgrade. Numpad keys are matched on
+// with typing, others the thumb-friendly Spacebar). The default is the Spacebar
+// (changed from "t" on 2026-11-08, Nutzer-Wunsch); browsers that already saved a choice keep it. Numpad keys are matched on
 // e.code (KeyboardEvent.key for a numpad digit depends on NumLock — with it
 // on, Numpad0's key is "0", indistinguishable from the top-row digit; code
 // is "Numpad0"/"NumpadEnter" either way).
 const PTT_KEY_STORAGE_KEY = "open890rc.pttKey";
-const PTT_KEY_DEFAULT = "t";
+const PTT_KEY_DEFAULT = "space";
 const PTT_KEY_LABELS = { t: "T", space: "Leertaste", numpad0: "Zehnertastatur 0", numpadenter: "Zehnertastatur Enter", shift: "Shift" };
 function loadPttKey() {
   const v = localStorage.getItem(PTT_KEY_STORAGE_KEY);
