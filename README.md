@@ -46,6 +46,7 @@ Examples for Server Settings & Browser config:
 - Remote TS-890 power on/off (via Wake-on-LAN)
 - **No client software required, your station inside a webbrowser**
 - **Multiclient (optional share station with friends/club)** Several users at same time!
+- **User Chat** Station users can chat together
 - Granular users rights for TX, PA & Admin (ideal for new radio amateurs who dont own proper trx/antenna yet)
 - Frequency (digit wheel, direct entry, click/drag on the waterfall), mode, bands, VFO A/B
 - AGC, ATT, preamp, antenna, NR, NB1/NB2 with their settings, beat canceller, RX/TX equalizer,
@@ -56,7 +57,7 @@ Examples for Server Settings & Browser config:
 - Band scope: spectrum and waterfall with max hold, smoothing and level controls
 - RX audio in the browser (raw PCM or Opus), TX audio from the browser microphone
 - Interface languages: **English, German, Italian, Spanish** (chosen per client browser)
-- Optional SPE Expert 1.5K amplifier control over a serial port (on/off, tune, standby/operate, power level)
+- Optional SPE Expert 1.5K amplifier control over a serial port (on/off, tune, standby/operate, power level, Antenna port)
 
 ## Download latest  
 
