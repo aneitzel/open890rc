@@ -42,7 +42,7 @@
     </div>
     <div class="status-row-right">
       <div class="btn-group">
-        <button type="button" id="record-button" class="audio-btn" title="Aufnahme starten (RX, und beim Senden auch der eigene TX-Ton) — beim Beenden Download, mit Esc abbrechen und verwerfen">
+        <button type="button" id="record-button" class="audio-btn" title="Aufnahme starten (RX, und beim Senden auch der eigene TX-Ton) — beim Beenden Download, mit Esc abbrechen und verwerfen (Taste &quot;R&quot;)">
           <svg class="record-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /></svg>
           <span id="record-label">REC</span>
         </button>
@@ -299,10 +299,10 @@
       <div class="left-stack" id="left-stack">
         <div class="left-sliders" id="left-sliders"></div>
       <div class="ctrl-row ctrl-row-buttons ctrl-row-1">
-        <div class="btn-group"><button type="button" id="at-button" data-i18n-title title="TS890 Internal Antenna Tuner Ein/Aus">AT</button></div>
-        <div class="btn-group"><button type="button" id="tune-button">TUNE</button></div>
+        <div class="btn-group"><button type="button" id="at-button" data-i18n-title title="TS890 Internal Antenna Tuner Ein/Aus (Taste &quot;A&quot;)">AT</button></div>
+        <div class="btn-group"><button type="button" id="tune-button" data-i18n-title title="TUNE starten (Taste &quot;T&quot;)">TUNE</button></div>
         <div class="btn-group"><button type="button" id="agc-button">AGC OFF</button></div>
-        <div class="btn-group"><button type="button" id="ant-button">ANT 1</button></div>
+        <div class="btn-group"><button type="button" id="ant-button" data-i18n-title title="Antenne umschalten (Taste &quot;N&quot;)">ANT 1</button></div>
         <div class="btn-group"><button type="button" id="att-button">ATT OFF</button></div>
       </div>
       </div>
@@ -339,7 +339,7 @@
       <div class="btn-group"><button type="button" id="pa-tune-button" title="PA TUNE">TUNE</button></div>
       <div class="btn-group"><button type="button" id="pa-level-button">500W</button></div>
       <div class="btn-group"><button type="button" id="pa-oper-button" title="PA OPERATE">OPER</button></div>
-      <div class="btn-group"><button type="button" id="pa-ant-button" title="SPE Antenne umschalten (sofern an der PA eingerichtet)">ANT --</button></div>
+      <div class="btn-group"><button type="button" id="pa-ant-button" data-i18n-title title="SPE Antenne umschalten (sofern an der PA eingerichtet) (Taste &quot;A&quot;)">ANT --</button></div>
     </div>
     <!-- RIT/XIT: identical knob (same .rit-knob* classes, reused — only the
          SVG gradient ids differ per instance, since id="..." must be unique
@@ -418,7 +418,7 @@
       <button type="button" id="tx-button" class="tx-button" title="Senden/Empfangen umschalten (T-Taste gedrückt halten = Senden)">TX</button>
     </div>
     <div class="ctrl-row mic-proc-row">
-      <div class="btn-group"><button type="button" id="proc-button" class="longpress" title="Ein/Aus - lange drücken für Einstellungen">PROC</button></div>
+      <div class="btn-group"><button type="button" id="proc-button" class="longpress" data-i18n-title title="Processor Ein/Aus (Taste &quot;P&quot;) - lange drücken für Einstellungen">PROC</button></div>
     </div>
   </div>
 
@@ -747,7 +747,6 @@
           <select id="tx-ptt-key" aria-label="TX-Taste Tastatur" data-i18n-title title="Taste zum Senden (PTT) auf der Tastatur (nur dieser Browser)">
             <option value="space" data-i18n>Leertaste</option>
             <option value="shift">Shift</option>
-            <option value="t">T</option>
             <option value="numpad0" data-i18n>Zehnertastatur 0</option>
             <option value="numpadenter" data-i18n>Zehnertastatur Enter</option>
           </select>

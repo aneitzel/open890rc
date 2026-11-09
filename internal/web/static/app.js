@@ -1606,7 +1606,7 @@ const PTT_OVERLAYS = [
 // is "Numpad0"/"NumpadEnter" either way).
 const PTT_KEY_STORAGE_KEY = "open890rc.pttKey";
 const PTT_KEY_DEFAULT = "space";
-const PTT_KEY_LABELS = { t: "T", space: "Leertaste", numpad0: "Zehnertastatur 0", numpadenter: "Zehnertastatur Enter", shift: "Shift" };
+const PTT_KEY_LABELS = { space: "Leertaste", numpad0: "Zehnertastatur 0", numpadenter: "Zehnertastatur Enter", shift: "Shift" };
 function loadPttKey() {
   const v = localStorage.getItem(PTT_KEY_STORAGE_KEY);
   return v && PTT_KEY_LABELS[v] ? v : PTT_KEY_DEFAULT;
@@ -1623,9 +1623,37 @@ const isPttKey = (e) => {
     case "shift":
       return e.code === "ShiftLeft" || e.code === "ShiftRight";
     default:
-      return typeof e.key === "string" && e.key.toLowerCase() === "t";
+      return e.code === "Space";
   }
 };
+// Letter shortcuts (Nutzer-Wunsch 2026-11-09): F = next IF filter A -> B -> C, R = start/stop recording,
+// T = TUNE, A = AT on/off, N = next antenna (PA antenna while the PA is on), P = TX processor on/off. Same guards as the other keys: not while
+// typing, not with Ctrl/Alt/Cmd, not while a window is open, only with a radio connection.
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
+  const key = typeof e.key === "string" ? e.key.toLowerCase() : "";
+  if (!["f", "r", "t", "a", "n", "p"].includes(key)) return;
+  const t = e.target;
+  const tag = (t && t.tagName) || "";
+  const nonText = tag === "INPUT" && ["range", "checkbox", "radio", "button"].includes(t.type);
+  if ((tag === "INPUT" && !nonText) || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable)) return;
+  if (document.querySelector(".overlay:not([hidden])")) return;
+  if (!lastState || !lastState.connected) return;
+  if (key === "f") {
+    if (!lastState.ifFilter) return;
+    const order = ["A", "B", "C"];
+    send({ type: "setIFFilter", filter: order[(order.indexOf(lastState.ifFilter) + 1) % order.length] });
+    return;
+  }
+  // N: switch the radio antenna, with the PA on the PA's antenna instead (its button is only enabled while the PA is on)
+  const paAnt = document.getElementById("pa-ant-button");
+  const id = key === "n" ? (paAnt && !paAnt.disabled ? "pa-ant-button" : "ant-button") : { r: "record-button", t: "tune-button", a: "at-button", p: "proc-button" }[key];
+  const btn = document.getElementById(id);
+  if (btn && !btn.disabled) {
+    e.preventDefault();
+    btn.click();
+  }
+});
 let pttHeld = false; // the key is down and started this TX
 function pttRelease() {
   if (!pttHeld) return;
@@ -2606,12 +2634,15 @@ function renderAscope(svg, st, apf) {
   // the header strip is a dark grey gradient (per SVG id: a gradient inside a hidden SVG is not found)
   const gid = `${svg.id}-head`;
   out += `<defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#58585b"/><stop offset="1" stop-color="#2c2c2f"/></linearGradient></defs>`;
-  out += `<rect x="1" y="1" width="${W - 2}" height="19" fill="url(#${gid})"/>`;
+  // <title> inside a group: the tooltip shows over the header strip only (SVG ignores a title attribute)
+  const tip = svg.id === "ascope" ? window.t('Filter A,B,C - Klick zum umschalten / oder "F" auf Tastatur.').replace(/&/g, "&amp;").replace(/</g, "&lt;") : "";
+  out += `<g>${tip ? `<title>${tip}</title>` : ""}<rect x="1" y="1" width="${W - 2}" height="19" fill="url(#${gid})"/>`;
   const filt = st.ifFilter || "";
   if (filt) out += `<rect class="fg-a-box" x="2.5" y="2" width="16" height="16" rx="2"/><text class="fg-a-text" x="10.5" y="15" text-anchor="middle">${filt}</text>`;
   out += `<text class="fg-hd" x="24" y="14.5">${g.titles[0]}</text>`;
   if (g.titles[1]) out += `<text class="fg-hd" x="${W / 2 + 6}" y="14.5" text-anchor="middle">${g.titles[1]}</text>`;
   if (g.titles[2]) out += `<text class="fg-hd" x="${W - 5}" y="14.5" text-anchor="end">${g.titles[2]}</text>`;
+  out += `</g>`;
   // The spectrum polygon is a placeholder in the static markup; only its points change with every line of
   // data (the markup is only rebuilt when something else changed), which keeps the page's main thread free
   // for the waterfall (Nutzer-Report 2026-10-30: the waterfall stuttered with the scope running).
@@ -6747,7 +6778,21 @@ function chatUpdateOnline() {
   chatCountEl.textContent = names.length ? `· ${names.length}` : "";
   chatOnlineEl.textContent = names.join(", ");
   chatOnlineEl.title = names.join(", ");
+  // desktop: alone on the server the chat starts minimised, and opens when a second client joins (Nutzer-Wunsch 2026-11-09)
+  if (!chatPhoneMQ.matches && names.length) {
+    if (chatPrevCount === 0 && names.length < 2 && chatOpen) {
+      chatOpen = false;
+      chatApplyOpen();
+    } else if (chatPrevCount > 0 && chatPrevCount < 2 && names.length >= 2 && !chatOpen) {
+      chatOpen = true;
+      chatApplyOpen();
+    }
+    chatPrevCount = names.length;
+  } else if (names.length) {
+    chatPrevCount = names.length;
+  }
 }
+let chatPrevCount = 0; // number of connected clients at the last list (0 = none seen yet)
 function chatApplyEnabled(enabled) {
   chatEnabledByServer = enabled;
   chatEl.hidden = !enabled; // beats the CSS display of .chat

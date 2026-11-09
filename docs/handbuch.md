@@ -262,7 +262,7 @@ Der Schraubenschlüssel neben **TON** (oben rechts) öffnet die Einstellungen, d
 | Mikrofon Empfindlichkeit | Verstärkung im Browser. Die Pegelanzeige darunter darf nicht dauerhaft im roten Bereich stehen, sonst klingt das Signal verzerrt. Auch das ALC des Radios beobachten |
 | TX Mic Limiter + Voreinstellung | Fängt vereinzelte Pegelspitzen ab (Sanft / Stark) |
 | Halte Bluetooth-/CarPlay-Hands-Free-Profile aktiv | Vermeidet lange Umschaltzeiten bei TX |
-| TX-Taste Tastatur | Taste für Push-to-Talk (Leertaste, Shift, T, Zehnertastatur 0, Zehnertastatur Enter) |
+| TX-Taste Tastatur | Taste für Push-to-Talk (Leertaste, Shift, Zehnertastatur 0, Zehnertastatur Enter) |
 | TX-Taste Funktionsweise | **TX wenn gedrückt** (nur senden, solange gehalten) oder **TX/RX umschalten** (ein Druck ein, nächster aus) |
 
 Die Mikrofon-Berechtigung fragt der Browser beim ersten Senden. Ohne HTTPS (siehe 1.5) ist kein Mikrofonzugriff möglich.
@@ -482,6 +482,23 @@ Der Power-Button öffnet „Beenden": **Session beenden** trennt nur diesen Brow
 
 Die Tastaturkürzel gelten in Desktop-Browsern. Sie sind **inaktiv**, solange man in ein Textfeld, Auswahlfeld oder Eingabefeld tippt. Mit Strg/Ctrl, Alt oder Cmd gedrückt reagiert nichts, damit Browser-Kürzel (z. B. Strg+T) nicht stören.
 
+### Übersicht
+
+| Taste | Funktion |
+|---|---|
+| **←** / **→** | VFO abstimmen (Schrittweite einstellbar) |
+| **Leertaste** (einstellbar) | PTT: Senden |
+| **F** | Filter weiterschalten A → B → C → A |
+| **R** | Aufnahme (REC) starten, nochmal **R** stoppt und speichert |
+| **A** | Antennentuner (AT) ein/aus |
+| **N** | Antenne weiterschalten (ANT); bei eingeschalteter PA die Antenne der PA (ANT neben PA TUNE) |
+| **T** | TUNE starten (Abstimmzyklus des Antennentuners) |
+| **P** | Processor (PROC) ein/aus |
+| **Esc** | Fenster schließen, Aufnahme abbrechen, TX-Nachricht beenden |
+| **0 … 9**, **,**, **Enter** | Frequenz eintippen (Tastenfeld) |
+
+**F, R, T, A, N, P** wirken nur mit Radioverbindung und ohne offenes Fenster. **R** braucht laufenden RX-Ton, **T** und **A** sind gesperrt, wenn die jeweilige Taste im Bild ausgegraut ist (z. B. bei eingeschalteter PA oder ohne TX-Recht).
+
 ### 4.1 Abstimmen
 
 | Taste | Funktion | Bedingung |
@@ -497,7 +514,6 @@ Eine Taste schaltet den Sender, solange sie gehalten wird (bei der Betriebsart �
 
 | Auswahl | Taste |
 |---|---|
-| T | Buchstabe **T**, unabhängig vom Tastaturlayout |
 | Leertaste (Standard) | **Space** |
 | Shift | linke oder rechte **Shift**-Taste |
 | Zehnertastatur 0 | **Num 0** |

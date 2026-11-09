@@ -3194,7 +3194,7 @@ main [inert] {
   inset: 0;
   background: url("meter-bg.jpg") center / cover no-repeat;
   border-radius: inherit;
-  opacity: 0.32;
+  opacity: 0.16;
   pointer-events: none;
 }
 .overlay-brand > span {
